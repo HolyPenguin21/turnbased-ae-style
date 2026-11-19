@@ -45,7 +45,8 @@ namespace Game.EditorTests
         {
             live = new ArmyData { Owner = enemy, Name = "Before capture", Hex = new HexCoord(1, 0), IsAirfield = true };
             live.Members.Add(new UnitData { Owner = enemy, Name = "Observed", Attack = 8, Defense = 3,
-                HitPointsCurrent = 2, HitPointsMax = 7, MoveMax = 5, MoveCurrent = 1, IsAviation = true, Fate = 1, FateMax = 4 });
+                HitPointsCurrent = 2, HitPointsMax = 7, MoveMax = 5, MoveCurrent = 1, IsAviation = true, Fate = 1, FateMax = 4,
+                CombatRecord = new UnitCombatRecord { BattlesSurvived = 2, DamageDealt = 9, DamageTaken = 5, Kills = 1 } });
             HumanVisualMemory.ObserveArmy(viewer, live, live.Hex);
             Assert.That(HumanVisualMemory.TryGetArmySighting(viewer, live.Id, out var memory), Is.True);
             var army = Invoke<MatchRememberedArmyData>("CaptureArmy", live.Id, live.Hex, memory.Army, config);
@@ -90,7 +91,8 @@ namespace Game.EditorTests
             string json = JsonUtility.ToJson(saved);
             MatchSaveJson.Validate(json, typeof(MatchPresentationData));
             saved = JsonUtility.FromJson<MatchPresentationData>(json);
-            live.Owner = viewer; live.Name = "Captured behind fog"; live.Members[0].Attack = 99; live.Members.Clear();
+            live.Owner = viewer; live.Name = "Captured behind fog"; live.Members[0].Attack = 99;
+            live.Members[0].CombatRecord.Kills = 40; live.Members.Clear();
             HumanVisualMemory.Clear();
             Validate(saved);
             MatchPresentationCodec.RestoreKnowledge(saved, config, Player);
@@ -104,6 +106,9 @@ namespace Game.EditorTests
             Assert.That(restored.Army.Members.Single().MoveCurrent, Is.EqualTo(1));
             Assert.That(restored.Army.Members.Single().OriginalResourceCost, Is.Null);
             Assert.That(restored.Army.Members.Single().IsAviation, Is.True);
+            var record = restored.Army.Members.Single().CombatRecord;
+            Assert.That(new[] { record.BattlesSurvived, record.DamageDealt, record.DamageTaken, record.Kills },
+                Is.EqualTo(new[] { 2, 9, 5, 1 }), "The remembered unit keeps the record as it was seen.");
             Assert.That(VisionSystem.IsVisible(viewer, new HexCoord(2, 0)), Is.True);
         }
         // An army seen walking into fog is remembered at a destination the viewer never observed.

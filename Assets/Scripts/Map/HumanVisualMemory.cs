@@ -148,6 +148,8 @@ namespace Game.Map
             snapshot.Initiative = source.Initiative;
             snapshot.IsPrisoner = source.IsPrisoner;
             snapshot.CapturedFrom = source.CapturedFrom;
+            // The detail panel of a remembered unit shows its record as last seen.
+            snapshot.CombatRecord = source.CombatRecord;
             // AviationRules.IsAirArmy reads this per member to classify the containing
             // ArmyData snapshot — without it a remembered air army's own members would all
             // read as ordinary ground units under fog. ObservedArmy separately captures

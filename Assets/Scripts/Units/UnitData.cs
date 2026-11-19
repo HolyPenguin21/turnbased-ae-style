@@ -38,7 +38,7 @@ namespace Game.Units
             copy.IsPrisoner = IsPrisoner; copy.IsHidden = IsHidden;
             copy.OriginatingCard = OriginatingCard; copy.CatalogSource = CatalogSource; copy.Equipment = Equipment; copy.Mutator = Mutator;
             copy.AttachmentBase = AttachmentBase; copy.AttachmentApplied = AttachmentApplied;
-            copy.AttachmentResources = AttachmentResources;
+            copy.AttachmentResources = AttachmentResources; copy.CombatRecord = CombatRecord;
             copy.Abilities.UnionWith(Abilities); copy.TypeTags.UnionWith(TypeTags);
             return copy;
         }
@@ -87,6 +87,10 @@ namespace Game.Units
         internal PredictedEquipmentState? AttachmentBase;
         internal PredictedEquipmentState? AttachmentApplied;
         internal AttachmentResourceState? AttachmentResources;
+
+        // Battles survived, damage dealt/taken and kills over this body's whole match (see
+        // UnitCombatRecord). Written only by the live combat paths; saved with the unit.
+        public UnitCombatRecord CombatRecord;
 
         // How many times UnitAbilities.Berserk has triggered so far THIS battle — Attack/
         // Defense above already carry the +1/-1 per stack (see BattleAttackPopupUI.

@@ -336,7 +336,11 @@ namespace Game.Combat
                 + $"({state.BattleHex.Q},{state.BattleHex.R}) start: attacker "
                 + $"{DescribeSides(state.Attacker)} vs defender {DescribeSides(state.Defender)}");
             if (state.Grid != null && BattleInitiator.IsCombatCapable(state.Attacker) && BattleInitiator.IsCombatCapable(state.Defender))
+            {
+                state.Combatants.AddMembers(state.Attacker);
+                state.Combatants.AddMembers(state.Defender);
                 EncounterStarted?.Invoke(state);
+            }
         }
 
         // Every member with the stats the fight is played with (attack/defense/hp now/max): the
@@ -636,9 +640,12 @@ namespace Game.Combat
             _state.RetreatingArmy = army;
         }
 
+        // `creditedAttacker`: the live body credited in its UnitCombatRecord when `attacker` is a
+        // combat copy (ExplosionAttack.Actor); `defenderIsUnit` is false for a structure stand-in.
         public static BattleAttackApplication ResolveStandaloneAttack(UnitData attacker, UnitData defender,
             BattleChallengeRollResult roll, AbilityMagnitudes magnitudes,
-            UnitData attackerHero = null, UnitData defenderHero = null, bool completeAttack = true)
+            UnitData attackerHero = null, UnitData defenderHero = null, bool completeAttack = true,
+            UnitData creditedAttacker = null, bool defenderIsUnit = true)
         {
             ApplyFateState(attackerHero, defenderHero, roll);
             BattleRules.GroundAttackOutcome outcome = BattleRules.ResolveGroundAttack(
@@ -658,7 +665,9 @@ namespace Game.Combat
             if (outcome.Damage > 0)
             {
                 application.BerserkTriggered = defender.HasAbility(UnitAbilities.Berserk);
+                int hitPointsBefore = defender.HitPointsCurrent;
                 defender.HitPointsCurrent = Mathf.Max(0, defender.HitPointsCurrent - outcome.Damage);
+                UnitCombatRecord.RecordHit(creditedAttacker ?? attacker, defender, hitPointsBefore, defenderIsUnit);
                 ChallengeResult.ApplyBerserkOnHit(defender, magnitudes);
             }
             application.DefenderDied = defender.HitPointsCurrent <= 0;
@@ -699,7 +708,9 @@ namespace Game.Combat
             if (application.Damage > 0)
             {
                 application.BerserkTriggered = defender.HasAbility(UnitAbilities.Berserk);
+                int hitPointsBefore = defender.HitPointsCurrent;
                 defender.HitPointsCurrent = Mathf.Max(0, defender.HitPointsCurrent - application.Damage);
+                UnitCombatRecord.RecordHit(attacker, defender, hitPointsBefore);
                 ChallengeResult.ApplyBerserkOnHit(defender, _magnitudes);
             }
 
@@ -951,6 +962,8 @@ namespace Game.Combat
 
             RevertTemporaryBattleStats(state.Attacker, state.EncounterMagnitudes);
             RevertTemporaryBattleStats(state.Defender, state.EncounterMagnitudes);
+            // Captures, kills and a retreat are all applied by now; summons are excluded anyway.
+            state.Combatants.Close();
             bool attackerEmpty = state.Attacker != null && state.Attacker.Members.Count == 0;
             bool defenderEmpty = state.Defender != null && state.Defender.Members.Count == 0;
             if (attackerEmpty != defenderEmpty)
@@ -1263,7 +1276,9 @@ namespace Game.Combat
             bool berserkTriggered = damage > 0 && victim.HasAbility(UnitAbilities.Berserk);
             if (damage > 0)
             {
+                int hitPointsBefore = victim.HitPointsCurrent;
                 victim.HitPointsCurrent = Mathf.Max(0, victim.HitPointsCurrent - damage);
+                UnitCombatRecord.RecordHit(attacker, victim, hitPointsBefore);
                 ChallengeResult.ApplyBerserkOnHit(victim, _magnitudes);
             }
 

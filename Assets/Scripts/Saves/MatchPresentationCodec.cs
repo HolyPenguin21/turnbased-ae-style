@@ -109,7 +109,9 @@ namespace Game.Saves
                     IsPrisoner = unit.IsPrisoner, IsAviation = unit.IsAviation, CommandRating = unit.CommandRating,
                     Fate = unit.Fate, FateMax = unit.FateMax, Attack = unit.Attack, Defense = unit.Defense, Range = unit.Range,
                     HitPointsMax = unit.HitPointsMax, HitPointsCurrent = unit.HitPointsCurrent, Row = (int)unit.Row,
-                    Initiative = unit.Initiative, AirfieldCapacity = unit.AirfieldCapacity };
+                    Initiative = unit.Initiative, AirfieldCapacity = unit.AirfieldCapacity,
+                    BattlesSurvived = unit.CombatRecord.BattlesSurvived, DamageDealt = unit.CombatRecord.DamageDealt,
+                    DamageTaken = unit.CombatRecord.DamageTaken, Kills = unit.CombatRecord.Kills };
                 entry.Abilities.AddRange(unit.Abilities);
                 foreach (var tag in unit.TypeTags) entry.TypeTags.Add((int)tag);
                 data.Members.Add(entry);
@@ -292,6 +294,10 @@ namespace Game.Saves
                 unit.Attack = entry.Attack; unit.Defense = entry.Defense; unit.Range = entry.Range; unit.HitPointsMax = entry.HitPointsMax;
                 unit.HitPointsCurrent = entry.HitPointsCurrent; unit.Row = (BattleRow)entry.Row; unit.Initiative = entry.Initiative;
                 unit.AirfieldCapacity = entry.AirfieldCapacity;
+                var record = new UnitCombatRecord { BattlesSurvived = entry.BattlesSurvived, DamageDealt = entry.DamageDealt,
+                    DamageTaken = entry.DamageTaken, Kills = entry.Kills };
+                if (!record.IsValid) throw new ArgumentException("Invalid historical unit combat record.");
+                unit.CombatRecord = record;
                 unit.Abilities.UnionWith(entry.Abilities);
                 foreach (int tag in entry.TypeTags) unit.TypeTags.Add((UnitTypeTag)tag);
                 army.Members.Add(unit);

@@ -170,34 +170,42 @@ namespace Game.Aviation
             bool critical = reaction.AaArmy != null
                 ? TacticBattleContext.IsCritical(airHex, reaction.AaArmy, airArmy)
                 : TacticBattleContext.IsCritical(reaction.AaHex, reaction.AaOwner, airArmy);
-            if (ExplosionAttack.TargetLimit(reaction.AaUnit.Abilities) > 0)
+            // One AA reaction is one fight for UnitCombatRecord.BattlesSurvived.
+            var engagement = new CombatEngagement();
+            try
             {
-                foreach (var request in ResolveExplosion(new ExplosionAttack(reaction.AaUnit, airHex, _rng, airArmy),
-                    critical, null)) yield return request;
-                yield break;
-            }
-            var visible = StealthSystem.TargetableMembersFor(airArmy, reaction.AaOwner).ToList();
-            if (visible.Count == 0) yield break;
-            UnitData target = visible[_rng.Next(visible.Count)];
-            StealthSystem.ExitStealth(target);
-            UnitData hero = reaction.AaArmy?.Members.Find(unit => unit.IsHero);
-            using var challenge = Challenge(reaction.AaUnit, hero, target, null, reaction.AaUnit.Attack * 2,
-                target.IsHero ? target.FateMax : target.Defense, critical, "ANTI AIR ATTACK", airHex);
-            yield return challenge;
-            RequireCompleted(challenge.IsCompleted);
-            using (VisionSystem.BeginMutation())
-            {
-                var application = BattleEngine.ResolveStandaloneAttack(reaction.AaUnit, target,
-                    challenge.Roll, _magnitudes, hero, null);
-                if (application.DefenderDied)
+                if (ExplosionAttack.TargetLimit(reaction.AaUnit.Abilities) > 0)
                 {
-                    ArmyActions.RemoveMember(airArmy, target);
-                    if (airArmy.Controller == null || !airArmy.Controller.IsMoving)
-                        ArmyActions.DeleteArmyIfEmptied(airArmy);
+                    foreach (var request in ResolveExplosion(new ExplosionAttack(reaction.AaUnit, airHex, _rng, airArmy),
+                        critical, null, engagement)) yield return request;
+                    yield break;
                 }
-                if (reaction.AaArmy != null) ArmyActions.DeleteArmyIfEmptied(reaction.AaArmy);
-                VisionSystem.NotifyContentChanged(airArmy.Hex);
+                var visible = StealthSystem.TargetableMembersFor(airArmy, reaction.AaOwner).ToList();
+                if (visible.Count == 0) yield break;
+                UnitData target = visible[_rng.Next(visible.Count)];
+                StealthSystem.ExitStealth(target);
+                UnitData hero = reaction.AaArmy?.Members.Find(unit => unit.IsHero);
+                using var challenge = Challenge(reaction.AaUnit, hero, target, null, reaction.AaUnit.Attack * 2,
+                    target.IsHero ? target.FateMax : target.Defense, critical, "ANTI AIR ATTACK", airHex);
+                yield return challenge;
+                RequireCompleted(challenge.IsCompleted);
+                using (VisionSystem.BeginMutation())
+                {
+                    engagement.Add(reaction.AaUnit, reaction.AaArmy);
+                    engagement.Add(target, airArmy);
+                    var application = BattleEngine.ResolveStandaloneAttack(reaction.AaUnit, target,
+                        challenge.Roll, _magnitudes, hero, null);
+                    if (application.DefenderDied)
+                    {
+                        ArmyActions.RemoveMember(airArmy, target);
+                        if (airArmy.Controller == null || !airArmy.Controller.IsMoving)
+                            ArmyActions.DeleteArmyIfEmptied(airArmy);
+                    }
+                    if (reaction.AaArmy != null) ArmyActions.DeleteArmyIfEmptied(reaction.AaArmy);
+                    VisionSystem.NotifyContentChanged(airArmy.Hex);
+                }
             }
+            finally { engagement.Close(); }
         }
 
         public IEnumerable<Request> ResolveAirStrikeAtCurrentHex(ArmyData airArmy, HexCoord hex,
@@ -208,57 +216,66 @@ namespace Game.Aviation
             if (targets.Count == 0 && !CanExplosionStrikeAt(airArmy, hex)) yield break;
             result = result ?? new AviationCombatResult();
             result.DefenderCountBefore = targets.Sum(a => a.Members.Count);
-            foreach (var aircraft in airArmy.Members.ToList())
+            // One strike pass at a hex is one fight for UnitCombatRecord.BattlesSurvived.
+            var engagement = new CombatEngagement();
+            try
             {
-                if (aircraft.HitPointsCurrent <= 0 || !airArmy.Members.Contains(aircraft)
-                    || aircraft.HasAirAttackedThisTurn || airArmy.Members.Count == 0) continue;
-                if (ExplosionAttack.TargetLimit(aircraft.Abilities) > 0)
+                foreach (var aircraft in airArmy.Members.ToList())
                 {
-                    if (policy.MinimumSurvivors > 0 || !CanExplosionStrikeAt(airArmy, hex)) continue;
-                    if (airArmy.Owner != null && !airArmy.Owner.IsHuman
-                        && ExplosionAttack.ExpectedNetValue(aircraft,
-                            ExplosionAttack.KnownTargets(hex, airArmy.Owner, airArmy)) <= 0) continue;
-                    aircraft.HasAirAttackedThisTurn = true;
-                    foreach (var request in ResolveExplosion(new ExplosionAttack(aircraft, hex, _rng, airArmy),
-                        TacticBattleContext.IsCritical(hex, airArmy, targets.FirstOrDefault()), result)) yield return request;
-                    continue;
-                }
-                if (targets.Sum(a => a.Members.Count) <= policy.MinimumSurvivors) break;
-                var pool = CollectStrikeTargets(targets, airArmy.Owner);
-                if (pool.Count == 0) break;
-                (UnitData target, ArmyData targetArmy) = pool[_rng.Next(pool.Count)];
-                aircraft.HasAirAttackedThisTurn = true;
-                StealthSystem.ExitStealth(target);
-                UnitData hero = target.IsHero ? target : targetArmy.Members.Find(unit => unit.IsHero);
-                using var challenge = Challenge(aircraft, null, target, hero, aircraft.Attack,
-                    target.IsHero ? target.FateMax : target.Defense,
-                    TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy), "AIR ATTACK", targetArmy.Hex);
-                yield return challenge;
-                RequireCompleted(challenge.IsCompleted);
-                using (VisionSystem.BeginMutation())
-                {
-                    var application = BattleEngine.ResolveStandaloneAttack(aircraft, target, challenge.Roll,
-                        _magnitudes, null, hero);
-                    if (result != null)
+                    if (aircraft.HitPointsCurrent <= 0 || !airArmy.Members.Contains(aircraft)
+                        || aircraft.HasAirAttackedThisTurn || airArmy.Members.Count == 0) continue;
+                    if (ExplosionAttack.TargetLimit(aircraft.Abilities) > 0)
                     {
-                        result.Attacked = true;
-                        result.AttackedArmyId = targetArmy.Id;
-                        result.DamageDealt += Mathf.Max(0, application.Damage);
+                        if (policy.MinimumSurvivors > 0 || !CanExplosionStrikeAt(airArmy, hex)) continue;
+                        if (airArmy.Owner != null && !airArmy.Owner.IsHuman
+                            && ExplosionAttack.ExpectedNetValue(aircraft,
+                                ExplosionAttack.KnownTargets(hex, airArmy.Owner, airArmy)) <= 0) continue;
+                        aircraft.HasAirAttackedThisTurn = true;
+                        foreach (var request in ResolveExplosion(new ExplosionAttack(aircraft, hex, _rng, airArmy),
+                            TacticBattleContext.IsCritical(hex, airArmy, targets.FirstOrDefault()), result, engagement)) yield return request;
+                        continue;
                     }
-                    if (application.DefenderDied)
+                    if (targets.Sum(a => a.Members.Count) <= policy.MinimumSurvivors) break;
+                    var pool = CollectStrikeTargets(targets, airArmy.Owner);
+                    if (pool.Count == 0) break;
+                    (UnitData target, ArmyData targetArmy) = pool[_rng.Next(pool.Count)];
+                    aircraft.HasAirAttackedThisTurn = true;
+                    StealthSystem.ExitStealth(target);
+                    UnitData hero = target.IsHero ? target : targetArmy.Members.Find(unit => unit.IsHero);
+                    using var challenge = Challenge(aircraft, null, target, hero, aircraft.Attack,
+                        target.IsHero ? target.FateMax : target.Defense,
+                        TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy), "AIR ATTACK", targetArmy.Hex);
+                    yield return challenge;
+                    RequireCompleted(challenge.IsCompleted);
+                    using (VisionSystem.BeginMutation())
                     {
-                        ArmyActions.RemoveMember(targetArmy, target);
-                        ArmyActions.DeleteArmyIfEmptied(targetArmy);
+                        engagement.Add(aircraft, airArmy);
+                        engagement.Add(target, targetArmy);
+                        var application = BattleEngine.ResolveStandaloneAttack(aircraft, target, challenge.Roll,
+                            _magnitudes, null, hero);
+                        if (result != null)
+                        {
+                            result.Attacked = true;
+                            result.AttackedArmyId = targetArmy.Id;
+                            result.DamageDealt += Mathf.Max(0, application.Damage);
+                        }
+                        if (application.DefenderDied)
+                        {
+                            ArmyActions.RemoveMember(targetArmy, target);
+                            ArmyActions.DeleteArmyIfEmptied(targetArmy);
+                        }
                     }
                 }
             }
+            finally { engagement.Close(); }
             ArmyActions.DeleteArmyIfEmptied(airArmy);
             if (result != null) result.DefenderCountAfter = targets.Sum(a => a.Members.Count);
             VisionSystem.NotifyContentChanged(hex);
             if (result.Attacked) StrikeCompleted?.Invoke(airArmy);
         }
 
-        private IEnumerable<Request> ResolveExplosion(ExplosionAttack attack, bool critical, AviationCombatResult result)
+        private IEnumerable<Request> ResolveExplosion(ExplosionAttack attack, bool critical, AviationCombatResult result,
+            CombatEngagement engagement)
         {
             int index = 0;
             try
@@ -274,6 +291,8 @@ namespace Game.Aviation
                         $"EXPLOSION ({index}/{attack.Targets.Count})", attack.Hex);
                     yield return challenge;
                     RequireCompleted(challenge.IsCompleted);
+                    engagement.Add(attack.Launcher, attack.LauncherArmy);
+                    engagement.Add(target.Unit, target.Army);
                     var application = attack.Resolve(target, defender, challenge.Roll, _magnitudes, null, hero);
                     if (result != null)
                     {

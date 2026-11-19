@@ -250,8 +250,10 @@ namespace Game.Combat
             if (battle != null) magnitudes = battle.Magnitudes;
             if (!_resolved.Add(target)) throw new InvalidOperationException("An explosion cannot hit the same target twice.");
             ResolvedCount++;
+            // Actor is a combat copy; the live launcher keeps the combat record.
             var application = BattleEngine.ResolveStandaloneAttack(Actor, defender, roll, magnitudes,
-                attackerHero, defenderHero, completeAttack: false);
+                attackerHero, defenderHero, completeAttack: false,
+                creditedAttacker: Launcher, defenderIsUnit: target.Unit != null);
             if (target.Unit != null)
             {
                 if (application.DefenderDied)

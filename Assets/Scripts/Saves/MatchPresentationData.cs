@@ -50,6 +50,8 @@ namespace Game.Saves
         public ResourceCost OriginalCost = new ResourceCost(), RepairCost = new ResourceCost();
         public bool IsHero, IsPrisoner, IsAviation;
         public int CommandRating, Fate, FateMax, Attack, Defense, Range, HitPointsMax, HitPointsCurrent, Row, Initiative, AirfieldCapacity;
+        // UnitData.CombatRecord as seen at the same moment as the stats above.
+        public int BattlesSurvived, DamageDealt, DamageTaken, Kills;
         public List<string> Abilities = new List<string>();
         public List<int> TypeTags = new List<int>();
     }

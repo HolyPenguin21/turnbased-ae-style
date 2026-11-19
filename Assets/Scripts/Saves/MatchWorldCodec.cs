@@ -249,6 +249,9 @@ namespace Game.Saves
             u.BerserkStacks = x.berserkStacks; u.BerserkDefenseLost = x.berserkDefenseLost; u.DrillAttackBonus = x.drillAttackBonus;
             u.LaunchEnergyCost = x.launchEnergyCost; u.TurnsWithoutRefuel = x.turnsWithoutRefuel; u.AntiAirRadius = x.antiAirRadius; u.AirfieldCapacity = x.airfieldCapacity; u.ConsecutiveUnlandedEnds = x.unlandedEnds;
             u.HasEmergencyFlightPenalty = x.emergencyPenalty; u.HasAirAttackedThisTurn = x.airAttacked; u.SortieLaunchPaid = x.sortiePaid;
+            var record = new UnitCombatRecord { BattlesSurvived = x.battlesSurvived, DamageDealt = x.damageDealt, DamageTaken = x.damageTaken, Kills = x.kills };
+            if (!record.IsValid) throw Invalid("Invalid unit combat record.");
+            u.CombatRecord = record;
             if (x.hasOriginalCost) { ValidateCost(x.originalCost); u.OriginalResourceCost = MatchWorldCapture.CopyCost(x.originalCost); }
             if (x.hasRepairCost) { ValidateCost(x.repairCost); u.RepairResourceCost = MatchWorldCapture.CopyCost(x.repairCost); }
             if (x.hasAttachmentBase) u.AttachmentBase = RestoreAttachment(x.attachmentBase);

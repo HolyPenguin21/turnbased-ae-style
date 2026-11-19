@@ -155,6 +155,7 @@ namespace Game.Saves
                 transportCarrier = (int?)movement.TransportCarrierId ?? -1, transportArmy = (int?)movement.TransportArmyId ?? -1, airfieldArmy = (int?)links.AirfieldArmyId ?? -1, flightDeckArmy = (int?)links.FlightDeckArmyId ?? -1,
                 launchEnergyCost = unit.LaunchEnergyCost, turnsWithoutRefuel = unit.TurnsWithoutRefuel, antiAirRadius = unit.AntiAirRadius, airfieldCapacity = unit.AirfieldCapacity, unlandedEnds = unit.ConsecutiveUnlandedEnds,
                 emergencyPenalty = unit.HasEmergencyFlightPenalty, airAttacked = unit.HasAirAttackedThisTurn, sortiePaid = unit.SortieLaunchPaid,
+                battlesSurvived = unit.CombatRecord.BattlesSurvived, damageDealt = unit.CombatRecord.DamageDealt, damageTaken = unit.CombatRecord.DamageTaken, kills = unit.CombatRecord.Kills,
                 hasOriginalCost = unit.OriginalResourceCost != null, originalCost = CopyCost(unit.OriginalResourceCost), hasRepairCost = unit.RepairResourceCost != null, repairCost = CopyCost(unit.RepairResourceCost),
                 hasAttachmentBase = unit.AttachmentBase.HasValue, attachmentBase = CaptureAttachment(unit.AttachmentBase), hasAttachmentApplied = unit.AttachmentApplied.HasValue, attachmentApplied = CaptureAttachment(unit.AttachmentApplied),
                 hasAttachmentResources = unit.AttachmentResources.HasValue, attachmentResources = CaptureResources(unit.AttachmentResources),

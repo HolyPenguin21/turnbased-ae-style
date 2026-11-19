@@ -79,6 +79,8 @@ namespace Game.Saves
         public int transportCarrier = -1, transportArmy = -1, airfieldArmy = -1, flightDeckArmy = -1;
         public int launchEnergyCost, turnsWithoutRefuel, antiAirRadius, airfieldCapacity, unlandedEnds;
         public bool emergencyPenalty, airAttacked, sortiePaid;
+        // UnitData.CombatRecord: lifetime battles survived, damage dealt/taken, kills.
+        public int battlesSurvived, damageDealt, damageTaken, kills;
         public bool hasOriginalCost, hasRepairCost, hasAttachmentBase, hasAttachmentApplied, hasAttachmentResources;
         public ResourceCost originalCost, repairCost;
         public MatchAttachmentData attachmentBase, attachmentApplied;
