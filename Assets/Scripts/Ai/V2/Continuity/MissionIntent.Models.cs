@@ -15,7 +15,9 @@ namespace Game.Ai.V2
     // not a partial class.
     public enum CommitmentTier { None, Soft, Hard }
     public enum IntentStatus { Active, Suspended }
-    public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable, EconomyLoan }
+    // StrikeLoan (2026-11-19) — the intent's only army is lent to an ActiveDefence immediate
+    // strike for the current turn (MissionContinuityLayer.StrikeLoan owns both edges).
+    public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable, EconomyLoan, StrikeLoan }
 
     public readonly struct MissionIntentKey : IEquatable<MissionIntentKey>, IComparable<MissionIntentKey>
     {

@@ -260,12 +260,29 @@ namespace Game.Ai.V2
                 // target lost to a mover price (Ysolde T24-T25). The win chance stays its own slot.
                 float enemyPower = Mathf.Max(0f, c.Army.EffectiveArmyPower);
                 float strikeScale = Mathf.Max(1f, Mathf.Max(snap.Self.AttackPeak, enemyPower));
+                float preventedDamage = TaskScoreEvaluator.PreventedDamage(enemyPower / strikeScale);
+                // 2026-11-19 (owner, log 2026-11-19 Halden T9) — a weak saboteur beside an own
+                // structure it can take before our next turn is worth that structure too: the
+                // strategic Intercept never lists it (power bar, Base/Citadel only), so without it
+                // a 4.7-power scout next to a fresh extractor was priced as a stray contact. The
+                // asset terms are the strategic score's own (AssetDefenceTerms); the damage slot
+                // keeps the larger of the two readings, never their sum.
+                float relevance = 0f, threatDirection = 0f;
+                AssetThreatSnapshot structure = ThreatenedOwnStructure(snap, id);
+                if (structure != null)
+                {
+                    AssetDefenceTerms(structure, out relevance, out threatDirection,
+                        out float structureDamage);
+                    preventedDamage = Mathf.Max(preventedDamage, structureDamage);
+                }
                 TaskScore score = new TaskScore(
+                    strategicRelevance: relevance,
+                    threatDirection: threatDirection,
                     economicHexBenefit: ExtractorDenial(snap, position),
                     ownTerritoryProximity: TaskScoreEvaluator.LeashedProximity(
                         TaskScoreEvaluator.NearestOwnedHomeDistance(snap, position),
                         AiConfigV2.activeDefenceLeashHexes, AiConfigV2.taskScoreActiveDefenceLeashPerHex),
-                    preventedDamage: TaskScoreEvaluator.PreventedDamage(enemyPower / strikeScale));
+                    preventedDamage: preventedDamage);
                 result.Add(new ActiveDefenceObjective
                 {
                     TaskScore = score,
@@ -286,6 +303,32 @@ namespace Game.Ai.V2
             }
             return result.OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.Target.EnemyArmyId).ToList();
+        }
+
+        // The own structure (Citadel, Base or Facility — never an army) this contact can take
+        // before our next turn (the threat model's own pair: PotentialDamage > 0, EnemyEta within
+        // immediateStructureThreatMaxEnemyEta) whose loss is the largest; null when none.
+        private static AssetThreatSnapshot ThreatenedOwnStructure(WorldSnapshot snap, int enemyArmyId)
+        {
+            AssetThreatSnapshot best = null;
+            float bestLoss = 0f;
+            foreach (AssetThreatSnapshot t in snap?.Threat?.Threats
+                ?? (IReadOnlyList<AssetThreatSnapshot>)Array.Empty<AssetThreatSnapshot>())
+            {
+                if (t?.Asset == null || t.Contact?.Army == null || t.Contact.Army.ArmyId != enemyArmyId
+                    || t.Asset.Kind == AssetKind.Army || t.PotentialDamage <= 0f
+                    || !t.EnemyEta.HasValue || t.EnemyEta.Value > AiConfigV2.immediateStructureThreatMaxEnemyEta)
+                    continue;
+                float loss = t.Asset.Value * Mathf.Clamp01(t.PotentialDamage);
+                if (best == null || loss > bestLoss
+                    || loss == bestLoss && (t.Asset.Hex.Q < best.Asset.Hex.Q
+                        || t.Asset.Hex.Q == best.Asset.Hex.Q && t.Asset.Hex.R < best.Asset.Hex.R))
+                {
+                    best = t;
+                    bestLoss = loss;
+                }
+            }
+            return best;
         }
 
         // 2026-11-05 (owner) — the saboteur of a structure we lost since our last turn, last seen on
@@ -391,6 +434,33 @@ namespace Game.Ai.V2
             return CanReachNow(snap.Map, snap.Observer, actor.Hex, target, current, max, out routeCost);
         }
 
+        // 2026-11-19 (owner) — THE proof Continuity reads before it lends an army walking a routine
+        // return leg (or an outbound build convoy whose site an enemy holds) to an immediate strike
+        // (MissionContinuityLayer.StrikeLoan): the first of `objectives` (EnumerateImmediate,
+        // best first) that passes `accept`, is not already answered by a live Intercept, and that
+        // this one army can START now — AssessImmediate with the army pinned, so its reach, the
+        // shared win gate, the pinned-stronghold rule and LeavesForceExposed are the planner's own.
+        // `committed` is the planner's view of the other owners (the lending intent left out).
+        internal static ActiveDefenceObjective ImmediateStrikeWith(WorldSnapshot snap, int armyId,
+            IReadOnlyList<ActiveDefenceObjective> objectives, ISet<int> committed,
+            ICollection<int> withdrawing, IEnumerable<MissionIntent> activeIntents,
+            Func<ActiveDefenceObjective, bool> accept = null)
+        {
+            foreach (ActiveDefenceObjective objective in objectives
+                ?? (IReadOnlyList<ActiveDefenceObjective>)Array.Empty<ActiveDefenceObjective>())
+            {
+                if (objective == null || accept != null && !accept(objective)
+                    || IncumbentIntercept(activeIntents, objective.Target.EnemyArmyId) != null)
+                    continue;
+                ActiveDefenceResponse response = AssessImmediate(snap, objective, committed,
+                    withdrawing, armyId);
+                if (response?.Kind == ActiveDefenceResponseKind.Intercept
+                    && response.Plan?.BaseArmyId == armyId)
+                    return objective;
+            }
+            return null;
+        }
+
         // The immediate answer: an Intercept the chosen roster can START now, or a Defer. Never
         // Regroup / Shortage / Return. asset_holds, EnemyEta and the strategic arrival deadline are
         // deliberately not consulted — they judge protecting an asset, not whether to strike now.
@@ -414,7 +484,7 @@ namespace Game.Ai.V2
             HexCoord targetHex = objective.Target.LastKnownHex;
             // The admission rule of EnumerateImmediate (ImmediatePositionHonest).
             if (!ImmediatePositionHonest(snap, contact) || !contact.Position.Value.Equals(targetHex))
-                return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Defer,
+                return TraceImmediate(snap, objective, pinnedActor, response, ActiveDefenceResponseKind.Defer,
                     "immediate_contact_not_visible", -1, 0, 0);
 
             var planExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
@@ -467,15 +537,16 @@ namespace Game.Ai.V2
                     }
                     response.Plan = plan;
                     response.ExcludedArmyIds = planExcluded;
-                    return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Intercept,
+                    return TraceImmediate(snap, objective, pinnedActor, response, ActiveDefenceResponseKind.Intercept,
                         "immediate_response", host.ArmyId, projectedNow, routeCost, plan.ProjectedWinChance);
                 }
                 if (pinnedActor.HasValue && plan.BaseArmyId == pinnedActor.Value)
                     break;
                 planExcluded.Add(plan.BaseArmyId);
             }
-            // A hero-only contact is a free scout's job (IsScoutDisplacementOnly): no sortie.
-            if (!pinnedActor.HasValue && !GroundCombatActorEligibility.IsHeroOnlyOpposition(opposition))
+            // 2026-11-19 (owner) — a sortie is a field army formed from the garrison, so it may
+            // displace a hero-only contact like any other field army (CanDisplaceHeroes).
+            if (!pinnedActor.HasValue)
             {
                 response.Sortie = PlanGarrisonSortie(snap, objective, opposition, planExcluded);
                 ArmySnapshot detachment = response.Sortie?.Detachment;
@@ -486,11 +557,11 @@ namespace Game.Ai.V2
                     response.Sortie = null;
                 }
                 if (response.Sortie != null)
-                    return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Intercept,
+                    return TraceImmediate(snap, objective, pinnedActor, response, ActiveDefenceResponseKind.Intercept,
                         "immediate_garrison_sortie", response.Sortie.Detachment.ArmyId,
                         response.Sortie.Detachment.CurrentMovement, response.Sortie.RouteCost, response.Sortie.WinChance);
             }
-            return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Defer,
+            return TraceImmediate(snap, objective, pinnedActor, response, ActiveDefenceResponseKind.Defer,
                 exposed != null ? "immediate_force_exposed_after_fight:" + exposed
                     : "immediate_not_reachable_or_not_capable", -1, 0, 0);
         }
@@ -538,15 +609,20 @@ namespace Game.Ai.V2
             return exposerId >= 0;
         }
 
+        // `pinnedActor` — the one army asked (an incumbent's primary, or the returning army
+        // Continuity proves before lending it, MissionContinuityLayer.StrikeLoan): its answer is
+        // logged apart from the free choice of the same enemy in the same turn.
         private static ActiveDefenceResponse TraceImmediate(WorldSnapshot snap,
-            ActiveDefenceObjective objective, ActiveDefenceResponse response,
+            ActiveDefenceObjective objective, int? pinnedActor, ActiveDefenceResponse response,
             ActiveDefenceResponseKind kind, string reason, int actorId, int mp, int routeCost,
             float win = 0f)
         {
             response.Kind = kind;
             response.Reason = reason;
-            AiDebugLog.WriteDeduped($"immediate:{snap.Observer?.Nickname}:{snap.TurnNumber}:{objective.Target.EnemyArmyId}",
-                $"[AI][V2][ActiveDefence][Immediate] turn={snap.TurnNumber} player={snap.Observer?.Nickname} "
+            string pin = pinnedActor.HasValue
+                ? " pinned=" + pinnedActor.Value.ToString(CultureInfo.InvariantCulture) : "";
+            AiDebugLog.WriteDeduped($"immediate:{snap.Observer?.Nickname}:{snap.TurnNumber}:{objective.Target.EnemyArmyId}{pin}",
+                $"[AI][V2][ActiveDefence][Immediate] turn={snap.TurnNumber} player={snap.Observer?.Nickname}{pin} "
                 + $"enemy={objective.Target.EnemyArmyId}@{objective.Target.LastKnownHex} actor={(actorId < 0 ? "none" : actorId.ToString(CultureInfo.InvariantCulture))} "
                 + $"mp={mp} routeCost={(routeCost == int.MaxValue ? "none" : routeCost.ToString(CultureInfo.InvariantCulture))} "
                 + $"win={win:0.00} decision={kind} reason={reason}");
@@ -1219,17 +1295,15 @@ namespace Game.Ai.V2
             int age = Math.Max(0, (snap?.TurnNumber ?? 0) - t.Contact.LastObservedTurn);
             int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap,
                 t.Contact.Position.Value);
-            float assetNorm = t.Asset.Value / Mathf.Max(1f, AiConfigV2.assetValueCitadel);
             // PotentialDamage is the chance the contact takes the asset (a 0..1 FRACTION of
             // Asset.Value). The damage kept off is that fraction of this asset's value on the
             // Citadel scale: a scout that would take an Extractor is not a Citadel-sized loss.
             // 2026-09-30 (user decision) — the asset's relevance and the threat's direction are
             // worth defending only in the measure the contact can actually hurt it: both are
             // weighted by the same PotentialDamage, so a passing weak contact is a cheap target.
-            float damage = Mathf.Clamp01(t.PotentialDamage);
-            AssetDefenceTerms(t, out float threatDirection, out float preventedDamage);
+            AssetDefenceTerms(t, out float relevance, out float threatDirection, out float preventedDamage);
             return new TaskScore(
-                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm * damage),
+                strategicRelevance: relevance,
                 threatDirection: threatDirection,
                 preventedDamage: preventedDamage,
                 intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(
@@ -1238,14 +1312,17 @@ namespace Game.Ai.V2
                     AiConfigV2.activeDefenceLeashHexes, AiConfigV2.taskScoreActiveDefenceLeashPerHex));
         }
 
-        // What keeping this contact off its asset is worth: the threat's direction and the damage
-        // it would do, both weighted by PotentialDamage. Shared with the held-base garrison
+        // What keeping this contact off its asset is worth: the asset's relevance (its Citadel-scale
+        // value), the threat's direction and the damage it would do, all weighted by
+        // PotentialDamage. One formula for the strategic Intercept score, the immediate strike that
+        // keeps a saboteur off an own structure (EnumerateImmediate) and the held-base garrison
         // demand (AggressionDemandEvaluator.Garrison), which defends the same asset in place.
-        internal static void AssetDefenceTerms(AssetThreatSnapshot t, out float threatDirection,
-            out float preventedDamage)
+        internal static void AssetDefenceTerms(AssetThreatSnapshot t, out float strategicRelevance,
+            out float threatDirection, out float preventedDamage)
         {
             float assetNorm = t.Asset.Value / Mathf.Max(1f, AiConfigV2.assetValueCitadel);
             float damage = Mathf.Clamp01(t.PotentialDamage);
+            strategicRelevance = TaskScoreEvaluator.StrategicRelevance(assetNorm * damage);
             threatDirection = TaskScoreEvaluator.ThreatDirection(
                 damage / (1f + t.EnemyEta.GetValueOrDefault()));
             preventedDamage = TaskScoreEvaluator.PreventedDamage(

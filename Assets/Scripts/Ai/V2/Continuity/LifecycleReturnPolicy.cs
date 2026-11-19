@@ -28,7 +28,29 @@ namespace Game.Ai.V2
         private static readonly Dictionary<Game.Players.PlayerSetupData, Dictionary<MissionIntentKey, int>>
             LastWait = new Dictionary<Game.Players.PlayerSetupData, Dictionary<MissionIntentKey, int>>();
 
-        internal static void ClearAll() => LastWait.Clear();
+        // Per player: the turn each leg was last lent to an immediate strike
+        // (MissionContinuityLayer.StrikeLoan) — a leg is lent at most once per turn.
+        private static readonly Dictionary<Game.Players.PlayerSetupData, Dictionary<MissionIntentKey, int>>
+            LastStrikeLoan = new Dictionary<Game.Players.PlayerSetupData, Dictionary<MissionIntentKey, int>>();
+
+        internal static void ClearAll()
+        {
+            LastWait.Clear();
+            LastStrikeLoan.Clear();
+        }
+
+        internal static bool LentThisTurn(Game.Players.PlayerSetupData player, MissionIntentKey key, int turn) =>
+            player != null && LastStrikeLoan.TryGetValue(player, out Dictionary<MissionIntentKey, int> byKey)
+            && byKey.TryGetValue(key, out int last) && last == turn;
+
+        internal static void RecordStrikeLoan(Game.Players.PlayerSetupData player, MissionIntentKey key, int turn)
+        {
+            if (player == null)
+                return;
+            if (!LastStrikeLoan.TryGetValue(player, out Dictionary<MissionIntentKey, int> byKey))
+                LastStrikeLoan[player] = byKey = new Dictionary<MissionIntentKey, int>();
+            byKey[key] = turn;
+        }
 
         // A leg may wait this turn unless it already waited on the previous one.
         internal static bool MayWait(Game.Players.PlayerSetupData player, MissionIntentKey key, int turn) =>
@@ -66,9 +88,15 @@ namespace Game.Ai.V2
                 return false;
             MissionIntentKey key = MissionIntentKey.For(mission);
             MissionIntent intent = activeIntents.FirstOrDefault(i => i != null && i.IntentKey.Equals(key));
-            // A tactical retreat (ordered by a hostile army) is urgent, like an ActiveDefence return.
-            return intent != null && intent.IsLifecycleLeg && intent.ActiveDefence == null
-                && intent.Attack?.TacticalRetreat != true;
+            return IsRoutineReturn(intent);
         }
+
+        // THE routine return leg: a lifecycle leg (MissionIntent.IsLifecycleLeg — no task value of
+        // its own) that is no withdrawal from a threat. An ActiveDefence return and a tactical
+        // retreat (ordered by a hostile army) are urgent. Read by the tempo deferral above and by
+        // the immediate-strike loan (MissionContinuityLayer.StrikeLoan).
+        internal static bool IsRoutineReturn(MissionIntent intent) =>
+            intent != null && intent.IsLifecycleLeg && intent.ActiveDefence == null
+            && intent.Attack?.TacticalRetreat != true;
     }
 }

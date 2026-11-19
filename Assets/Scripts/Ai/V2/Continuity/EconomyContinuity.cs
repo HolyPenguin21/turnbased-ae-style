@@ -555,6 +555,16 @@ namespace Game.Ai.V2
                         site => site.Hex.Equals(ei.TargetHex)) == true
                 : ei.ResourceType.HasValue && snap?.Economy?.IsExtractionActionable(
                     ei.TargetHex, ei.ResourceType.Value) == true);
+            // 2026-11-19 (owner) — an enemy that now stands on the build's own site does not end
+            // the build while its army can strike that enemy this turn: the army is lent to the
+            // immediate strike (MissionContinuityLayer.StrikeLoan), the site lease stays, and the
+            // build resumes on a later pass, re-validated here as usual. Any other invalid site,
+            // or no strike this army can start now, retires the build as before.
+            if (!completedBuild && actor != null && !targetValidBuild
+                && WorldAnalysis.KnownHostileAtHex(snap, ei.TargetHex)
+                && TryLendToImmediateStrike(player, snap, intent, pass,
+                    o => o.Target.LastKnownHex.Equals(ei.TargetHex), "enemy_on_build_site"))
+                return;
             if (completedBuild || actor == null || !targetValidBuild)
             {
                 RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);

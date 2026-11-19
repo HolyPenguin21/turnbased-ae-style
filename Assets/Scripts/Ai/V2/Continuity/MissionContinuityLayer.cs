@@ -19,8 +19,8 @@ namespace Game.Ai.V2
     {
         // A transient suspension (the pool or a capability was unavailable on an earlier pass) is
         // re-tested on every ResolveActive pass: the planner only proposes Active intents, and
-        // AdvanceIntent / ShouldReap bound how long the retry may go on. Siege and EconomyLoan
-        // are owned by their own resume edges, never by this one.
+        // AdvanceIntent / ShouldReap bound how long the retry may go on. Siege, EconomyLoan and
+        // StrikeLoan are owned by their own resume edges, never by this one.
         internal static void ResumeTransientSuspension(MissionIntent intent)
         {
             if (intent.Status == IntentStatus.Suspended
@@ -57,8 +57,11 @@ namespace Game.Ai.V2
             foreach (MissionIntent intent in state.All.ToList())
             {
                 if (pass.DonatedOperations.Contains(intent.IntentKey)) continue;
+                // A leg lent to an immediate strike is settled after the others (StrikeLoan).
+                if (IsStrikeLoan(intent)) continue;
                 ResolveDomainOperation(player, snap, intent, pass);
             }
+            SettleStrikeLoans(player, snap, pass);
             AttackContinuity.RetireRecruitedReturnFallbacks(player, snap, pass);
             foreach (MissionIntentKey key in pass.Dead) state.Remove(key);
             // In-place rekeys preserve the same durable intent and accumulated progress.
@@ -184,7 +187,8 @@ namespace Game.Ai.V2
                 if (intent.Status == IntentStatus.Suspended
                     && (intent.Suspended == SuspendReason.Siege
                         || intent.Suspended == SuspendReason.CapabilityUnavailable
-                        || intent.Suspended == SuspendReason.EconomyLoan)
+                        || intent.Suspended == SuspendReason.EconomyLoan
+                        || intent.Suspended == SuspendReason.StrikeLoan)
                     && intent.Kind != MissionKind.Development)
                     continue;
 

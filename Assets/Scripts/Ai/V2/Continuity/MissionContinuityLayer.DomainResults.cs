@@ -178,6 +178,11 @@ namespace Game.Ai.V2
             internal readonly Func<Game.HexGrid.HexCoord, Game.HexGrid.HexCoord, int, int> SafeRouteCost;
             internal readonly Game.Ai.AiTurnContext Context;
             internal HashSet<int> ActorClaims;
+            // ActiveDefence's immediate objectives, enumerated once per pass on the first strike
+            // loan probe (MissionContinuityLayer.StrikeLoan).
+            internal List<ActiveDefenceObjective> ImmediateObjectives;
+            // Legs lent in THIS pass: their strike is still to be planned, so they are not resumed.
+            internal readonly HashSet<MissionIntentKey> StrikeLoansThisPass = new HashSet<MissionIntentKey>();
             internal HashSet<int> AttackGatherUnavailable;
             internal ActiveResolution(MissionIntentState state, IReadOnlyList<ReconObjective> objectives,
                 Func<Game.HexGrid.HexCoord, Game.HexGrid.HexCoord, int, int> routeCost,

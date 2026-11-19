@@ -12,6 +12,9 @@ namespace Game.Ai.V2
         // 2026-10-01 (user decision) — ActiveDefence answers armies, not scouts: a hostile
         // contact whose known roster is weaker than this (AiPower scale) is no Intercept target.
         public const float activeDefenceMinEnemyPower = 10f;
+        // 2026-11-19 (owner) — an immediate strike (EnumerateImmediate) is also worth the own
+        // structure the contact can take within this many of its turns, i.e. before our next turn.
+        public const int immediateStructureThreatMaxEnemyEta = 1;
         // 2026-10-01 (user decision) — ActiveDefence stays near home: past this many hexes from
         // the nearest own Base/Citadel every further hex lowers OwnTerritoryProximity by
         // taskScoreActiveDefenceLeashPerHex (a desire penalty, never a hard gate).

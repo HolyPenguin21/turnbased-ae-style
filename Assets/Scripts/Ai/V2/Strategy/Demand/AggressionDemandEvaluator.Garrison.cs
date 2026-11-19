@@ -21,7 +21,7 @@ namespace Game.Ai.V2
             float threatDirection = 0f, preventedDamage = 0f;
             if (worst != null)
                 ActiveDefenceObjectiveEvaluator.AssetDefenceTerms(worst,
-                    out threatDirection, out preventedDamage);
+                    out _, out threatDirection, out preventedDamage);
             return new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
                     AiConfigV2.assetValueBase / Mathf.Max(1f, AiConfigV2.assetValueCitadel)),

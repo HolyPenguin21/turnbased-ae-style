@@ -882,10 +882,11 @@ namespace Game.EditorTests
                 AllowSameHexAssembly = false, AllowHeroDisplacement = true }).Feasible, Is.False);
         }
 
-        // 2026-11-12 (owner) — displacing a lone hero is the free scout's job: a real army would
-        // trade its whole day (every battle ends movement) for a hex the hero may re-enter.
+        // 2026-11-19 (owner, revises 2026-11-12) — ActiveDefence displaces a lone hero with any
+        // field army (ready, assembled or sortied from a garrison) besides the free scout; only
+        // Attack keeps the on-route rule (HeroDisplacementPays).
         [Test]
-        public void HeroOnlyDisplacement_IsNeverAnArmysJob_EvenWhenNoScoutExists()
+        public void HeroOnlyDisplacement_IsAFieldArmysJobInActiveDefence()
         {
             ArmySnapshot army = Army(7, Origin, Strong());
             var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
@@ -893,11 +894,11 @@ namespace Game.EditorTests
             var snap = Snap(army);
             var heroOnly = new[] { new WorthIt.DefendingArmy(new[] { hero }, default) };
             Assert.That(GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest {
-                Opposition = heroOnly, AllowHeroDisplacement = true }).Feasible, Is.False);
+                Opposition = heroOnly, AllowHeroDisplacement = true }).Feasible, Is.True);
             Assert.That(GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, heroOnly, 7, .8f,
-                allowHeroDisplacement: true).Feasible, Is.False, "continuation releases an army on it too");
+                allowHeroDisplacement: true).Feasible, Is.True, "the continuation keeps the army on it");
             Assert.That(GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest {
-                Opposition = heroOnly, AllowHeroDisplacement = true }), Is.Empty);
+                Opposition = heroOnly, AllowHeroDisplacement = true }), Is.EqualTo(new[] { 7 }));
             var escorted = new[] { new WorthIt.DefendingArmy(new[] { hero, Body(2, 1, 3) }, default) };
             Assert.That(GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest {
                 Opposition = escorted, AllowHeroDisplacement = true }).Feasible, Is.True,

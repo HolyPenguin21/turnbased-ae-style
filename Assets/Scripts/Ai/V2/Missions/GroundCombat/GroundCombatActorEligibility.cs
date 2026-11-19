@@ -20,19 +20,18 @@ namespace Game.Ai.V2
             && opposition.Any(a => a.Units?.Any(p => p.IsHero) == true)
             && opposition.All(a => !Game.Combat.WorthIt.FieldsGroundCombatant(a.Units));
 
+        // A free scout joins the field armies only against a hero-only contact
+        // (GroundCombatAssemblyRequest.AllowHeroDisplacement, ActiveDefence's ImmediateOpportunity).
+        // 2026-11-19 (owner, revises 2026-11-12) — who displaces a lone hero is decided by the
+        // role: ActiveDefence (any field army, ready or assembled/sortied from a garrison, and the
+        // free scout) may; Attack only on its own route (AttackTacticalOpportunity
+        // .HeroDisplacementPays); a garrison container itself never moves.
         internal static bool CanDisplaceHeroes(ArmySnapshot actor,
             IReadOnlyList<Game.Combat.WorthIt.DefendingArmy> opposition) =>
             actor != null && actor.IsSoloRecce && !actor.IsGarrison && !actor.IsPrison
             && !actor.IsAir && !actor.IsAirfield
             && actor.Members?.Any(AiArmyRoles.IsGroundBattleBody) == true
             && IsHeroOnlyOpposition(opposition);
-
-        // 2026-11-12 (owner) — a hero-only contact is the free scout's displacement job only.
-        // Every battle ends the mover's movement and such a hero usually escapes, so a real army
-        // (or a garrison sortie) would trade its whole day for a hex the hero may re-enter.
-        internal static bool IsScoutDisplacementOnly(bool allowHeroDisplacement,
-            IReadOnlyList<Game.Combat.WorthIt.DefendingArmy> opposition) =>
-            allowHeroDisplacement && IsHeroOnlyOpposition(opposition);
 
         // Free, structurally-eligible ground combat armies for this cycle, mobility-first:
         // already-activated / cheaper activation first, then the least powerful sufficient host
