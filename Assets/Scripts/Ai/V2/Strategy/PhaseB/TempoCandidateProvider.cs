@@ -587,7 +587,9 @@ namespace Game.Ai.V2
                             + $"no garrison overfill ({floorWhy}); a surplus body belongs to a field army");
                     continue;
                 }
-                if (residual == null
+                // A full hand (no draw possible) plays its surplus body into a ready or new army
+                // even past the scout portfolio (owner 2026-11-19): a frozen hand costs whole turns.
+                if (residual == null && (hand == null || hand.HasFreeSlot)
                     && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
                 {
                     if (verbose)

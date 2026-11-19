@@ -117,7 +117,7 @@ namespace Game.Ai.V2
                         // The muster mover joins the standing fist on the staging Base.
                         if (muster)
                             result.CombatChanged |= JoinFist(player, ctx,
-                                AiV2Util.ResolveArmy(player, pm.MoverArmyId), home) > 0;
+                                AiV2Util.ResolveArmy(player, pm.MoverArmyId), home, snapshot) > 0;
                     });
                 yield break;
             }
@@ -321,12 +321,15 @@ namespace Game.Ai.V2
         // of the giving army stays behind when the receiver already has a commander (it would only
         // take a slot). Nothing joins when no free fist stands there: the mover IS the fist then.
         // Returns the units moved.
-        internal static int JoinFist(PlayerSetupData player, AiTurnContext ctx, ArmyData mover, HexCoord home)
+        internal static int JoinFist(PlayerSetupData player, AiTurnContext ctx, ArmyData mover, HexCoord home,
+            WorldSnapshot snapshot)
         {
             if (player == null || mover == null || !mover.Hex.Equals(home) || mover.Members.Count == 0)
                 return 0;
-            HashSet<int> claimed = ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All
-                .Where(i => i != null && i.Status == IntentStatus.Active), null, null).ClaimedArmyIdSet;
+            // The ownership view needs the snapshot: MissionActorPolicy.Build claims nothing
+            // without one (2026-11-19: the null snapshot made this filter a no-op).
+            HashSet<int> claimed = ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snapshot),
+                snapshot, null).ClaimedArmyIdSet;
             ArmyData host = OwnWorld.Of(player).Armies
                 .Where(a => a != null && a != mover && a.Hex.Equals(home) && !claimed.Contains(a.Id)
                     && FistMusterObjectiveEvaluator.IsLiveFistContainer(player, a))
