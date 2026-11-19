@@ -111,8 +111,6 @@ fingerprint algorithm once: earlier saves are retained on disk but are not autom
 compatible with this version. Later visual edits within the designated UI directories no
 longer invalidate newly created saves. No blanket legacy bypass/migration was added.
 
-Verification commands and native checks: `Tools/save-ui-verify/README.md`.
-
 ## Balance and art patches (2026-11-04)
 
 Owner decision: frequent balance/art patches must keep in-progress match saves; any change of
