@@ -21,6 +21,9 @@ namespace Game.Combat
         internal AbilityMagnitudes EncounterMagnitudes = AbilityMagnitudes.Default;
         internal bool FinalizationApplied, Acknowledged;
         internal BattleEncounterFinalization Finalization;
+        // Who fought (filled when the tactical battle starts, BattleEngine's constructor); the
+        // survivors are credited once, at finalization (BattleEngine.ApplyEncounterResult).
+        internal readonly CombatEngagement Combatants = new CombatEngagement();
         public int Round { get; internal set; } = 1;
         private List<UnitData> _turnOrder = new List<UnitData>();
         public IReadOnlyList<UnitData> TurnOrder => _turnOrder.AsReadOnly();

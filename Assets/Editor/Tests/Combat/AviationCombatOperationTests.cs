@@ -54,6 +54,31 @@ namespace Game.EditorTests
             Assert.That(scenario.wing.Members, Is.Empty);
             Assert.That(AntiAirState.CanReact(scenario.aa, scenario.wing.Id), Is.False);
         }
+        [Test] public void AaReactionAndStrikeEachCountAsOneFightForTheirSurvivors()
+        {
+            var scenario = Reaction();
+            var plane = scenario.wing.Members[0];
+            AviationCombatHeadlessAdapter.Run(new AviationCombatOperation(new Random(1), Hits)
+                .ResolveAaReaction(scenario.reaction), _ => true);
+            Assert.That(scenario.aa.CombatRecord.DamageDealt, Is.EqualTo(3), "The plane had 3 HP.");
+            Assert.That(scenario.aa.CombatRecord.Kills, Is.EqualTo(1));
+            Assert.That(scenario.aa.CombatRecord.BattlesSurvived, Is.EqualTo(1));
+            Assert.That(plane.CombatRecord.DamageTaken, Is.EqualTo(3));
+            Assert.That(plane.CombatRecord.BattlesSurvived, Is.Zero);
+
+            ArmyRegistry.Clear();
+            var owner = new PlayerSetupData(); var foe = new PlayerSetupData();
+            var bomber = Body(owner, true, attack: 3); var wing = Army(owner, bomber);
+            var ground = Body(foe, hp: 4); Army(foe, ground);
+            AviationCombatHeadlessAdapter.Run(new AviationCombatOperation(new Random(1), Hits)
+                .ResolveAirStrikeAtCurrentHex(wing, _hex, AirStrikePolicy.Standard));
+            Assert.That(bomber.CombatRecord.DamageDealt, Is.EqualTo(3));
+            Assert.That(bomber.CombatRecord.BattlesSurvived, Is.EqualTo(1));
+            Assert.That(ground.CombatRecord.DamageTaken, Is.EqualTo(3));
+            Assert.That(ground.CombatRecord.BattlesSurvived, Is.EqualTo(1));
+            Assert.That(bomber.CombatRecord.Kills + ground.CombatRecord.Kills, Is.Zero);
+        }
+
         [Test] public void SkipRecordsPairButKeepsShotForAnotherWing()
         {
             var scenario = Reaction();

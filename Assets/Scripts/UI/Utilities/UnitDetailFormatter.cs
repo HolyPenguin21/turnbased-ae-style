@@ -33,16 +33,25 @@ namespace Game.UI
             string text = includeName ? $"{unit.Name}\n" : string.Empty;
             if (unit.TypeTags.Count > 0)
                 text += $"{string.Join(", ", unit.TypeTags)}\n";
-            return text + FormatBody(unit, defenseBonus, bonusColor, penaltyColor, abilities, attackRange);
+            return text + FormatBody(unit, defenseBonus, bonusColor, penaltyColor, abilities, attackRange)
+                + FormatCombatRecord(unit.CombatRecord);
         }
 
         // Stats, then abilities: everything below the name / type-tag header lines. The collection
-        // window shows name and tags in its own fields and reuses only this part.
+        // window shows name and tags in its own fields and reuses only this part; a card
+        // definition has no combat record, so the record block is left out there.
         internal static string FormatBody(UnitData unit, IUnitDetailStyle gameConfig)
             => unit == null ? string.Empty : FormatBody(unit, 0,
                 gameConfig != null ? gameConfig.StatBonusColor : DefaultBonusColor,
                 gameConfig != null ? gameConfig.StatPenaltyColor : DefaultPenaltyColor,
                 gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null);
+
+        // A live body's lifetime record (UnitCombatRecord), after an empty line like each ability.
+        internal static string FormatCombatRecord(UnitCombatRecord record) =>
+            $"\n\nBattles survived: {record.BattlesSurvived}" +
+            $"\nDamage dealt: {record.DamageDealt}" +
+            $"\nDamage taken: {record.DamageTaken}" +
+            $"\nKills: {record.Kills}";
 
         private static string FormatBody(UnitData unit, int defenseBonus,
             Color bonusColor, Color penaltyColor, string abilities, int? attackRange = null)
@@ -80,12 +89,16 @@ namespace Game.UI
                 text += $"\n{abilities}";
             // The attached Equipment card's own name — its effect is already folded into
             // the abilities/stats above by EquipmentSystem.Apply, this just names the source.
+            // The attachment lines form one block after an empty line, like each ability.
+            string attachments = string.Empty;
             if (unit.Equipment != null)
-                text += $"\nEquipment: {unit.Equipment.displayName}";
+                attachments += $"\nEquipment: {unit.Equipment.displayName}";
             if (unit.Mutator != null)
-                text += $"\nMutator: {unit.Mutator.displayName}";
+                attachments += $"\nMutator: {unit.Mutator.displayName}";
             if (unit.TransportCarrier != null)
-                text += $"\nTransport: {unit.TransportCarrier.Name} (base Move {unit.PermanentMoveMax})";
+                attachments += $"\nTransport: {unit.TransportCarrier.Name} (base Move {unit.PermanentMoveMax})";
+            if (attachments.Length > 0)
+                text += "\n" + attachments;
             return text;
         }
 

@@ -29,6 +29,28 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void AttachmentsAndCombatRecordFollowAnEmptyLine()
+        {
+            var unit = AttachmentSlotTests.Body(AttachmentSlotTests.Host(hero: false));
+            unit.Equipment = AttachmentSlotTests.Attachment(Game.Cards.AttachmentSlot.Equipment);
+            unit.Equipment.displayName = "field-kit";
+            unit.CombatRecord = new Game.Units.UnitCombatRecord { BattlesSurvived = 2, DamageDealt = 9, DamageTaken = 4, Kills = 1 };
+            string text = UnitDetailFormatter.Format(unit, 0,
+                default(UnityEngine.Color), default(UnityEngine.Color), "\nRecce\n  details");
+            Assert.That(text, Does.Contain("details\n\nEquipment: field-kit\n\nBattles survived: 2"
+                + "\nDamage dealt: 9\nDamage taken: 4\nKills: 1"));
+            Assert.That(text, Does.EndWith("Kills: 1"));
+
+            unit.Equipment = null;
+            text = UnitDetailFormatter.Format(unit, 0, default(UnityEngine.Color), default(UnityEngine.Color), null);
+            Assert.That(text, Does.Contain("Initiative 2\n\nBattles survived: 2"));
+            Assert.That(text, Does.Not.Contain("\n\n\n"));
+
+            Assert.That(UnitDetailFormatter.FormatBody(unit, null), Does.Not.Contain("Battles survived"),
+                "A collection card definition has no combat record.");
+        }
+
+        [Test]
         public void TitleOwnedNameIsOmittedAndModifierIsSpacedFromStat()
         {
             var unit = AttachmentSlotTests.Body(AttachmentSlotTests.Host(hero: false));

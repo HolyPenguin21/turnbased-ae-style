@@ -310,6 +310,23 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void LiveLauncherNotItsCombatCopyKeepsTheCombatRecord()
+        {
+            var actor = Body("bomber", 50); EquipmentSystem.ApplyAttachments(actor, Bomb(UnitAbilities.Explosion10), null);
+            var own = Army(new PlayerSetupData(), actor);
+            UnitData light = Body("light", 5), heavy = Body("heavy", 20);
+            var foe = Army(new PlayerSetupData(), light, heavy);
+            var attack = new ExplosionAttack(actor, Hex, new Random(1), own, foe);
+            ResolveAll(attack, 10);
+            attack.Complete();
+            Assert.That(actor.CombatRecord.DamageDealt, Is.EqualTo(15), "5 (light had 5) + 10.");
+            Assert.That(actor.CombatRecord.Kills, Is.EqualTo(1));
+            Assert.That(attack.Actor.CombatRecord.DamageDealt, Is.Zero);
+            Assert.That(light.CombatRecord.DamageTaken, Is.EqualTo(5));
+            Assert.That(heavy.CombatRecord.DamageTaken, Is.EqualTo(10));
+        }
+
+        [Test]
         public void InnateRocketSurvivesMissedChallengesAndIsRemovedOnlyAtSeriesEnd()
         {
             var actor = Body("rocket", 5, UnitAbilities.SingleUse, UnitAbilities.Explosion3);

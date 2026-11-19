@@ -72,7 +72,8 @@ namespace Game.EditorTests
         }
         [Test] public void JsonRoundTripRetainsRawMovementCarrierGraphAndAttachmentAccounting()
         {
-            var body = new UnitData { Owner = human, Attack = 17, MoveMax = 3, HitPointsMax = 10, HitPointsCurrent = 7, FateMax = 4, Fate = 2 };
+            var body = new UnitData { Owner = human, Attack = 17, MoveMax = 3, HitPointsMax = 10, HitPointsCurrent = 7, FateMax = 4, Fate = 2,
+                CombatRecord = new UnitCombatRecord { BattlesSurvived = 3, DamageDealt = 11, DamageTaken = 6, Kills = 2 } };
             var carrier = new UnitData { Owner = human, MoveMax = 10, AirfieldCapacity = 4 };
             var army = new ArmyData { Owner = human }; army.Members.Add(carrier); army.Members.Add(body);
             var airfield = new ArmyData { Owner = human, IsAirfield = true, CarrierUnit = carrier };
@@ -96,6 +97,18 @@ namespace Game.EditorTests
             Assert.That(restored.AttachmentApplied.Value.Stats[EquipmentStat.Attack], Is.EqualTo(14));
             Assert.That(restored.AttachmentResources.Value.MoveSpent, Is.EqualTo(12));
             Assert.That(restored.AttachmentResources.Value.LastHp, Is.EqualTo(7));
+            Assert.That(new[] { restored.CombatRecord.BattlesSurvived, restored.CombatRecord.DamageDealt,
+                restored.CombatRecord.DamageTaken, restored.CombatRecord.Kills }, Is.EqualTo(new[] { 3, 11, 6, 2 }));
+        }
+        [Test] public void NegativeUnitCombatRecordIsRejected()
+        {
+            var army = new ArmyData { Owner = human };
+            army.Members.Add(new UnitData { Owner = human, MoveMax = 3, HitPointsMax = 4, HitPointsCurrent = 4 });
+            var capture = new MatchWorldCapture(config, new[] { human, ai }); capture.IncludeArmy(army);
+            var data = Json(capture.Finish());
+            data.units[0].kills = -1;
+            Assert.That(() => MatchWorldCodec.Decode(data, config, MatchIdentityState.Capture()),
+                Throws.Exception.With.Message.Contains("Invalid unit combat record."));
         }
         [Test] public void LateValidationFailureDoesNotIssueIdsOrAlterLiveRegistries()
         {
