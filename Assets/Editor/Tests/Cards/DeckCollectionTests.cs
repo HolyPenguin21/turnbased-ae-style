@@ -80,7 +80,7 @@ namespace Game.EditorTools
             starting.decks.Add(new StartingDeck { deckName = "Concord Starter", faction = Faction.IronConcord, cards = new List<DeckCardEntry>
                 { new DeckCardEntry { cardKey = card.authoredKey, count = 1 }, new DeckCardEntry { cardKey = "removed", count = 1 } } });
             var p = new CollectionProfile(); var service = new CollectionService(rules, null, p);
-            Assert.That(() => service.InitializeStarters(p), Throws.Nothing);
+            p = service.CreateStarterProfile();
             Assert.That(p.savedDecks.Single(d => d.faction == Faction.IronConcord).mainCards.Single().cardKey, Is.EqualTo(card.authoredKey));
             Assert.That(service.StarterIssues.Single(), Does.Contain("Concord Starter").And.Contain("'removed'").And.Contain("not in any card catalog"));
         }
@@ -127,7 +127,11 @@ namespace Game.EditorTools
             var p = new CollectionProfile(); Directory.CreateDirectory(directory);
             string obstruction = Path.Combine(directory, "file"); File.WriteAllText(obstruction, "x");
             var service = new CollectionService(rules, new CollectionProfileStore(obstruction), p);
-            Assert.That(service.Transact(next => next.ownedCards.Add(new DeckCardEntry { cardKey = card.authoredKey, count = 1 }), out var error), Is.False);
+            int published = 0;
+            service.Changed += () => published++;
+            Assert.That(service.TryGrantRandomCollectionCard(out var acquired, out var error), Is.False);
+            Assert.That(acquired, Is.Null);
+            Assert.That(published, Is.Zero);
             Assert.That(error, Is.Not.Empty); Assert.That(service.Owned(card.authoredKey), Is.Zero);
         }
         [Test] public void ZeroCopyLimitAndNegativeCountAreRejected()
@@ -153,7 +157,7 @@ namespace Game.EditorTools
         {
             var rules = new DeckRules(AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset"),
                 AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
-            var p = new CollectionProfile(); new CollectionService(rules, null, p).InitializeStarters(p);
+            var p = new CollectionService(rules, null, new CollectionProfile()).CreateStarterProfile();
             var deck = p.savedDecks.Single(d => d.faction == faction);
             Assert.That(deck.mainCards.Sum(e => e.count), Is.EqualTo(30));
             Assert.That(deck.mainCards.Where(e => rules.Resolve(e.cardKey).cardType == CardType.Unit).Sum(e => e.count), Is.EqualTo(18));
@@ -196,7 +200,8 @@ namespace Game.EditorTools
         [Test] public void NewProfileStartersContainBaselineBlueprintsAndOwnThem()
         {
             var profile = new CollectionProfile(); var service = AuthoredCollection(profile);
-            service.InitializeStarters(profile);
+            profile = service.CreateStarterProfile();
+            service = AuthoredCollection(profile);
             string[] equipment = { "neutral.equipment.mechanical.armor-plate", "neutral.equipment.infantry.assault-rifle-kit",
                 "neutral.equipment.infantry.mobility-harness", "neutral.equipment.vehicle.turbocharger", "neutral.equipment.bio.flamer",
                 "neutral.equipment.vehicle.autocannon", "neutral.equipment.air-bomb-3" };
@@ -211,7 +216,7 @@ namespace Game.EditorTools
         }
         [Test] public void LegacyStartersGainSavedBlueprintsWithoutChangingIdentityOrCustomDecks()
         {
-            var legacy = new CollectionProfile(); AuthoredCollection(legacy).InitializeStarters(legacy);
+            var legacy = AuthoredCollection(new CollectionProfile()).CreateStarterProfile();
             var ids = legacy.savedDecks.Select(d => d.deckId).ToArray();
             foreach (var deck in legacy.savedDecks) { deck.isStarter = false; deck.equipment.Clear(); deck.mutators.Clear(); }
             var custom = CollectionProfile.CopyDeck(legacy.savedDecks[0]); custom.deckId = "custom"; custom.name = "My deck";
@@ -236,7 +241,7 @@ namespace Game.EditorTools
         }
         [Test] public void SelectedLegacyStarterDuplicateIsUpgradedInPlace()
         {
-            var legacy = new CollectionProfile(); AuthoredCollection(legacy).InitializeStarters(legacy);
+            var legacy = AuthoredCollection(new CollectionProfile()).CreateStarterProfile();
             foreach (var deck in legacy.savedDecks) { deck.isStarter = false; deck.equipment.Clear(); deck.mutators.Clear(); }
             var duplicate = CollectionProfile.CopyDeck(legacy.savedDecks[0]); duplicate.deckId = "selected-duplicate";
             legacy.savedDecks.Add(duplicate);
@@ -248,7 +253,7 @@ namespace Game.EditorTools
         }
         [Test] public void MissingStarterIsRestoredWithoutPromotingCustomizedDeck()
         {
-            var legacy = new CollectionProfile(); AuthoredCollection(legacy).InitializeStarters(legacy);
+            var legacy = AuthoredCollection(new CollectionProfile()).CreateStarterProfile();
             var modified = legacy.savedDecks[0]; modified.isStarter = false; CustomizableEntry(modified, legacy).count++;
             var service = AuthoredCollection(legacy);
             Assert.That(service.EnsureStarterDecks(out _), Is.True);
@@ -259,7 +264,7 @@ namespace Game.EditorTools
         }
         [Test] public void BalanceRevisionReplacesSavedStartersOnceAndPreservesCustomDecksAndOwnership()
         {
-            var profile = new CollectionProfile(); AuthoredCollection(profile).InitializeStarters(profile);
+            var profile = AuthoredCollection(new CollectionProfile()).CreateStarterProfile();
             profile.starterDeckRevision = 0;
             var expected = profile.savedDecks.ToDictionary(d => d.deckId, CollectionProfile.CopyDeck);
             foreach (var deck in profile.savedDecks)
@@ -306,7 +311,7 @@ namespace Game.EditorTools
         }
         [Test] public void FailedBalanceSaveDoesNotPublishRevisionOrComposition()
         {
-            var profile = new CollectionProfile(); AuthoredCollection(profile).InitializeStarters(profile);
+            var profile = AuthoredCollection(new CollectionProfile()).CreateStarterProfile();
             profile.starterDeckRevision = 0; profile.savedDecks[0].mainCards.Clear();
             string before = JsonUtility.ToJson(profile);
             Directory.CreateDirectory(directory);
@@ -320,7 +325,7 @@ namespace Game.EditorTools
         }
         [Test] public void StarterCannotBeDeletedAfterRenameOrClearingDraftFlagButCopyCan()
         {
-            var profile = new CollectionProfile(); AuthoredCollection(profile).InitializeStarters(profile);
+            var profile = AuthoredCollection(new CollectionProfile()).CreateStarterProfile();
             var service = AuthoredCollection(profile); var starter = service.StarterDeck(Faction.IronConcord);
             starter.name = "Renamed"; starter.isStarter = false;
             Assert.That(service.SaveDeck(starter, out _), Is.True);

@@ -25,6 +25,14 @@ namespace Game.Campaign
         public RegionResourceConditions ResourceConditions => new RegionResourceConditions(Specialization, Richness);
         public List<Vector2> PolygonVertices = new List<Vector2>();
         public List<int> NeighborIds = new List<int>();
+
+        internal RegionState Copy()
+        {
+            var copy = (RegionState)MemberwiseClone();
+            copy.PolygonVertices = PolygonVertices == null ? null : new List<Vector2>(PolygonVertices);
+            copy.NeighborIds = NeighborIds == null ? null : new List<int>(NeighborIds);
+            return copy;
+        }
     }
     [Serializable] public sealed class CampaignFactionState
     {
@@ -32,6 +40,8 @@ namespace Game.Campaign
         public bool Eliminated;
         // MVP resolves this reference through StartingDeckCatalog, independent of collection ownership.
         public string ActiveDeckReference = "standard";
+
+        internal CampaignFactionState Copy() => (CampaignFactionState)MemberwiseClone();
     }
     [Serializable] public sealed class CampaignOperation
     {
@@ -47,6 +57,8 @@ namespace Game.Campaign
         public MatchWeatherProfile Weather;
         public MatchWeatherConditions WeatherConditions =>
             new MatchWeatherConditions(Weather, MatchWeatherConditions.DeriveSeed(RandomSeed));
+        internal CampaignOperation Copy() => (CampaignOperation)MemberwiseClone();
+
         // Unity's inline serializer represents a null custom class as its default
         // field values. Recognize only that exact placeholder, never a real receipt.
         internal bool IsEmptyInlineValue => string.IsNullOrEmpty(OperationId) && string.IsNullOrEmpty(MatchId)
@@ -65,6 +77,8 @@ namespace Game.Campaign
         public CampaignOutcome Outcome;
         public double WinChance;
         public bool Manual, Captured;
+
+        internal CampaignBattleRecord Copy() => (CampaignBattleRecord)MemberwiseClone();
     }
     [Serializable] public sealed class CampaignState
     {
@@ -92,7 +106,16 @@ namespace Game.Campaign
                 && state.PendingOperation?.IsEmptyInlineValue == true) state.PendingOperation = null;
             return state;
         }
-        public CampaignState Copy() => Deserialize(JsonUtility.ToJson(this));
+        public CampaignState Copy()
+        {
+            var copy = (CampaignState)MemberwiseClone();
+            copy.TurnOrder = TurnOrder == null ? null : new List<Faction>(TurnOrder);
+            copy.Regions = Regions?.ConvertAll(region => region?.Copy());
+            copy.Factions = Factions?.ConvertAll(faction => faction?.Copy());
+            copy.PendingOperation = PendingOperation?.Copy();
+            copy.BattleHistory = BattleHistory?.ConvertAll(record => record?.Copy());
+            return copy;
+        }
         public Faction CurrentFaction => TurnOrder[CurrentTurnIndex];
     }
     // Explicit RNG algorithm gives cross-runtime replay. Never reads UnityEngine.Random.

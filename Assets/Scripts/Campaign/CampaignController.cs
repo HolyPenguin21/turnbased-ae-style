@@ -11,16 +11,25 @@ namespace Game.Campaign
         private CampaignState state;
         private readonly CampaignStore store;
         public CampaignState Snapshot => state.Copy();
-        // Read-only current state without a JSON round trip. Transact swaps in a new object and never edits
-        // this one in place, so a held reference stays a frozen snapshot; callers must not mutate it.
-        public CampaignState View => state;
+        public CampaignReadModel View { get; private set; }
         public CampaignPhase Phase => state.Phase;
         public bool IsAiTurn => state.CurrentFaction != state.HumanFaction;
         // Transient, post-commit fact. Loading a snapshot never publishes historical captures.
         public event Action<CampaignRegionOwnershipChange> RegionOwnershipChanged;
-        public CampaignController(CampaignState initial, CampaignStore store) { CampaignStore.Validate(initial); state = initial.Copy(); this.store = store; }
+        public CampaignController(CampaignState initial, CampaignStore store)
+        {
+            CampaignStore.Validate(initial);
+            this.store = store;
+            Publish(initial.Copy());
+        }
+
+        private void Publish(CampaignState committed)
+        {
+            state = committed;
+            View = new CampaignReadModel(committed);
+        }
         private void Transact(Action<CampaignState> edit)
-        { var next = state.Copy(); edit(next); store.Save(next); state = next; }
+        { var next = state.Copy(); edit(next); store.Save(next); Publish(next); }
         public void BeginAttack(int sourceId, int targetId, bool manual)
         {
             if (!CampaignRules.CanAttack(state, state.CurrentFaction, sourceId, targetId)) throw new InvalidOperationException("You cannot attack this region now.");
@@ -142,12 +151,15 @@ namespace Game.Campaign
             }).OrderByDescending(a => a.Score).First().Pair;
             bool manual = state.Regions.Find(r => r.RegionId == selected.Target).OwnerFaction == state.HumanFaction;
             BeginAttack(selected.Source, selected.Target, manual);
-            if (!manual && resolveImmediately)
-            {
-                var op = state.PendingOperation;
-                ResolveFast(CampaignDeck.Ai(op.AttackerFaction, rules, op.RandomSeed, op.AttackerDeckName),
-                    CampaignDeck.Ai(op.DefenderFaction, rules, op.RandomSeed, op.DefenderDeckName), resolver);
-            }
+            if (!manual && resolveImmediately) ResolvePendingAiBattle(rules, resolver);
+        }
+
+        public void ResolvePendingAiBattle(DeckRules rules, CampaignBattleResolver resolver)
+        {
+            var op = state.PendingOperation;
+            if (op == null || op.Manual || op.ResultRecorded) return;
+            ResolveFast(CampaignDeck.Ai(op.AttackerFaction, rules, op.RandomSeed, op.AttackerDeckName),
+                CampaignDeck.Ai(op.DefenderFaction, rules, op.RandomSeed, op.DefenderDeckName), resolver);
         }
     }
 }

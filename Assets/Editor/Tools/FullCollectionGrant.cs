@@ -27,21 +27,10 @@ namespace Game.EditorTools
             var store = new CollectionProfileStore(Application.persistentDataPath);
             var loaded = store.Load(out _);
             var service = new CollectionService(rules, store, loaded ?? new CollectionProfile());
-            if (loaded == null && !service.Transact(service.InitializeStarters, out string initError))
+            if (loaded == null && !service.InitializeStarters(out string initError))
             { Debug.LogError("Full collection: " + initError); return; }
 
-            int raised = 0;
-            bool saved = service.Transact(p =>
-            {
-                foreach (var card in DeckRules.PlayableFactions.SelectMany(rules.Cards).Distinct())
-                {
-                    int limit = DeckRules.CopyLimit(card);
-                    if (limit <= 0) continue;
-                    var owned = p.ownedCards.Find(e => e.cardKey == card.authoredKey);
-                    if (owned == null) p.ownedCards.Add(owned = new DeckCardEntry { cardKey = card.authoredKey, count = 0 });
-                    if (owned.count < limit) { owned.count = limit; raised++; }
-                }
-            }, out string error);
+            bool saved = service.FillCollectionForEditor(out int raised, out string error);
             if (!saved) { Debug.LogError("Full collection: " + error); return; }
             Debug.Log($"Full collection: {raised} card(s) raised to their copy limit in {Application.persistentDataPath}.");
         }
@@ -57,11 +46,10 @@ namespace Game.EditorTools
 
             var rules = new DeckRules(config.collectionDeckCatalog, config.collectionResearchCatalog);
             var store = new CollectionProfileStore(Application.persistentDataPath);
-            var fresh = new CollectionProfile();
             try
             {
-                new CollectionService(rules, store, fresh).InitializeStarters(fresh);
-                store.Save(fresh);
+                var service = new CollectionService(rules, store, new CollectionProfile());
+                if (!service.InitializeStarters(out string error)) { Debug.LogError("Reset collection: " + error); return; }
             }
             catch (System.Exception e) { Debug.LogError("Reset collection: " + e.Message); return; }
             Debug.Log("Reset collection: starter profile written to " + Application.persistentDataPath);

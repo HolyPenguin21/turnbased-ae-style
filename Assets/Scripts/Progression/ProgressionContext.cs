@@ -24,7 +24,7 @@ namespace Game.Progression
                 var store = new CollectionProfileStore(UnityEngine.Application.persistentDataPath);
                 var loaded = store.Load(out string notice);
                 var service = new CollectionService(new DeckRules(config.collectionDeckCatalog, config.collectionResearchCatalog), store, loaded ?? new CollectionProfile());
-                if (loaded == null && !service.Transact(service.InitializeStarters, out string failure)) throw new InvalidOperationException(failure);
+                if (loaded == null && !service.InitializeStarters(out string failure)) throw new InvalidOperationException(failure);
                 if (loaded != null && !service.EnsureStarterDecks(out string blueprintFailure)) throw new InvalidOperationException(blueprintFailure);
                 Collection = service; Rewards = new RewardService(service);
                 var obsolete = service.Snapshot.ownedCards.Where(e => service.Rules.Resolve(e.cardKey) == null).Select(e => e.cardKey).ToList();

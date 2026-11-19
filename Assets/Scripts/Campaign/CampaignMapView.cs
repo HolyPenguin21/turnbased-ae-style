@@ -115,18 +115,18 @@ namespace Game.Campaign
             captureEffect = GetComponent<CampaignCaptureEffect>() ?? gameObject.AddComponent<CampaignCaptureEffect>();
             captureEffect.Initialize(surfaceMaterial, capture);
         }
-        public bool PlayCapture(CampaignRegionOwnershipChange change, CampaignState state)
+        public bool PlayCapture(CampaignRegionOwnershipChange change, CampaignReadModel state)
         {
             if (!change.Matches(state) || captureEffect == null || IsCapturePlaying
                 || !graphics.TryGetValue(change.TargetRegionId, out var graphic)) return false;
-            var target = state.Regions.Find(r => r.RegionId == change.TargetRegionId);
-            var source = state.Regions.Find(r => r.RegionId == change.SourceRegionId);
-            captureEffect.Play(graphic, source, target, highlight.MapColor(change.PreviousOwner));
+            var target = state.FindRegion(change.TargetRegionId);
+            var source = state.FindRegion(change.SourceRegionId);
+            captureEffect.Play(graphic, source.Copy(), target.Copy(), highlight.MapColor(change.PreviousOwner));
             if (selectedLabelRoot != null) selectedLabelRoot.gameObject.SetActive(false);
             return IsCapturePlaying;
         }
         public void CancelCapture() { if (captureEffect != null) captureEffect.Finish(); }
-        public void Refresh(CampaignState state, int? selected, int? hovered, bool inputEnabled)
+        public void Refresh(CampaignReadModel state, int? selected, int? hovered, bool inputEnabled)
         {
             var size = ((RectTransform)transform).rect.size;
             if (fieldRegions != null && (field == null || field.CanvasSize != size)) RebuildField();
@@ -134,7 +134,7 @@ namespace Game.Campaign
             highlight.ApplyTo(surfaceMaterial, field?.Texture);
             foreach (var r in state.Regions)
             {
-                bool attackable = selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, r.RegionId);
+                bool attackable = selected.HasValue && state.CanAttack(state.HumanFaction, selected.Value, r.RegionId);
                 var op = state.PendingOperation;
                 if (!graphics.TryGetValue(r.RegionId, out var graphic)) continue;
                 graphic.Refresh(highlight.MapColor(r.OwnerFaction), selected == r.RegionId, hovered == r.RegionId, attackable,
@@ -147,12 +147,12 @@ namespace Game.Campaign
                 top.transform.SetSiblingIndex(overlay.GetSiblingIndex() - 1);
             RefreshMarkers(state, selected);
             if (selectedLabelRoot == null) return;
-            var labelRegion = selected.HasValue && markers.Count == 0 ? state.Regions.Find(r => r.RegionId == selected.Value) : null;
+            var labelRegion = selected.HasValue && markers.Count == 0 ? state.FindRegion(selected.Value) : null;
             selectedLabelRoot.gameObject.SetActive(labelRegion != null && !IsCapturePlaying);
             if (labelRegion != null)
             {
                 var rect = (RectTransform)transform;
-                var position = ToPixel(rect.rect, Project(CampaignRegionGraphic.VisibleCenter(labelRegion)));
+                var position = ToPixel(rect.rect, Project(CampaignRegionGraphic.VisibleCenter(labelRegion.PolygonVertices)));
                 selectedLabelRoot.anchorMin = selectedLabelRoot.anchorMax = new Vector2(.5f, .5f);
                 selectedLabelRoot.pivot = new Vector2(.5f, .5f);
                 selectedLabel.text = labelRegion.Name.ToUpperInvariant();
@@ -164,7 +164,7 @@ namespace Game.Campaign
                 selectedLabelRoot.anchoredPosition = labelPosition;
             }
         }
-        private void RefreshMarkers(CampaignState state, int? selected)
+        private void RefreshMarkers(CampaignReadModel state, int? selected)
         {
             if (markers.Count == 0) return;
             var rect = ((RectTransform)transform).rect;
@@ -172,7 +172,7 @@ namespace Game.Campaign
             {
                 if (!markers.TryGetValue(r.RegionId, out var marker)) continue;
                 bool named = markerEmblems || selected == r.RegionId
-                    || selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, r.RegionId);
+                    || selected.HasValue && state.CanAttack(state.HumanFaction, selected.Value, r.RegionId);
                 marker.gameObject.SetActive(named && !IsCapturePlaying);
                 if (!named) continue;
                 ((RectTransform)marker.transform).anchoredPosition = ToPixel(rect, markerCenters[r.RegionId]) - rect.center;
@@ -197,7 +197,7 @@ namespace Game.Campaign
             plate.anchoredPosition = new Vector2((rootWidth - width) / 2, plate.anchoredPosition.y);
             label.sizeDelta = new Vector2(width, label.sizeDelta.y);
         }
-        public void PlayAttack(CampaignOperation operation)
+        public void PlayAttack(CampaignOperationView operation)
         {
             CancelAttackAnimation();
             if (operation == null || operation.ResultRecorded || arrow == null || !isActiveAndEnabled

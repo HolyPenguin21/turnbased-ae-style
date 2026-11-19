@@ -21,7 +21,7 @@ public sealed class CampaignCollectionIntegrationTests
         directory = Path.Combine(Path.GetTempPath(), "campaign-integration-" + Guid.NewGuid().ToString("N"));
         var config = AssetDatabase.LoadAssetAtPath<GameConfig>("Assets/Config/GameConfig.asset"); Assert.IsNotNull(config);
         collection = new CollectionService(new DeckRules(config.collectionDeckCatalog, config.collectionResearchCatalog), new CollectionProfileStore(directory), new CollectionProfile());
-        Assert.IsTrue(collection.Transact(collection.InitializeStarters, out string error), error);
+        Assert.IsTrue(collection.InitializeStarters(out string error), error);
     }
     [TearDown] public void Cleanup() { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     [Test] public void RejectedMatchPreparationPreservesRandomAndExplicitAiChoices()
@@ -131,7 +131,7 @@ public sealed class CampaignCollectionIntegrationTests
         campaign.AcknowledgeReward(op.MatchId); campaign.ApplyResult();
         Assert.AreEqual(1, campaign.Snapshot.BattleHistory.Count); Assert.AreEqual(before + acquired, collection.Snapshot.ownedCards.Sum(c => c.count));
     }
-    [Test] public void AcknowledgedRewardRecoveryBridgeDoesNotGrantAgain()
+    [Test] public void AcknowledgedRewardRecoveryDoesNotGrantAgain()
     {
         var state = new CampaignMapGenerator().Generate(851, Faction.Ashen); state.CurrentTurnIndex = state.TurnOrder.IndexOf(state.HumanFaction);
         var store = new CampaignStore(directory); var campaign = new CampaignController(state, store);
@@ -148,8 +148,9 @@ public sealed class CampaignCollectionIntegrationTests
             typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, campaign);
             typeof(ProgressionContext).GetProperty("Collection").SetValue(null, collection);
             typeof(ProgressionContext).GetProperty("Rewards").SetValue(null, new RewardService(collection));
-            Assert.IsTrue(CampaignMatchBridge.RecoverReward(null, out string error), error);
-            Assert.IsTrue(CampaignMatchBridge.RecoverReward(null, out error), error);
+            var operation = MatchResultOperation.Open(null, MatchResultOrigin.Campaign);
+            Assert.AreEqual(MatchResultStage.CampaignResult, operation.Advance().Stage, operation.Current.Error);
+            Assert.AreEqual(MatchResultStage.CampaignResult, operation.Advance().Stage, operation.Current.Error);
             Assert.AreEqual(1, campaign.Snapshot.BattleHistory.Count); Assert.AreEqual(CampaignPhase.ShowingResult, campaign.Phase);
             Assert.AreEqual(collectionBefore, UnityEngine.JsonUtility.ToJson(collection.Snapshot));
         }
@@ -198,7 +199,8 @@ public sealed class CampaignCollectionIntegrationTests
             // Registry cleanup on entering Game cannot erase prepared inputs.
             Game.Setup.MatchStateInventory.ResetForNewMatch();
             Assert.AreEqual(ResourceRichness.Rich, GameSession.SelectedResourceConditions.Value.Richness);
-            var ordinary = new System.Collections.Generic.List<PlayerSetupData>();
+            var ordinary = new System.Collections.Generic.List<PlayerSetupData>
+                { new PlayerSetupData { Nickname = "Observer AI", Faction = Faction.Vessels } };
             Assert.IsTrue(GameSession.TryPrepareMatch(ordinary, config, out error), error);
             Assert.IsNull(GameSession.SelectedResourceConditions); Assert.IsNull(GameSession.SelectedBiome);
             Assert.IsNull(GameSession.CampaignContext);

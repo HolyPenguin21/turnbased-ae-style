@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Core;
@@ -19,31 +20,72 @@ namespace Game.UI
         private CollectionRewardView view;
         private CollectionRewardCardView cardTemplate;
         private readonly HashSet<string> selection = new HashSet<string>();
-        private ParticipantResult? retryResult;
-        private string error;
-        private bool returnToMenu;
-        private System.Action resumedOnClosed;
-        private string failedDismissMatchId;
-        private string focusedKey;
+        private MatchResultOperation operation;
+        private Action resumedOnClosed;
+        private string displayedMatchId, focusedKey;
+        private bool exiting;
+
         public void Configure(GameTurnController controller, GameConfig gameConfig)
-        { turns = controller; config = gameConfig; turns.ParticipantFinished += OnResult; returnToMenu = true; }
-        public void Resume(GameConfig gameConfig, System.Action onClosed = null)
         {
-            config = gameConfig; resumedOnClosed = onClosed;
-            if (!ProgressionContext.Initialize(config)) { CollectionMessageUI.ShowReward(ProgressionContext.Error, "REWARD UNAVAILABLE"); return; }
-            if (ProgressionContext.Collection.Snapshot.pendingRewards.Count > 0) Draw();
-            if (onClosed == null && !string.IsNullOrWhiteSpace(ProgressionContext.Notice)) CollectionMessageUI.ShowReward(ProgressionContext.Notice, "COLLECTION NOTICE");
+            if (turns != null) turns.MatchResultReady -= OnMatchResultReady;
+            turns = controller;
+            config = gameConfig;
+            turns.MatchResultReady += OnMatchResultReady;
+            OnMatchResultReady();
         }
-        private void OnResult(ParticipantResult result)
+
+        public void Resume(GameConfig gameConfig, Action onClosed = null)
         {
-            if (!Game.Campaign.CampaignMatchBridge.RecordFinalResult(out error)) retryResult = result;
-            else if (!ProgressionContext.Initialize(config)) { error = ProgressionContext.Error; retryResult = result; }
-            else if (!ProgressionContext.Rewards.Record(result, out error)) retryResult = result;
-            else retryResult = null;
-            selection.Clear(); focusedKey = null; Draw();
+            var resumed = MatchResultOperation.Open(gameConfig, MatchResultOrigin.MainMenu);
+            resumed.Advance();
+            Present(gameConfig, resumed, onClosed);
+            if (resumed.Current.Stage != MatchResultStage.MenuNotice && onClosed == null
+                && !string.IsNullOrWhiteSpace(ProgressionContext.Notice))
+                CollectionMessageUI.ShowReward(ProgressionContext.Notice, "COLLECTION NOTICE");
         }
+
+        internal void Present(GameConfig gameConfig, MatchResultOperation result, Action onClosed)
+        {
+            config = gameConfig;
+            operation = result;
+            resumedOnClosed = onClosed;
+            Draw();
+        }
+
+        internal void ClearPresentation()
+        {
+            operation = null;
+            resumedOnClosed = null;
+            Close();
+        }
+
+        private void OnMatchResultReady()
+        {
+            operation = turns.ResultOperation;
+            Draw();
+        }
+
+        private bool IsCurrent(MatchResultOperation displayed) => !exiting && isActiveAndEnabled
+            && ReferenceEquals(operation, displayed) && (turns == null || ReferenceEquals(turns.ResultOperation, displayed));
+
         private void Draw()
         {
+            var displayed = operation;
+            if (displayed == null) { Close(); return; }
+            if (!IsCurrent(displayed)) return;
+            var state = displayed.Current;
+            if (state.Stage == MatchResultStage.MenuNotice)
+            {
+                ClearPresentation();
+                CollectionMessageUI.ShowReward(state.Error, "REWARD UNAVAILABLE");
+                return;
+            }
+            if (state.Stage != MatchResultStage.Retry && state.Reward == null)
+            {
+                CompletePresentation(state.Stage);
+                return;
+            }
+
             if (canvas == null)
             {
                 canvas = CollectionUIElements.Canvas("CollectionRewards", new Vector2(1920, 1080));
@@ -57,33 +99,32 @@ namespace Game.UI
             view.Subtitle.gameObject.SetActive(true);
             view.Status.gameObject.SetActive(true);
             view.PrimaryButton.onClick.RemoveAllListeners();
-            if (retryResult.HasValue)
+            if (state.Stage == MatchResultStage.Retry)
             {
-                DrawSaveError(error ?? "Could not save the reward. Select Retry.", () => OnResult(retryResult.Value)); return;
-            }
-            if (failedDismissMatchId != null)
-            {
-                DrawSaveError(error ?? "Could not save campaign progress. Select Retry.", () => FinishDismiss(failedDismissMatchId)); return;
-            }
-            var reward = ProgressionContext.Collection.Snapshot.pendingRewards.FirstOrDefault();
-            if (reward == null)
-            {
-                if (returnToMenu && GameSession.CampaignContext != null)
+                DrawSaveError(state.Error, () =>
                 {
-                    if (!Game.Campaign.CampaignMatchBridge.RecoverReward(config, out error))
-                    { retryResult = new ParticipantResult(GameSession.MatchId, GameSession.FirstHuman, MatchOutcome.Draw); Draw(); return; }
-                    Close(); Game.Setup.MatchStateInventory.EndMatch(turns); SceneManager.LoadScene(SceneNames.Campaign); return;
-                }
-                Close(); var callback = resumedOnClosed; resumedOnClosed = null; callback?.Invoke(); return;
+                    if (!IsCurrent(displayed) || !ReferenceEquals(state, displayed.Current)) return;
+                    displayed.Advance();
+                    Draw();
+                });
+                return;
             }
-            var keys = reward.claimed ? reward.acquiredKeys : ProgressionContext.Rewards.AvailableOffers(reward);
-            if (!reward.claimed) selection.RemoveWhere(key => !keys.Contains(key));
-            int required = Mathf.Min(2, keys.Count);
-            string notice = !reward.claimed && keys.Count < reward.offeredKeys.Count
-                ? $"{reward.offeredKeys.Count - keys.Count} reward cards are no longer available." : "";
-            string title = reward.outcome == MatchOutcome.Victory ? "VICTORY" : "DEFEAT";
+            var reward = state.Reward;
+            if (displayedMatchId != reward.MatchId)
+            {
+                displayedMatchId = reward.MatchId;
+                selection.Clear();
+                focusedKey = null;
+            }
+
+            var keys = reward.Keys;
+            if (!reward.Claimed) selection.RemoveWhere(key => !keys.Contains(key));
+            int required = reward.RequiredSelectionCount;
+            string notice = reward.UnavailableCount > 0
+                ? $"{reward.UnavailableCount} reward cards are no longer available." : "";
+            string title = reward.Outcome == MatchOutcome.Victory ? "VICTORY" : "DEFEAT";
             view.Title.text = title;
-            view.Subtitle.text = keys.Count == 0 ? "No eligible rewards remain." : reward.claimed ? "REWARD ACQUIRED" : $"Choose {required} rewards - selected {selection.Count}/{required}";
+            view.Subtitle.text = keys.Count == 0 ? "No eligible rewards remain." : reward.Claimed ? "REWARD ACQUIRED" : $"Choose {required} rewards - selected {selection.Count}/{required}";
             Button firstChoice = null, focusedChoice = null;
             for (int i = 0; i < keys.Count; i++)
             {
@@ -96,25 +137,34 @@ namespace Game.UI
                 cell.DetailsButton.GetComponentInChildren<TMP_Text>().text = card?.displayName ?? key;
                 cell.DetailsButton.onClick.AddListener(() => CollectionMessageUI.ShowReward(
                     CollectionCardDetail.Describe(card, config, ProgressionContext.Collection.Owned(key))));
-                cell.ChooseButton.gameObject.SetActive(!reward.claimed);
-                cell.SetSelected(!reward.claimed && selection.Contains(key));
-                if (!reward.claimed)
+                cell.ChooseButton.gameObject.SetActive(!reward.Claimed);
+                cell.SetSelected(!reward.Claimed && selection.Contains(key));
+                if (!reward.Claimed)
                 {
                     var choose = cell.ChooseButton;
                     choose.onClick.AddListener(() =>
-                    { focusedKey = key; if (!selection.Remove(key) && selection.Count < required) selection.Add(key); Draw(); });
+                    {
+                        if (!IsCurrent(displayed) || !ReferenceEquals(state, displayed.Current)) return;
+                        focusedKey = key;
+                        if (!selection.Remove(key) && selection.Count < required) selection.Add(key);
+                        Draw();
+                    });
                     if (firstChoice == null) firstChoice = choose;
                     if (focusedKey == key) focusedChoice = choose;
                 }
             }
-            view.Status.text = string.IsNullOrEmpty(error) ? notice : error;
+            view.Status.text = string.IsNullOrEmpty(state.Error) ? notice : state.Error;
             var button = view.PrimaryButton;
-            button.GetComponentInChildren<TMP_Text>().text = reward.claimed ? "CONTINUE" : "CONFIRM REWARDS";
-            button.interactable = reward.claimed || selection.Count == required;
-            if (!reward.claimed)
+            button.GetComponentInChildren<TMP_Text>().text = reward.Claimed ? "CONTINUE" : "CONFIRM REWARDS";
+            button.interactable = reward.Claimed || selection.Count == required;
+            if (!reward.Claimed)
             {
                 button.onClick.AddListener(() =>
-                { ProgressionContext.Rewards.Claim(reward.matchId, selection, out error); Draw(); });
+                {
+                    if (!IsCurrent(displayed) || !ReferenceEquals(state, displayed.Current)) return;
+                    displayed.Claim(reward.MatchId, selection);
+                    Draw();
+                });
                 if (focusedChoice != null) focusedChoice.Select();
                 else if (firstChoice != null) firstChoice.Select();
                 else button.Select();
@@ -122,11 +172,15 @@ namespace Game.UI
             else
             {
                 button.onClick.AddListener(() =>
-                { if (!ProgressionContext.Rewards.Dismiss(reward.matchId, out error)) { Draw(); return; } FinishDismiss(reward.matchId); });
+                {
+                    if (!IsCurrent(displayed) || !ReferenceEquals(state, displayed.Current)) return;
+                    displayed.Dismiss(reward.MatchId);
+                    Draw();
+                });
                 button.Select();
             }
         }
-        private void DrawSaveError(string message, System.Action retry)
+        private void DrawSaveError(string message, Action retry)
         {
             view.Title.text = "REWARD ERROR";
             view.CardsHost.gameObject.SetActive(false);
@@ -139,19 +193,45 @@ namespace Game.UI
             view.PrimaryButton.onClick.AddListener(() => retry());
             view.PrimaryButton.Select();
         }
-        private void FinishDismiss(string matchId)
+        private void CompletePresentation(MatchResultStage stage)
         {
-            string destination = Game.Campaign.CampaignMatchBridge.ReturnScene(matchId);
-            if (!Game.Campaign.CampaignMatchBridge.RewardDismissed(matchId, out error))
-            { failedDismissMatchId = matchId; Draw(); return; }
-            failedDismissMatchId = null;
-            if (ProgressionContext.Collection.Snapshot.pendingRewards.Count > 0) { Draw(); return; }
             Close();
-            if (returnToMenu) { Game.Setup.MatchStateInventory.EndMatch(turns); SceneManager.LoadScene(destination); }
-            else { var callback = resumedOnClosed; resumedOnClosed = null; callback?.Invoke(); }
+            if (stage == MatchResultStage.ReturnToCampaign || stage == MatchResultStage.ReturnToMenu)
+            {
+                exiting = true;
+                Game.Setup.MatchStateInventory.EndMatch(turns);
+                SceneManager.LoadScene(stage == MatchResultStage.ReturnToCampaign ? SceneNames.Campaign : SceneNames.MainMenu);
+                return;
+            }
+            var callback = resumedOnClosed;
+            resumedOnClosed = null;
+            callback?.Invoke();
         }
-        private void Close() { UIFocusUtility.SetOverlay(this, false); if (canvas != null) { canvas.gameObject.SetActive(false); Destroy(canvas.gameObject); } canvas = null; view = null; }
-        private void OnDestroy() { if (turns != null) turns.ParticipantFinished -= OnResult; Close(); }
+
+        private void Close()
+        {
+            UIFocusUtility.SetOverlay(this, false);
+            if (canvas != null)
+            {
+                canvas.gameObject.SetActive(false);
+                Destroy(canvas.gameObject);
+            }
+            canvas = null;
+            view = null;
+        }
+
+        private void OnEnable()
+        {
+            if (turns != null) OnMatchResultReady();
+            else Draw();
+        }
+
+        private void OnDisable() => Close();
+
+        private void OnDestroy()
+        {
+            if (turns != null) turns.MatchResultReady -= OnMatchResultReady;
+            Close();
+        }
     }
 }
-

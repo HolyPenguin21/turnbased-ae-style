@@ -23,13 +23,14 @@ namespace Game.Cards
     public sealed class Cost { public int human, energy, materials, tech; }
     public sealed class CardDefinition { public string authoredKey, displayName; public int deckCopyLimit = 4, deckPointCost, fate, apCost; public bool deckBuilderExcluded; public CardType cardType; public AttachmentSlot attachmentSlot; public Game.Players.Faction faction; public Cost resourceCost = new Cost(); }
     public sealed class DeckCardEntry { public string cardKey; public int count; }
-    public sealed class StartingDeckDefinition { public string deckName; public List<DeckCardEntry> cards = new List<DeckCardEntry>(); }
+    public sealed class StartingDeck { public string deckName; public Game.Players.Faction faction; public List<DeckCardEntry> cards = new List<DeckCardEntry>(); }
     public sealed class FactionCardCatalog : UnityEngine.ScriptableObject { public Game.Players.Faction faction; public List<CardDefinition> cards = new List<CardDefinition>(); }
     public sealed class StartingDeckCatalog : UnityEngine.ScriptableObject
     {
         public List<FactionCardCatalog> catalogs = new List<FactionCardCatalog>();
         public FactionCardCatalog GetCatalog(Game.Players.Faction f) => catalogs.FirstOrDefault(c => c.faction == f);
-        public StartingDeckDefinition GetDeck(Game.Players.Faction f) => null;
+        public List<StartingDeck> decks = new List<StartingDeck>();
+        public StartingDeck GetDeck(Game.Players.Faction f) => decks.FirstOrDefault(d => d.faction == f);
         public CardDefinition ResolveCard(string key) => catalogs.SelectMany(c => c.cards).FirstOrDefault(c => c.authoredKey == key);
     }
     public sealed class ResearchProductionCatalog : UnityEngine.ScriptableObject

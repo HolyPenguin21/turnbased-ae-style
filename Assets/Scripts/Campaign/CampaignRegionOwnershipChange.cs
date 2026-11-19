@@ -15,6 +15,8 @@ namespace Game.Campaign
             PreviousOwner = previousOwner; NewOwner = newOwner;
         }
         // Only the still-pending, committed operation may consume this live receipt.
+        public bool Matches(CampaignReadModel view) => view?.Matches(this) == true;
+
         public bool Matches(CampaignState state)
         {
             var op = state?.PendingOperation;
