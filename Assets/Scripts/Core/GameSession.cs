@@ -21,7 +21,7 @@ namespace Game.Core
         public static void CompleteMatch(Game.Campaign.CompletedMatchResult result)
         { if (!FinalResult.HasValue && result.MatchId == MatchId) FinalResult = result; }
 
-        public static bool TryPrepareMatch(List<PlayerSetupData> players, GameConfig config, out string error)
+        public static bool TryPrepareMatch(List<PlayerSetupData> players, IProgressionContent content, out string error)
         {
             error = null;
             if (players == null || players.Count == 0 || players.Any(p => p == null || p.IsNeutral))
@@ -32,13 +32,13 @@ namespace Game.Core
             // (SelectedDeckId); Random and campaign enemies always resolve to authored AI decks.
             if (!players.Exists(p => p.IsHuman || !string.IsNullOrEmpty(p.SelectedDeckId)))
             {
-                AssignAiDecks(players, config?.collectionDeckCatalog);
+                AssignAiDecks(players, content?.CollectionDeckCatalog);
                 foreach (var player in players) { player.Tactics.Clear(); player.MatchLoadout = null; player.BlueprintQuota = null; }
                 AssignPlayerIdentities(players);
                 CommitNewLaunch(players, false);
                 return true;
             }
-            if (!Game.Progression.ProgressionContext.Initialize(config))
+            if (!Game.Progression.ProgressionContext.Initialize(content))
             { error = Game.Progression.ProgressionContext.Error; return false; }
             var collection = Game.Progression.ProgressionContext.Collection;
             Game.Progression.SavedDeck selectedHumanDeck = null;
@@ -71,7 +71,7 @@ namespace Game.Core
             }
             // Resolve Random only after validation/persistence succeeds. A rejected start must
             // leave the setup row's Random choice intact instead of pinning the next attempt.
-            AssignAiDecks(players, config?.collectionDeckCatalog);
+            AssignAiDecks(players, content?.CollectionDeckCatalog);
             AssignPlayerIdentities(players);
             CommitNewLaunch(players, players.Exists(p => p.IsHuman));
             return true;

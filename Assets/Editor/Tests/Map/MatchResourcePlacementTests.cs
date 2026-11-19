@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using System.Linq;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -32,6 +33,27 @@ namespace Game.EditorTests
             Random.state = _randomState;
         }
 
+        [Test]
+        public void OverlappingCitadelRegionsKeepFallbackAndActualCitadelsReserved()
+        {
+            var candidate = new HexCoord(0, 0);
+            var otherFallback = new HexCoord(1, 0);
+            var otherActual = new HexCoord(0, 1);
+            Build(2);
+
+            var reserved = new HashSet<HexCoord> { otherFallback };
+            var options = CitadelPlacementPlanner.PlacementOptions(_map, candidate, reserved).ToArray();
+            Assert.That(options, Does.Contain(candidate));
+            Assert.That(options, Does.Not.Contain(otherFallback));
+            Assert.That(options, Does.Contain(otherActual));
+
+            reserved.Clear();
+            reserved.Add(otherActual);
+            options = CitadelPlacementPlanner.PlacementOptions(_map, candidate, reserved).ToArray();
+            Assert.That(options, Does.Contain(otherFallback));
+            Assert.That(options, Does.Not.Contain(otherActual));
+        }
+
         private void Build(int radius, System.Func<HexCoord, int> cost = null,
             System.Func<HexCoord, bool> blocked = null)
         {
@@ -39,6 +61,60 @@ namespace Game.EditorTests
                 h => new TerrainTypeEntry { moveCost = cost?.Invoke(h) ?? 1,
                     blocksGroundMovement = blocked?.Invoke(h) ?? false });
             _map.SetData(radius, 1f, data);
+        }
+
+        private sealed class ScriptedRandom : IMapGenerationRandom
+        {
+            public int Range(int minimum, int maximum) => minimum;
+            public float Range(float minimum, float maximum) => minimum;
+            public float Value => 0f;
+        }
+
+        [Test] public void EventPlanFreezesVariantGuardAndPayoutAroundFinalCitadels()
+        {
+            Build(5);
+            var ruins = new HexCoord(1, 0);
+            var citadel = new HexCoord(0, 0);
+            _map.SetTerrainAt(ruins, new TerrainTypeEntry { terrainName = HexMap.CityRuinsTerrainName });
+            var cards = ScriptableObject.CreateInstance<FactionCardCatalog>();
+            var neutral = ScriptableObject.CreateInstance<NeutralArmyCatalog>();
+            var events = ScriptableObject.CreateInstance<EventCatalog>();
+            try
+            {
+                var guard = new CardDefinition { authoredKey = "guard", cardType = CardType.Unit };
+                cards.cards.Add(guard);
+                neutral.cardCatalogs.Add(cards);
+                neutral.armies.Add(new ArmyDefinition { name = "Guard",
+                    members = { new ArmyUnitEntry { cardKey = "guard", count = 2 } } });
+                events.cardCatalogs.Add(cards);
+                var ruinEvent = new EventDefinition { authoredKey = "ruins", variants = {
+                    new EventVariant { guardArmyName = "Guard", resourceCount = 3,
+                        rewards = { new RewardEntry { type = RewardType.Card, cardKey = "guard" } } },
+                } };
+                events.events.Add(ruinEvent);
+                events.events.Add(new EventDefinition { authoredKey = "post", grantsBase = true });
+                var random = new ScriptedRandom();
+                var eventsPlan = MatchMapContentPlanner.PlanEvents(_map, new[] { citadel }, new[] { ruins }, events,
+                    neutral, _ => false, _ => false, random);
+                var planned = eventsPlan.Single(entry => entry.Hex.Equals(ruins));
+                Assert.That(planned.Definition, Is.SameAs(ruinEvent));
+                Assert.That(planned.GuardMembers, Is.EqualTo(new[] { (guard, 2) }));
+                Assert.That(planned.Rewards[0].resources.human, Is.EqualTo(3));
+                Assert.That(planned.CardRewards.Single().Item2, Is.SameAs(guard));
+                Assert.That(eventsPlan.All(entry => !entry.Hex.Equals(citadel)), Is.True);
+                Assert.That(eventsPlan.Where(entry => entry.Definition.grantsBase)
+                    .All(entry => HexGridMath.Distance(entry.Hex, citadel) > 1), Is.True);
+                var ruinsGarrisons = MatchMapContentPlanner.PlanRuinsGarrisons(_map, new[] { citadel }, neutral,
+                    _ => false, random);
+                Assert.That(ruinsGarrisons.Single().Hex, Is.EqualTo(ruins));
+                Assert.That(HexEventRegistry.FindAt(ruins), Is.Null, "Planning never writes to the event registry.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(events);
+                Object.DestroyImmediate(neutral);
+                Object.DestroyImmediate(cards);
+            }
         }
 
         private static List<HexCoord> Citadels(int radius, int players)
@@ -309,7 +385,7 @@ namespace Game.EditorTests
             for (int seed = 0; seed < 80; seed++)
             {
                 Random.InitState(seed);
-                var plan = CitadelSetupController.PlanNeutralArmyHexes(candidates, citadels, ruins, 6, 6);
+                var plan = MatchMapContentPlanner.PlanNeutralArmyHexes(candidates, citadels, ruins, 6, 6, UnityMapGenerationRandom.Shared);
                 Assert.That(plan.Count, Is.EqualTo(6)); AssertSpacing(plan);
                 Assert.That(plan.All(candidates.Contains), Is.True);
                 layouts.Add(string.Join(";", plan.OrderBy(h => h.Q).ThenBy(h => h.R)));

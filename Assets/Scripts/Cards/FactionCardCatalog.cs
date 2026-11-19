@@ -91,42 +91,16 @@ namespace Game.Cards
         // points at (see UnitAbilityCatalog.raiseTheRotsUnitKey); the "<catalog>/<card>"
         // cross-catalog keys StartingDeckCatalog/NeutralArmyCatalog use are a separate,
         // multi-catalog scheme and don't belong here.
-        public CardDefinition ResolveCard(string key)
-        {
-            if (string.IsNullOrWhiteSpace(key) || cards == null)
-                return null;
-            return cards.FirstOrDefault(c => c != null && c.authoredKey == key)
-                ?? cards.FirstOrDefault(c => c != null && c.displayName == key);
-        }
+        public CardDefinition ResolveCard(string key) => CardContentIndex.ResolveSingle(this, key);
 
-        // Shared cross-catalog identity resolution. Persistence callers disable legacy names;
-        // legacy gameplay fixtures retain qualified display-name lookup during migration.
+        // Persistence callers disable legacy names; existing gameplay references can keep
+        // qualified names while they are migrated to stable authored identities.
         public static CardDefinition ResolveAcross(IEnumerable<FactionCardCatalog> catalogs,
             string key, bool allowLegacy, UnityEngine.Object context = null)
         {
-            if (catalogs == null || string.IsNullOrWhiteSpace(key)) return null;
-            CardDefinition match = null;
-            foreach (var catalog in catalogs)
-            {
-                if (catalog?.cards == null) continue;
-                foreach (var card in catalog.cards)
-                {
-                    if (card == null || card.authoredKey != key) continue;
-                    if (match != null && !ReferenceEquals(match, card))
-                    { Debug.LogError("Duplicate authoredKey: " + key, context); return null; }
-                    match = card;
-                }
-            }
-            if (match != null || !allowLegacy) return match;
-            foreach (var catalog in catalogs)
-            {
-                if (catalog == null) continue;
-                string prefix = catalog.displayName + "/";
-                if (!key.StartsWith(prefix, System.StringComparison.Ordinal)) continue;
-                var card = catalog.ResolveCard(key.Substring(prefix.Length));
-                if (card != null) return card;
-            }
-            return null;
+            var card = CardContentIndex.Resolve(catalogs, key, allowLegacy, out bool ambiguous);
+            if (ambiguous) Debug.LogError("Duplicate authoredKey: " + key, context);
+            return card;
         }
 
         // Used by ArmyViewerModalUI's Create Army button. takenNames is whichever names are

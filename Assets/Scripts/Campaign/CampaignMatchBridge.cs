@@ -77,7 +77,7 @@ namespace Game.Campaign
             var store = Store;
             store.Save(state); pendingOwnershipChange = null; SetController(new CampaignController(state, store));
         }
-        public static bool PrepareMatch(GameConfig config, string deckId, out string error)
+        public static bool PrepareMatch(IProgressionContent config, string deckId, out string error)
         {
             error = null;
             try

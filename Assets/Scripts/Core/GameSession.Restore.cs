@@ -60,7 +60,7 @@ namespace Game.Core
             source.Turn.ValidateHumanTurn(source.Players);
             if (source.CampaignContext != null && source.CampaignContext.MatchId != source.MatchId)
                 throw new ArgumentException("Campaign and match identities differ.");
-            Game.Map.HexMapGenerator.ValidateLayout(source.Map, config);
+            Game.Terrain.HexMapLayoutPlanner.Validate(source.Map, config.mapGeneration);
             if (!CampaignMatchBridge.CanRestoreContext(source.CampaignContext, out string error))
                 throw new ArgumentException(error);
             source.Validate(config);

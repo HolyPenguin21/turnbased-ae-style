@@ -70,11 +70,11 @@ namespace Game.Progression
         internal string MatchId { get; }
         internal MatchResultView Current { get; private set; } = new MatchResultView(MatchResultStage.Idle);
 
-        internal static MatchResultOperation Open(GameConfig config, MatchResultOrigin origin,
+        internal static MatchResultOperation Open(IProgressionContent content, MatchResultOrigin origin,
             CampaignMatchContext context = null, CompletedMatchResult? final = null, ParticipantResult? participant = null) =>
             new MatchResultOperation(origin,
                 context == null ? () => CampaignMatchBridge.Controller : CampaignMatchBridge.RequireResultController,
-                () => ProgressionContext.Initialize(config)
+                () => ProgressionContext.Initialize(content)
                     ? ProgressionContext.Rewards : throw new InvalidOperationException(ProgressionContext.Error),
                 context, final, participant);
 

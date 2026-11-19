@@ -27,7 +27,7 @@ namespace Game.Map
     // not just the human-facing render.
     public static partial class VisionSystem
     {
-        private static GameConfig _config;
+        private static IVisionRules _config;
         private static readonly Dictionary<PlayerSetupData, HashSet<HexCoord>> Visible = new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
         private static readonly Dictionary<PlayerSetupData, HashSet<HexCoord>> Visited = new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
         // Permanent per-player memory of every hex that was ever inside vision radius, footprint
@@ -64,7 +64,7 @@ namespace Game.Map
         // toggle.
         public static bool DebugRevealAll { get; set; }
 
-        public static void Configure(GameConfig config)
+        public static void Configure(IVisionRules config)
         {
             _config = config;
             MapObservationSystem.EnsureSubscribed();
@@ -136,7 +136,7 @@ namespace Game.Map
 
         // One shared radius for visibility recomputation and read-only per-army observations.
         public static int ArmyVisionRadius(ArmyData army) =>
-            (_config != null ? _config.armyVisionRadius : 0) + Game.Cards.AbilityParams.GetBestRecceRadius(army);
+            (_config != null ? _config.ArmyVisionRadius : 0) + Game.Cards.AbilityParams.GetBestRecceRadius(army);
 
         // Rebuilds `player`'s own visible set from scratch — every one of their armies and
         // buildings, expanded by its own radius (HexGridMath.HexesInRange) and unioned together.
@@ -150,7 +150,7 @@ namespace Game.Map
 
             if (pendingMutation != null) { pendingMutation.Owners.Add(player); return; }
             int epoch = mutationEpoch;
-            int buildingRadius = _config != null ? _config.buildingVisionRadius : 1;
+            int buildingRadius = _config != null ? _config.BuildingVisionRadius : 1;
 
             var fresh = new HashSet<HexCoord>();
             // Separate from `fresh` on purpose — per the project owner's own call, seeing a hex

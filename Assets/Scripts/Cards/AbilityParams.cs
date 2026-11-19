@@ -35,8 +35,10 @@ namespace Game.Cards
             Match m = ReccePattern.Match(ability);
             if (!m.Success)
                 return false;
-            radius = int.Parse(m.Groups[1].Value);
-            spotStrength = int.Parse(m.Groups[2].Value);
+            if (!int.TryParse(m.Groups[1].Value, out int parsedRadius)
+                || !int.TryParse(m.Groups[2].Value, out int parsedStrength)) return false;
+            radius = parsedRadius;
+            spotStrength = parsedStrength;
             return true;
         }
 
@@ -48,8 +50,7 @@ namespace Game.Cards
             Match m = StealthPattern.Match(ability);
             if (!m.Success)
                 return false;
-            level = int.Parse(m.Groups[1].Value);
-            return true;
+            return int.TryParse(m.Groups[1].Value, out level);
         }
 
         // Best (max, never summed — see the stealth design's "several observers don't stack

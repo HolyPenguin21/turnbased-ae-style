@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Sample real authored map physics with the actual managed project sources; no rendering."""
-import yaml,json,os,shutil,subprocess,tempfile,argparse,re
+import yaml,json,os,shutil,subprocess,tempfile,argparse
 from pathlib import Path
 root=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser(description="Exercise actual authored terrain and resource planners without Unity rendering.")
 parser.add_argument('--seeds',type=int,default=4)
-parser.add_argument('--actual-starts',action='store_true',help='Invoke actual setup methods and sample a legal human neighbor choice.')
+parser.add_argument('--actual-starts',action='store_true',help='Use the citadel planner and sample a legal human neighbor choice.')
 parser.add_argument('--players',type=int,choices=[2,3,4],help='Limit the sampled player count (campaigns use 2).')
 parser.add_argument('--ordinary',action='store_true',help='Sample ordinary-match budgets without regional inputs.')
 args=parser.parse_args()
@@ -35,39 +35,39 @@ def complex_(c):
 def palette(p):
  return fields(p,['mountainsTerrainName','mountainRangeCount','mountainRangeLength'])+',terrainTypes=new List<TerrainTypeEntry>{'+','.join('new TerrainTypeEntry{'+fields(t,['terrainName','baselineWeight','moveCost','defenseModifier'])+',blocksGroundMovement='+str(bool(t['blocksGroundMovement'])).lower()+'}' for t in p['terrainTypes'])+'},complexes=new List<TerrainComplexTemplate>{'+','.join(complex_(c) for c in p['complexes'])+'}'
 init='new MapGenerationSettings{'+fields(d,['radius','complexCount','impassableEdgeMarginRings'])+','+palette(d)+',desertOverride=new BiomeTerrainSet{'+palette(d['desertOverride'])+'}}'
-# Reuse the exact current setup method bodies in a disposable probe. Only its visual
-# callback is a no-op; there is no second authored implementation of the start rules.
-setup=(root/'Assets/Scripts/Setup/CitadelSetupController.cs').read_text()
-def method(name):
- matches=list(re.finditer(r'^        private (?:static )?[^\n]+ '+name+r'\(', setup, re.M))
- if len(matches)!=1: raise RuntimeError('Expected one setup method: '+name)
- start=matches[0].start(); opening=setup.index('{',matches[0].end());depth=1;end=opening+1
- while depth:
-  depth += (setup[end]=='{')-(setup[end]=='}');end+=1
- return setup[start:end]
-probe='\n'.join(method(name) for name in ['AssignStartingHexes','PickFarEnough','PickFarthestFrom',
- 'BucketByAngleAroundCenter','AngleAroundCenterDegrees','GetEdgeEligibleHexes','GetFieldCorners',
- 'GetCityRuinsHexes','IsSelectable','BuildValidHexes'])
-probe='''class StartProbe {
- private HexMap map; private StartInputs gameConfig=new StartInputs();
- private Dictionary<PlayerSetupData,HexCoord> _startHexes=new Dictionary<PlayerSetupData,HexCoord>();
- private HashSet<HexCoord> _validHexes=new HashSet<HexCoord>();
- public StartProbe(HexMap value){map=value;}
- private void SpawnRegionHighlight(PlayerSetupData player,HexCoord hex){}
- public List<HexCoord> Pick(int count){var players=Enumerable.Range(0,count).Select(_=>new PlayerSetupData()).ToList();AssignStartingHexes(players);if(_startHexes.Count!=count)throw new Exception("Insufficient actual starts");var starts=players.Select(p=>_startHexes[p]).ToList();BuildValidHexes(starts[0]);var legal=_validHexes.ToList();starts[0]=legal[UnityEngine.Random.Range(0,legal.Count)];return starts;}
- class StartInputs { INPUTS }
- METHODS
+probe='''class StartInputs : ICitadelPlacementRules {
+    INPUTS
 }
-'''.replace('INPUTS', ';'.join('public int '+k+'='+str(authored[k]) for k in ['maxEdgeDistance','minCityRuinsDistance','cornerExclusionRadius'])+';').replace('METHODS',probe)
-prog='''using System;using System.Linq;using System.Reflection;using System.Collections.Generic;using Game.Core;using Game.Map;using Game.Terrain;using Game.Setup;using Game.HexGrid;using UnityEngine;using Game.Players;using Random=UnityEngine.Random;
+class SampleRandom : IMapGenerationRandom {
+    public int Range(int min,int max) => Random.Range(min,max);
+    public float Range(float min,float max) => Random.Range(min,max);
+    public float Value => Random.value;
+}
+'''.replace('INPUTS', '\n    '.join(
+    'public int '+name+' => '+str(authored[field])+';'
+    for name,field in [('MaxEdgeDistance','maxEdgeDistance'),('MinCityRuinsDistance','minCityRuinsDistance'),
+        ('CornerExclusionRadius','cornerExclusionRadius')]))
+prog='''using System;using System.Linq;using System.Collections.Generic;using Game.Core;using Game.Map;using Game.Terrain;using Game.Setup;using Game.HexGrid;using UnityEngine;using Game.Players;using Random=UnityEngine.Random;
 class AuthoredSample {
-static int Main(){try{return Run();}catch(Exception ex){Console.Error.WriteLine(ex.Message);return 1;}} static int Run(){ var config=new GameConfig{mapGeneration=INIT};var go=new GameObject("sample");var map=go.AddComponent<HexMap>();var gen=go.AddComponent<HexMapGenerator>();var flags=BindingFlags.NonPublic|BindingFlags.Instance;typeof(HexMapGenerator).GetField("gameConfig",flags).SetValue(gen,config);int cases=0;
+static int Main(){try{return Run();}catch(Exception ex){Console.Error.WriteLine(ex.Message);return 1;}} static int Run(){ var config=new GameConfig{mapGeneration=INIT};var go=new GameObject("sample");var map=go.AddComponent<HexMap>();var random=new SampleRandom();int cases=0;
 foreach(Biome biome in Enum.GetValues(typeof(Biome)))for(int radius=5;radius<=8;radius++)for(int players=2;players<=4;players++)for(int seed=0;seed<4;seed++){
- UnityEngine.Random.InitState(seed);var palette=config.mapGeneration.ResolveBiome(biome);typeof(HexMapGenerator).GetField("_activeRadius",flags).SetValue(gen,radius);typeof(HexMapGenerator).GetField("_activeBiome",flags).SetValue(gen,palette);var coords=HexGridMath.HexesInRange(new HexCoord(0,0),radius).ToList();var assign=(Dictionary<HexCoord,int>)typeof(HexMapGenerator).GetMethod("AssignTerrainTypes",flags).Invoke(gen,new object[]{coords});typeof(HexMapGenerator).GetMethod("PlaceComplexes",flags).Invoke(gen,new object[]{coords,assign});map.SetData(radius,1,assign.ToDictionary(p=>p.Key,p=>palette.terrainTypes[p.Value]));int r=radius-seed%2;
+ UnityEngine.Random.InitState(seed);var palette=config.mapGeneration.ResolveBiome(biome);
+ var layout=HexMapLayoutPlanner.Create(config.mapGeneration,radius,biome,random);
+ HexMapLayoutPlanner.Validate(layout,config.mapGeneration);
+ var byKey=palette.terrainTypes.ToDictionary(t=>t.ContentKey);
+ var assignment=layout.Cells.ToDictionary(c=>new HexCoord(c.Q,c.R),c=>byKey[c.TerrainKey]);
+ var coords=assignment.Keys.ToList();
+ map.SetData(radius,1,assignment);
+ int r=radius-seed%2;
  var starts=players==2?new List<HexCoord>{new HexCoord(-r,0),new HexCoord(r,0)}:players==3?new List<HexCoord>{new HexCoord(r,0),new HexCoord(-r,r),new HexCoord(0,-r)}:new List<HexCoord>{new HexCoord(r,0),new HexCoord(-r,0),new HexCoord(0,r),new HexCoord(0,-r)};
- if(ACTUAL_STARTS) starts=new StartProbe(map).Pick(players);
- foreach(ResourceSpecialization profile in Enum.GetValues(typeof(ResourceSpecialization)))foreach(ResourceRichness richness in Enum.GetValues(typeof(ResourceRichness))){HexResourceBonusRegistry.Clear();var budget=MapGenerationSettings.ResourceBudget(players,radius,ORDINARY ? (RegionResourceConditions?)null : new RegionResourceConditions(profile,richness));var plan=MatchResourcePlacement.Plan(map,starts,budget);if(plan.Near.Any(n=>n.Count!=3)||plan.Far.Points.Count!=budget.FarTarget||plan.Far.TechHexes.Count!=budget.TechTarget){Console.WriteLine("CITADELS "+string.Join(";",starts.Select(h=>h.Q+","+h.R)));Console.WriteLine("FAR candidates "+string.Join(";",coords.Where(h=>map.CanEnter(h)&&starts.All(c=>HexGridMath.Distance(c,h)>=4)).Select(h=>h.Q+","+h.R)));Console.WriteLine("NEAR "+string.Join(";",plan.Near.SelectMany(n=>n).Select(p=>p.Hex.Q+","+p.Hex.R)));throw new Exception($"Incomplete {biome} R{radius} P{players} seed{seed} {profile} {richness}: near{string.Join(",",plan.Near.Select(n=>n.Count))} far{plan.Far.Points.Count}/{budget.FarTarget}");}cases++;}}
-Console.WriteLine($"PASS authored biome placement: {cases} plans; both biomes, R5–8, P2–4, every profile/richness, four seeds, edge/inward starts. Real AssignTerrainTypes/PlaceComplexes; placeholder texture references, no rendering.");return 0;}}
+ if(ACTUAL_STARTS) {
+  starts=CitadelPlacementPlanner.Plan(map,new StartInputs(),coords.Where(map.IsCityRuins).ToList(),players,random).ToList();
+  if(starts.Count!=players)throw new Exception("Insufficient actual starts");
+  var legal=CitadelPlacementPlanner.PlacementOptions(map,starts[0],starts.Skip(1).ToHashSet()).ToList();
+  starts[0]=legal[random.Range(0,legal.Count)];
+ }
+ foreach(ResourceSpecialization profile in Enum.GetValues(typeof(ResourceSpecialization)))foreach(ResourceRichness richness in Enum.GetValues(typeof(ResourceRichness))){HexResourceBonusRegistry.Clear();var budget=MapGenerationSettings.ResourceBudget(players,radius,ORDINARY ? (RegionResourceConditions?)null : new RegionResourceConditions(profile,richness));var plan=MatchResourcePlacement.Plan(map,starts,budget,random,_=>false);if(plan.Near.Any(n=>n.Count!=3)||plan.Far.Points.Count!=budget.FarTarget||plan.Far.TechHexes.Count!=budget.TechTarget){Console.WriteLine("CITADELS "+string.Join(";",starts.Select(h=>h.Q+","+h.R)));Console.WriteLine("FAR candidates "+string.Join(";",coords.Where(h=>map.CanEnter(h)&&starts.All(c=>HexGridMath.Distance(c,h)>=4)).Select(h=>h.Q+","+h.R)));Console.WriteLine("NEAR "+string.Join(";",plan.Near.SelectMany(n=>n).Select(p=>p.Hex.Q+","+p.Hex.R)));throw new Exception($"Incomplete {biome} R{radius} P{players} seed{seed} {profile} {richness}: near{string.Join(",",plan.Near.Select(n=>n.Count))} far{plan.Far.Points.Count}/{budget.FarTarget}");}cases++;}}
+Console.WriteLine($"PASS authored biome placement: {cases} plans; both biomes, R5–8, P2–4, every profile/richness, four seeds, edge/inward starts. Real terrain/citadel/resource planners; placeholder texture references, no rendering.");return 0;}}
 '''.replace('INIT',init)
 prog+=probe
 prog=prog.replace('ACTUAL_STARTS',str(args.actual_starts).lower()).replace('ORDINARY',str(args.ordinary).lower())

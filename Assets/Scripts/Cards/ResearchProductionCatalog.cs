@@ -51,14 +51,16 @@ namespace Game.Cards
         public CardDefinition ResolveCard(string cardKey)
             => FactionCardCatalog.ResolveAcross(cardCatalogs, cardKey, false, this);
 
-        public CardDefinition ResolveResult(CardDefinition blueprint)
+        public CardDefinition ResolveResult(CardDefinition blueprint) => ResolveResult(blueprint, ResolveCard);
+
+        internal CardDefinition ResolveResult(CardDefinition blueprint, System.Func<string, CardDefinition> resolve)
         {
             if (blueprint == null) return null;
             var keys = (researchCards ?? new List<ResearchProductionEntry>())
                 .Concat(productionCards ?? new List<ResearchProductionEntry>())
                 .Where(e => e != null && e.cardKey == blueprint.authoredKey && !string.IsNullOrWhiteSpace(e.resultCardKey))
                 .Select(e => e.resultCardKey).Distinct().ToArray();
-            return keys.Length == 0 ? blueprint : keys.Length == 1 ? ResolveCard(keys[0]) : null;
+            return keys.Length == 0 ? blueprint : keys.Length == 1 ? resolve(keys[0]) : null;
         }
 
         // Every resolvable CardDefinition for `mode`, in list order, after applying each entry's
@@ -66,6 +68,10 @@ namespace Game.Cards
         // This is the list ResearchProductionModalUI paginates over — the faction filter is
         // applied HERE, before pagination, exactly as the spec requires.
         public List<CardDefinition> ResolveFor(ResearchProductionMode mode, Faction viewerFaction)
+            => ResolveFor(mode, viewerFaction, ResolveCard);
+
+        internal List<CardDefinition> ResolveFor(ResearchProductionMode mode, Faction viewerFaction,
+            System.Func<string, CardDefinition> resolve)
         {
             var result = new List<CardDefinition>();
             List<ResearchProductionEntry> entries =
@@ -79,7 +85,7 @@ namespace Game.Cards
                     continue;
                 if (entry.factionRestriction != Faction.None && entry.factionRestriction != viewerFaction)
                     continue;
-                CardDefinition card = ResolveCard(entry.cardKey);
+                CardDefinition card = resolve(entry.cardKey);
                 if (card != null)
                     result.Add(card);
             }

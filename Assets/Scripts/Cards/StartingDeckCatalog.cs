@@ -48,10 +48,10 @@ namespace Game.Cards
         public List<StartingDeck> aiDecks = new List<StartingDeck>();
 
         public FactionCardCatalog GetCatalog(Faction faction) =>
-            catalogs.FirstOrDefault(c => c != null && c.faction == faction);
+            catalogs?.FirstOrDefault(c => c != null && c.faction == faction);
 
         public StartingDeck GetDeck(Faction faction) =>
-            decks.FirstOrDefault(d => d != null && d.faction == faction);
+            decks?.FirstOrDefault(d => d != null && d.faction == faction);
 
         // Reuse the catalog's existing card lookup. Prefer stable identity across catalogs,
         // then accept the legacy qualified display name for decks that have not migrated yet.
@@ -95,11 +95,13 @@ namespace Game.Cards
             GetAiDecks(faction).FirstOrDefault(d => d.deckName == deckName);
 
         public CardDefinition ResolveAiLeader(Faction faction, string deckName)
+            => ResolveAiLeader(FindAiDeck(faction, deckName), ResolveCard);
+
+        internal static CardDefinition ResolveAiLeader(StartingDeck deck, System.Func<string, CardDefinition> resolve)
         {
-            var deck = FindAiDeck(faction, deckName);
-            var leader = ResolveCard(deck?.leaderCardKey);
-            return leader != null && leader.cardType == CardType.Hero && leader.faction == faction
-                && deck.cards.Any(e => e != null && e.cardKey == leader.authoredKey && e.count == 1)
+            var leader = resolve(deck?.leaderCardKey);
+            return leader != null && leader.cardType == CardType.Hero && leader.faction == deck.faction
+                && deck.cards?.Any(e => e != null && e.cardKey == leader.authoredKey && e.count == 1) == true
                 ? leader : null;
         }
 

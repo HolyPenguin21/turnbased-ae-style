@@ -11,7 +11,7 @@ namespace Game.UI
     internal static class CollectionCardDetail
     {
         // Single-text form for popups that have one label (reward messages).
-        internal static string Describe(CardDefinition card, GameConfig config, int owned)
+        internal static string Describe(CardDefinition card, IUnitDetailStyle config, int owned)
             => card == null ? Description(card, config, owned)
                 : Title(card) + "\n" + Type(card) + "\n" + Description(card, config, owned);
 
@@ -32,7 +32,7 @@ namespace Game.UI
 
         // Game stats, then abilities (name + full description from UnitAbilityCatalog). Name, cost and type tags
         // are left to Title/Type, so nothing is shown twice. `owned` is kept for callers; ownership is on the card cell.
-        internal static string Description(CardDefinition card, GameConfig config, int owned)
+        internal static string Description(CardDefinition card, IUnitDetailStyle config, int owned)
         {
             if (card == null) return string.Empty;
             string text = string.Empty;

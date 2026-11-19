@@ -121,15 +121,10 @@ namespace Game.Saves
         private static CardDefinition Card(string key, GameConfig config)
         {
             if (string.IsNullOrEmpty(key)) return null;
-            CardDefinition result = null;
-            if (config?.collectionDeckCatalog?.catalogs != null)
-                result = FactionCardCatalog.ResolveAcross(config.collectionDeckCatalog.catalogs, key, false);
-            if (config?.extractionFacilityCards != null) foreach (var card in config.extractionFacilityCards)
-                if (card != null && card.authoredKey == key)
-                {
-                    if (result != null && !ReferenceEquals(card, result)) throw new ArgumentException("Duplicate authored card: " + key);
-                    result = card;
-                }
+            if (config == null || string.IsNullOrWhiteSpace(key))
+                throw new ArgumentException("Unresolved historical card definition: " + key);
+            var result = CardContentIndex.ResolveAuthored(MatchContentResolver.MatchDefinitions(config), key, out bool ambiguous);
+            if (ambiguous) throw new ArgumentException("Duplicate authored card: " + key);
             return result ?? throw new ArgumentException("Unresolved historical card definition: " + key);
         }
         // Only a canonical catalog instance qualifies as an art source; anything else keeps ArtKey.
