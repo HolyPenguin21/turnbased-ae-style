@@ -45,6 +45,7 @@ namespace Game.Ai.V2
                         ThreatSeverity = d.ThreatSeverity, PrimaryArmyId = d.PrimaryArmyId,
                         ReturnHex = d.ReturnHex, EstimatedEta = eta,
                         ReturnPurpose = d.ReturnPurpose, EnemyEta = d.EnemyEta,
+                        ImmediateTurn = d.ImmediateTurn,
                     };
                     var proposal = new MissionProposal
                     {

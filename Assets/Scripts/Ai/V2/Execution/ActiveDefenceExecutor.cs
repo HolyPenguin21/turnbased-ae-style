@@ -93,6 +93,16 @@ namespace Game.Ai.V2
                     ExtractGarrisonRelief(player, ctx, pm, army, result);
                     yield break;
                 }
+                bool muster = pm.ActiveDefenceTarget.ReturnPurpose == ActiveDefenceReturnPurpose.Muster;
+                if (muster && pm.ActiveDefenceTarget.ReliefDonorGarrisonId.HasValue)
+                {
+                    // Intake on the staging hex, else the Detach extraction on the donor's hex.
+                    if (army.Hex.Equals(home))
+                        MusterIntake(player, ctx, pm, army, result);
+                    else
+                        ExtractGarrisonRelief(player, ctx, pm, army, result);
+                    yield break;
+                }
                 yield return GroundCombatLegStep.WalkTo(player, ctx, pm, result, army, home,
                     "V2 active defence - return", () =>
                     {
@@ -101,6 +111,10 @@ namespace Game.Ai.V2
                         // The relief detachment's bodies join the garrison: a roster change.
                         if (pm.ActiveDefenceTarget.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)
                             result.CombatChanged |= DeliverGarrisonRelief(player, ctx,
+                                AiV2Util.ResolveArmy(player, pm.MoverArmyId), home) > 0;
+                        // The muster mover joins the standing fist on the staging Base.
+                        if (muster)
+                            result.CombatChanged |= JoinFist(player, ctx,
                                 AiV2Util.ResolveArmy(player, pm.MoverArmyId), home) > 0;
                     });
                 yield break;
@@ -268,6 +282,87 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][GarrisonRelief][Execution] extracted {units.Count} bodies from garrison "
                 + $"#{donor.Id}@({donor.Hex.Q},{donor.Hex.R}) into #{shell.Id} for "
                 + $"({pm.ActiveDefenceTarget.ReturnHex.Value.Q},{pm.ActiveDefenceTarget.ReturnHex.Value.R})");
+        }
+
+        // Muster intake (2026-11-19) — the staging garrison's pinned units move into the fist on
+        // the same hex in one atomic transfer, after the same live check Provisioning ran
+        // (ActiveDefenceProvisioner.TryResolveMusterIntake). The intake is the leg's whole work.
+        private static void MusterIntake(PlayerSetupData player, AiTurnContext ctx,
+            ProvisionedMission pm, ArmyData fist, ExecutionResult result)
+        {
+            result.FinalHex = fist.Hex;
+            string why = null;
+            List<UnitData> units = null;
+            ArmyData donor = null;
+            bool ok = ActiveDefenceProvisioner.TryResolveMusterIntake(player, pm.ActiveDefenceTarget, fist,
+                out donor, out units, out why);
+            UnitData commander = ok && units.Count == 1 && units[0].IsHero
+                && !fist.Members.Any(u => u != null && u.IsHero) ? units[0] : null;
+            if (!ok || !ArmyActions.TransferMembersAtomic(units, donor, fist, ctx?.HexSelection, out why,
+                    promoteToCommander: commander))
+            {
+                AiDebugLog.Write($"[AI][V2][Muster][Execution] intake refused into #{fist.Id}: {why}");
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
+                return;
+            }
+            result.ReachedGoal = true;
+            result.CombatChanged = true;
+            result.StopReason = ExecutionStopReason.ReachedGoal;
+            AiDebugLog.Write($"[AI][V2][Muster][Execution] intake {units.Count} unit(s) "
+                + $"[{string.Join(",", units.Select(u => u.Name))}] from garrison #{donor.Id} into fist #{fist.Id}"
+                + $"@({fist.Hex.Q},{fist.Hex.R}) cap={fist.Capacity}");
+        }
+
+        // Muster arrival (2026-11-19) — the mover and the standing fist on the staging Base become
+        // one army: the bodies go into whichever of the two commands more (the fist on a tie), as
+        // many as fit, and only by a free transfer (ArmyActions.TransferMembersApCost = 0). A hero
+        // of the giving army stays behind when the receiver already has a commander (it would only
+        // take a slot). Nothing joins when no free fist stands there: the mover IS the fist then.
+        // Returns the units moved.
+        internal static int JoinFist(PlayerSetupData player, AiTurnContext ctx, ArmyData mover, HexCoord home)
+        {
+            if (player == null || mover == null || !mover.Hex.Equals(home) || mover.Members.Count == 0)
+                return 0;
+            HashSet<int> claimed = ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All
+                .Where(i => i != null && i.Status == IntentStatus.Active), null, null).ClaimedArmyIdSet;
+            ArmyData host = OwnWorld.Of(player).Armies
+                .Where(a => a != null && a != mover && a.Hex.Equals(home) && a.Members.Count > 0
+                    && !a.IsGarrison && !a.IsPrison && !a.IsAirfield && !a.IsCarrierContainer
+                    && !AviationRules.IsAirArmy(a) && !claimed.Contains(a.Id)
+                    && !a.Members.Any(u => u != null && u.IsAviation))
+                .OrderByDescending(a => a.Capacity).ThenByDescending(a => a.Members.Count).ThenBy(a => a.Id)
+                .FirstOrDefault();
+            if (host == null)
+            {
+                AiDebugLog.Write($"[AI][V2][Muster][Execution] #{mover.Id} reached ({home.Q},{home.R}): no fist there, it is the fist");
+                return 0;
+            }
+            var directions = mover.Capacity > host.Capacity
+                ? new[] { (Source: host, Target: mover), (Source: mover, Target: host) }
+                : new[] { (Source: mover, Target: host), (Source: host, Target: mover) };
+            int moved = 0;
+            foreach (var d in directions)
+            {
+                bool receiverCommands = d.Target.Members.Any(u => u != null && u.IsHero);
+                List<UnitData> giving = d.Source.Members
+                    .Where(u => u != null && !u.IsPrisoner && (!u.IsHero || !receiverCommands))
+                    .OrderByDescending(u => u.IsHero)
+                    .ThenByDescending(u => AiPower.EffectiveArmyPower(new List<UnitData> { u }))
+                    .ToList();
+                while (giving.Count > 0 && (ArmyActions.TransferMembersApCost(giving, d.Target) > 0
+                    || !ArmyActions.TransferMembersAtomic(giving, d.Source, d.Target, ctx?.HexSelection, out _)))
+                    giving.RemoveAt(giving.Count - 1);
+                if (giving.Count == 0)
+                    continue;
+                moved = giving.Count;
+                AiDebugLog.Write($"[AI][V2][Muster][Execution] joined {moved} unit(s) of #{d.Source.Id} into fist #{d.Target.Id}"
+                    + $"@({home.Q},{home.R}) cap={d.Target.Capacity} members={d.Target.Members.Count}");
+                break;
+            }
+            if (moved == 0)
+                AiDebugLog.Write($"[AI][V2][Muster][Execution] #{mover.Id} and fist #{host.Id} on ({home.Q},{home.R}) "
+                    + "could not join (capacity or activation charge); both stay on the Base");
+            return moved;
         }
 
         // GarrisonRelief — the plan's last action on arrival: the detachment's bodies join the

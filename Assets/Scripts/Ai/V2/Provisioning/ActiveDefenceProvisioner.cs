@@ -198,6 +198,8 @@ namespace Game.Ai.V2
                     "active defence return has no actor or home"));
             if (target.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)
                 return ProvisionGarrisonRelief(player, root, ctx, session, funded, target);
+            if (target.ReturnPurpose == ActiveDefenceReturnPurpose.Muster)
+                return ProvisionMuster(player, root, ctx, session, funded, target);
             ArmyData actor = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
             if (!AiV2Util.IsLiveOwnArmy(actor, player))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
@@ -330,6 +332,91 @@ namespace Game.Ai.V2
                 ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = ap,
             });
+        }
+
+        // Muster (2026-11-19). A Detach is the GarrisonRelief extraction (same pinned donor, bodies
+        // and empty shell, same live check); an Intake moves the staging garrison's pinned units
+        // straight into the fist on the same hex (TryResolveMusterIntake, zero AP); a Walk is a
+        // plain Return of a free army to the staging Base.
+        private static ProvisioningResult ProvisionMuster(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            ActiveDefenceMissionTarget target)
+        {
+            HexCoord home = target.ReturnHex.Value;
+            WorldSnapshot snap = session.Snapshot;
+            if (snap?.Self?.BaseHexes?.Contains(home) != true)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("staging_base_lost"));
+            ArmyData mover = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
+            if (!AiV2Util.IsLiveOwnArmy(mover, player))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("muster mover is gone"));
+            if (session.ExcludedForGroundCombat(funded.Mission).Contains(mover.Id)
+                || (target.ReliefDonorGarrisonId.HasValue && session.ClaimedArmyIds.Contains(mover.Id)))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended("muster mover is claimed"));
+            if (target.ReliefDonorGarrisonId.HasValue)
+            {
+                ArmyData donorGarrison = AiV2Util.ResolveArmy(player, target.ReliefDonorGarrisonId.Value);
+                if (donorGarrison == null || !donorGarrison.Hex.Equals(home))
+                    return ProvisionGarrisonRelief(player, root, ctx, session, funded, target);
+                if (!TryResolveMusterIntake(player, target, mover, out _, out _, out string why))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"muster intake #{target.ReliefDonorGarrisonId} -> #{mover.Id}: {why}"));
+                return ProvisioningResult.Ok(new ProvisionedMission
+                {
+                    Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
+                    Kind = MissionKind.ActiveDefence, MoverArmyId = mover.Id,
+                    FocusHex = home, ExecutionHex = home,
+                    ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
+                    ClaimedAp = 0f,
+                });
+            }
+            if (mover.Members.Count == 0)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("muster mover is empty"));
+            if (mover.Hex.Equals(home))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied("muster mover already on the staging Base"));
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, mover, home, profile: SafeRouteProfile.Combat) == null)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep("muster mover has no safe step"));
+            int ap = mover.HasActivatedThisTurn ? 0 : mover.ActivationApCost;
+            if (ap > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
+                    "muster AP envelope is stale"));
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
+                Kind = MissionKind.ActiveDefence, MoverArmyId = mover.Id,
+                FocusHex = home, ExecutionHex = home,
+                ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = ap,
+            });
+        }
+
+        // THE live check of a pinned muster intake, read by Provisioning and by the executor right
+        // before it moves the units: the donor is our garrison on the fist's hex, every planned unit
+        // is still in it, the garrison may let them all go (AiArmyRoles.CanSpareGarrisonMembers),
+        // the fist is an own free field container there and the transfer is legal and free.
+        internal static bool TryResolveMusterIntake(PlayerSetupData player, ActiveDefenceMissionTarget target,
+            ArmyData fist, out ArmyData donor, out List<UnitData> units, out string why)
+        {
+            donor = null; units = null; why = "no pinned intake";
+            IReadOnlyList<int> ids = target.ReliefUnitRuntimeIds;
+            if (!target.ReliefDonorGarrisonId.HasValue || ids == null || ids.Count == 0 || fist == null)
+                return false;
+            donor = AiV2Util.ResolveArmy(player, target.ReliefDonorGarrisonId.Value);
+            if (donor == null || !donor.IsGarrison || donor.IsPrison || donor.Owner != player
+                || !donor.Hex.Equals(fist.Hex))
+            { why = "donor garrison gone or not on the fist's hex"; return false; }
+            if (fist.Owner != player || fist.IsGarrison || fist.IsPrison || fist.IsAirfield
+                || fist.IsCarrierContainer || AviationRules.IsAirArmy(fist))
+            { why = "fist is no field container"; return false; }
+            ArmyData resolved = donor;
+            units = ids.Select(id => resolved.Members.FirstOrDefault(u => u != null && u.RuntimeId == id)).ToList();
+            if (units.Any(u => u == null || u.HitPointsCurrent <= 0))
+            { why = "planned units left the garrison or died"; return false; }
+            if (!AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
+            { why = "garrison floor keeps the units"; return false; }
+            if (ArmyActions.TransferMembersApCost(units, fist) > 0)
+            { why = "the fist already activated: the intake would charge AP"; return false; }
+            why = null;
+            return true;
         }
 
         // THE live check of a pinned relief extraction, read by Provisioning (preflight) and by the

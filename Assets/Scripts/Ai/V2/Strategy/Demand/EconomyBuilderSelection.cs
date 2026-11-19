@@ -192,9 +192,14 @@ namespace Game.Ai.V2
                             || !army.NonHeroIsAviation[i])).ToList();
                 List<WorthIt.DefenderProfile> current = currentIndices
                     .Select(i => army.Members[i]).ToList();
+                // 2026-11-19 (owner, FoundingSiteDefence) — a founding on a site the known enemy
+                // reaches takes its whole roster: no body is left at home (LightenAtBase). Match
+                // Tessek vs Draven: the builder dropped its Hazard Pioneer and founded (-2,0), two
+                // hexes from a 63-power enemy Base, with one Crawler.
+                bool keepWholeRoster = founding && FoundingSiteDefence.IsThreatened(snap, target);
                 if (EconomyRosterSafe(current, army.Commander, threats, minimumEscort))
                     return AssessOwnRoster(choice, threats, minimumEscort, currentIndices,
-                        mayPrepare ? localGarrison : null, buildApCost, includeReturn);
+                        mayPrepare && !keepWholeRoster ? localGarrison : null, buildApCost, includeReturn);
                 if (!mayPrepare)
                 {
                     if (localGarrison?.HasActivatedThisTurn == true)

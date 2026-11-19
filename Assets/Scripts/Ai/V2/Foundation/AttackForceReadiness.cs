@@ -39,16 +39,18 @@ namespace Game.Ai.V2
 
         // Mobilization opens a new Attack preparation (never a march). Two independent starts
         // (2026-09-30, user decision); the march itself keeps ForceReady's strict > 80%:
-        //  (A) deck share — at least three quarters of the additive live + hand + remaining-deck
+        //  (A) deck share — at least three fifths of the additive live + hand + remaining-deck
         //      ground force is already on the map (PlayerForceAnalysis scale). Inclusive; written
-        //      as 4·deployed >= 3·available so exactly three quarters (135 of 180) is not lost to
-        //      the binary rounding of 0.75f.
+        //      as 5·deployed >= 3·available so exactly three fifths (108 of 180) is not lost to
+        //      the binary rounding of 0.6f. 2026-11-19 (owner decision, match Tessek vs Draven):
+        //      75% -> 60%; Draven reached three quarters only on T28. (B) stays as it is — it
+        //      usually opens first.
         //  (B) field strike force — the bodies already on the field can form the strike army:
         //      SelfSnapshot.FieldStrikePotential (no active scouts, aviation, heroes' own power or
         //      mandatory garrison defence; Raid / ActiveDefence armies count — they come back)
         //      clears the same ForceReady bar on the current deck peak.
         internal static bool MobilizationOpen(float deployedPower, float availablePower) =>
-            availablePower > 0f && 4f * deployedPower >= 3f * availablePower;
+            availablePower > 0f && 5f * deployedPower >= 3f * availablePower;
 
         internal static bool FieldStrikeForceReady(float fieldStrikePotential, float currentDeckPeakPower) =>
             ForceReady(fieldStrikePotential, currentDeckPeakPower);

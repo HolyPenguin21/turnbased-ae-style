@@ -482,6 +482,27 @@ namespace Game.Ai.V2
             return reserve > 0f && snap.Self.GarrisonPower >= reserve;
         }
 
+        // 2026-11-19 (owner, match Tessek vs Draven: garrisons held ~163 power against ~70 in the
+        // field) — no garrison overfill: a generic surplus deposit (no unresolved demand it
+        // delivers) never goes into a garrison that already holds its defence floor
+        // (SelfSnapshot.GarrisonReleaseFloors — share, threat, residents and the mobile reserve).
+        // The card goes to a field army on the Base (the standing fist, FistMusterObjectiveEvaluator)
+        // or stays in hand; a garrison below its floor is filled as before.
+        internal static bool GarrisonHoldsItsFloor(WorldSnapshot snap, MaterializationPlan plan,
+            AxisDemand residual, out string why)
+        {
+            why = null;
+            if (residual != null || plan == null || plan.Deploy.Kind != DeploymentKind.Garrison
+                || plan.Deploy.Army == null || snap?.Self?.GarrisonReleaseFloors == null
+                || !snap.Self.GarrisonReleaseFloors.TryGetValue(plan.Deploy.Army.Id, out float floor))
+                return false;
+            ArmySnapshot garrison = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == plan.Deploy.Army.Id);
+            if (garrison == null || garrison.EffectiveArmyPower + 0.001f < floor)
+                return false;
+            why = $"garrison #{garrison.ArmyId} holds {garrison.EffectiveArmyPower:0.#} >= floor {floor:0.#}";
+            return true;
+        }
+
         // §P1 — generic surplus must not add a scout beyond the physical IsSoloRecce portfolio
         // cap, across EVERY chain kind (RankedSurplus treats a recce card as ScoutCapability and
         // will build NewArmy / ReusableShell / Attach / Generate placements for it — the Recon
@@ -547,6 +568,13 @@ namespace Game.Ai.V2
                         AiDebugLog.Write($"[AI][V2]   strat.B - defer {plan.StableKey} {AiCardLog.Plan(plan)} "
                             + $"score {F(plan.Score)} < garrison-saturated bar "
                             + $"{F(AiConfigV2.garrisonSaturatedMinUtility)}");
+                    continue;
+                }
+                if (GarrisonHoldsItsFloor(snap, plan, residual, out string floorWhy))
+                {
+                    if (verbose)
+                        AiDebugLog.Write($"[AI][V2]   strat.B - hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
+                            + $"no garrison overfill ({floorWhy}); a surplus body belongs to a field army");
                     continue;
                 }
                 if (residual == null

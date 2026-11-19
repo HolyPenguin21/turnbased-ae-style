@@ -326,6 +326,8 @@ namespace Game.Ai.V2
         public ActiveDefencePhase Phase;
         public ActiveDefenceReturnPurpose ReturnPurpose;
         public ActiveDefenceInterceptPurpose InterceptPurpose;
+        // ImmediateOpportunity Intercept and Muster Return: the global turn it was admitted in
+        // (it ends with that turn).
         public int ImmediateTurn;
         public GarrisonSortiePlan Sortie;
         public int? EnemyEta;

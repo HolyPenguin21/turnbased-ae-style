@@ -215,6 +215,18 @@ namespace Game.Ai.V2
             TaskScore score = BuildFoundBaseScore(s, marginalByResource,
                 hasUsefulGain, paybackTurns, facts, site, homeDistance,
                 card.EffectivePlayApCost, resourcePrice, extraAp, heroCost);
+            // 2026-11-19 (owner) — a site the known enemy reaches before the party, the hand and
+            // the standing fist can hold it pays the shortfall share as HexThreatRisk
+            // (FoundingSiteDefence). A site held in time pays nothing.
+            (float escortPower, int escortBodies) = FoundingSiteDefence.EscortOf(builder);
+            FoundingSiteDefence.Assessment siteDefence = FoundingSiteDefence.Assess(s, site.Hex,
+                escortPower, escortBodies);
+            float siteRisk = TaskScoreEvaluator.HexThreatRisk(siteDefence.ShortfallShare);
+            if (siteRisk > AiConfigV2.allocatorSliceEpsilon)
+            {
+                score = TaskScoreEvaluator.WithAdded(score, TaskSlot.HexThreatRisk, siteRisk);
+                siteOnlyScore = TaskScoreEvaluator.WithAdded(siteOnlyScore, TaskSlot.HexThreatRisk, siteRisk);
+            }
             float value = score.Value;
             // Same rule as extraction: a ready hero that turns a fresh Base into a loss
             // leaves it to a possible NEW hero (Materialization prices that path).
@@ -258,7 +270,8 @@ namespace Game.Ai.V2
                     + $"front={front:0.##} corridor={corridor:0.##} proximity={proximity:0.##} "
                     + $"defense={defense:0.##} "
                     + $"price={cardPrice:0.##} delivery={score.Delivery:0.##} "
-                    + $"moverOpp={heroCost:0.##} citadelRisk={citadelRisk:0.##}"
+                    + $"moverOpp={heroCost:0.##} citadelRisk={citadelRisk:0.##} "
+                    + $"siteRisk={siteRisk:0.##} {siteDefence.Describe()}"
                     + (readyLossToNewHero
                         ? $"; ready#{builder.Army.ArmyId} loses -> new_hero_only" : ""),
             };
