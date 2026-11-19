@@ -1208,7 +1208,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000004000000
     grantedAbilities:
     - r1s5
     resourceYield:
@@ -1599,7 +1599,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000200000004000000
+    unitTypeTags: 0000000003000000
     grantedAbilities:
     - Counterattack
     resourceYield:
