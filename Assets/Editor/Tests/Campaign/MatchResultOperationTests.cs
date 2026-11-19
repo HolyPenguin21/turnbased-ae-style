@@ -382,6 +382,48 @@ public sealed class MatchResultOperationTests
         Assert.That(collection.Owned(CardKey), Is.EqualTo(1));
     }
 
+    private sealed class ResultCatalogs : IProgressionContent
+    {
+        public StartingDeckCatalog CollectionDeckCatalog { get; set; }
+        public ResearchProductionCatalog CollectionResearchCatalog { get; set; }
+    }
+
+    [Test] public void CatalogOnlyInitializationRetriesAndOpenReusesDurableReward()
+    {
+        var savedStatics = new[] { nameof(ProgressionContext.Collection), nameof(ProgressionContext.Rewards),
+            nameof(ProgressionContext.Notice), nameof(ProgressionContext.Error) }
+            .Select(name => typeof(ProgressionContext).GetProperty(name)).ToArray();
+        var previous = savedStatics.Select(property => property.GetValue(null)).ToArray();
+        try
+        {
+            foreach (var property in savedStatics) property.SetValue(null, null);
+            var catalogs = new ResultCatalogs { CollectionDeckCatalog = starting, CollectionResearchCatalog = research };
+            Directory.CreateDirectory(profileWrite);
+            Assert.That(ProgressionContext.Initialize(catalogs, () => profileStore), Is.False);
+            Assert.That(ProgressionContext.Collection, Is.Null);
+            Assert.That(ProgressionContext.Rewards, Is.Null);
+            Directory.Delete(profileWrite);
+            Assert.That(ProgressionContext.Initialize(catalogs, () => profileStore), Is.True, ProgressionContext.Error);
+            var human = new PlayerSetupData { IsHuman = true, Faction = Faction.Ashen };
+            var result = new ParticipantResult("catalog-only", human, MatchOutcome.Victory);
+            var first = MatchResultOperation.Open(catalogs, MatchResultOrigin.Game, participant: result);
+            var view = first.Advance();
+            Assert.That(view.Reward.Keys, Is.EqualTo(new[] { CardKey }));
+            Assert.That(first.Claim(result.MatchId, view.Reward.Keys).Reward.Claimed, Is.True);
+
+            foreach (var property in savedStatics) property.SetValue(null, null);
+            Assert.That(ProgressionContext.Initialize(catalogs, () => profileStore), Is.True, ProgressionContext.Error);
+            var resumed = MatchResultOperation.Open(catalogs, MatchResultOrigin.Game, participant: result);
+            Assert.That(resumed.Advance().Reward.Claimed, Is.True);
+            Assert.That(ProgressionContext.Collection.Owned(CardKey), Is.EqualTo(1));
+            Assert.That(profileStore.Load(out _).pendingRewards.Count, Is.EqualTo(1));
+        }
+        finally
+        {
+            for (int i = 0; i < savedStatics.Length; i++) savedStatics[i].SetValue(null, previous[i]);
+        }
+    }
+
     [Test] public void OrdinaryDrawReturnsToMenuWithoutOpeningTheProfile()
     {
         var player = new PlayerSetupData { IsHuman = true, Faction = Faction.Ashen };

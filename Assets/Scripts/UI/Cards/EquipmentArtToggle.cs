@@ -54,7 +54,7 @@ namespace Game.UI
         private void OnDisable() => Revert();
 
         private CardDefinition _equipment;
-        private GameConfig _config;
+        private IAbilityText _config;
         private CardType? _hostCardType;
         private bool _hovering;
         private bool _pressed;
@@ -70,7 +70,7 @@ namespace Game.UI
         private readonly TextSwap _moveSwap = new TextSwap();
         private readonly TextSwap _rangeSwap = new TextSwap();
 
-        public void Configure(CardDefinition equipment, GameConfig config, CardType? hostCardType = null)
+        public void Configure(CardDefinition equipment, IAbilityText config, CardType? hostCardType = null)
         {
             RestoreNow();                 // undo anything still applied from a previous binding
             _equipment = equipment;

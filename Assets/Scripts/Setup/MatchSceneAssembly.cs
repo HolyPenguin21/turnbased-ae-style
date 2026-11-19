@@ -6,7 +6,7 @@ namespace Game.Setup
 {
     internal static class MatchSceneAssembly
     {
-        internal static void ConfigureWorld(GameConfig config, HexMap map)
+        internal static void ConfigureWorld(IVisionRules config, HexMap map)
         {
             if (config == null || map == null) throw new InvalidOperationException("Match configuration or map is missing.");
             VisionSystem.Configure(config); MapObservationSystem.Configure(map);

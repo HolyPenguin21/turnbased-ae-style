@@ -7,6 +7,9 @@ using System.Linq;
 namespace UnityEngine
 {
     public class Object { public string name; public static void Destroy(Object o) {} public static void DestroyImmediate(Object o) {} }
+    public struct Scene { public SceneHandle handle; }
+    public struct SceneHandle { public ulong GetRawData() => 0; }
+    public class Sprite : Object {}
     public class ScriptableObject : Object { public static T CreateInstance<T>() where T:ScriptableObject,new()=>new T(); }
     public class Component : Object { public Transform transform = new Transform(); public GameObject gameObject; public T GetComponent<T>() where T : class => gameObject?.GetComponent<T>(); }
     public class MonoBehaviour : Component { public bool enabled; public bool isActiveAndEnabled => enabled; protected Coroutine StartCoroutine(IEnumerator e) => new Coroutine(); protected void StopCoroutine(Coroutine c) {} }
@@ -14,6 +17,7 @@ namespace UnityEngine
     public class GameObject : Object
     {
         public Transform transform = new Transform();
+        public Scene scene;
         private readonly Dictionary<Type,object> _components = new Dictionary<Type,object>();
         public GameObject(string name) {}
         public T AddComponent<T>() where T:Component,new() { var c=new T{gameObject=this};_components[typeof(T)]=c;return c; }
@@ -51,7 +55,7 @@ namespace UnityEngine
         public static float Range(float min,float max)=>min+(max-min)*(float)_rng.NextDouble();
         public static float value=>(float)_rng.NextDouble();
     }
-    public static class Debug { public static void LogWarning(string message)=>System.Console.WriteLine("WARN "+message); public static void LogError(string message)=>System.Console.WriteLine("ERROR "+message); }
+    public static class Debug { public static void LogWarning(string message)=>System.Console.WriteLine("WARN "+message); public static void LogError(string message, Object context = null)=>System.Console.WriteLine("ERROR "+message); }
     public readonly struct Vector2Int { public readonly int x,y; public Vector2Int(int x,int y){this.x=x;this.y=y;} }
     public struct Vector2 { public static Vector2 zero=>new Vector2(); public float x,y; public Vector2(float x,float y){this.x=x;this.y=y;} }
     public struct Color { public static Color white=>new Color(1,1,1,1); public float r,g,b,a; public Color(float r,float g,float b,float a=1){this.r=r;this.g=g;this.b=b;this.a=a;} }
@@ -81,6 +85,7 @@ namespace UnityEngine
         public static float Round(float x)=>(float)Math.Round(x);public static int RoundToInt(float x)=>(int)Math.Round(x);
         public static float Abs(float x)=>Math.Abs(x);public static int Abs(int x)=>Math.Abs(x);
         public static int Min(int a,int b)=>Math.Min(a,b);public static int Max(int a,int b)=>Math.Max(a,b);
+        public static float Lerp(float a,float b,float t)=>a+(b-a)*Clamp01(t);
         public static int Clamp(int value,int min,int max)=>Math.Max(min,Math.Min(max,value));
     }
     public static class Time { public static double timeAsDouble; public static float deltaTime=1f/60; }
@@ -91,12 +96,29 @@ namespace UnityEngine
     public class MaterialPropertyBlock {public void SetTexture(int id,Texture2D value){} public void SetFloat(int id,float value){} public void SetVector(int id,Vector4 value){}}
     public class SerializeField:Attribute{} public class RequireComponent:Attribute{public RequireComponent(params Type[] t){}}
     public class ExecuteAlways:Attribute{} public class ContextMenu:Attribute{public ContextMenu(string n){}}
+    public class CreateAssetMenuAttribute : Attribute { public string fileName, menuName; }
+    public class TextAreaAttribute : Attribute { public TextAreaAttribute() {} public TextAreaAttribute(int min, int max) {} }
+    public class HideInInspector : Attribute {}
     public class TooltipAttribute:Attribute{public TooltipAttribute(string n){}}
     public class HeaderAttribute:Attribute{public HeaderAttribute(string n){}}
     public class MinAttribute:Attribute{public MinAttribute(float n){}} public class RangeAttribute:Attribute{public RangeAttribute(float a,float b){}}
 }
 namespace UnityEngine.Rendering { public enum IndexFormat { UInt32 } public enum ShadowCastingMode {Off} }
-namespace Game.Players { public class PlayerSetupData {} }
+namespace Game.Players
+{
+    public enum Faction { IronConcord, Neutral, Ashen, Vessels }
+    public class PlayerSetupData { public bool IsHuman, IsNeutral; }
+}
+namespace Game.Cards
+{
+    public sealed class ArmyTagAttribute : Attribute {}
+    public sealed class CardDefinition
+    {
+        public int id;
+        public string authoredKey, displayName;
+        public CardType cardType;
+    }
+}
 namespace Game.Units { public class UnitData { public int MoveCurrent,MoveMax;public bool IsAviation,HasEmergencyFlightPenalty;} }
 namespace Game.Map
 {
@@ -115,6 +137,8 @@ namespace Game.Map
         public static event Action<Game.HexGrid.HexCoord> ContentChangedForTest;
         public static void NotifyContentChanged(Game.HexGrid.HexCoord hex)=>ContentChangedForTest?.Invoke(hex);
     }
+    public class SandstormMapLayer : UnityEngine.Component { public void Configure(object style) {} }
+    public class ArmyController {}
     public class ArmyData
     {
         public Game.HexGrid.HexCoord Hex;public Game.Players.PlayerSetupData Owner;
@@ -137,12 +161,19 @@ namespace Game.Aviation
 namespace Game.Core
 {
     public struct ProfileScope:IDisposable{public ProfileScope(string s){} public void Dispose(){}}
-    public class GameConfig:UnityEngine.ScriptableObject { public Game.Terrain.MapGenerationSettings mapGeneration; public Game.Styles.FogOfWarStyle fogOfWarStyle; }
+    public interface ICitadelPlacementRules
+    {
+        int MaxEdgeDistance { get; }
+        int MinCityRuinsDistance { get; }
+        int CornerExclusionRadius { get; }
+    }
+    public class GameConfig:UnityEngine.ScriptableObject { public Game.Terrain.MapGenerationSettings mapGeneration; public Game.Styles.FogOfWarStyle fogOfWarStyle; public object sandstormVisualStyle; }
     public sealed class PendingMapRestore { public Game.Map.HexMapLayout Map; }
     public static class GameSession
     {
         public static PendingMapRestore PendingRestore;
         public static string SetupError;
+        public static void InitializeWorld(ulong sceneHandle) {}
         public static int ResolveMapRadius(int fallback)=>fallback;
         public static Game.Terrain.Biome ResolveBiome()=>Game.Terrain.Biome.Arid;
     }

@@ -72,13 +72,13 @@ namespace Game.Map
         // since AddComponent runs it synchronously before the caller has any chance to hand
         // over a GameConfig reference. Safe to call more than once; only the first call does
         // anything. Falls back to MoveArrowStyle's own defaults if config is null.
-        public void Initialize(GameConfig config)
+        public void Initialize(IMoveArrowStyle config)
         {
             if (_initialized)
                 return;
             _initialized = true;
 
-            _style = config != null ? config.moveArrowStyle : new MoveArrowStyle();
+            _style = config != null ? config.MoveArrowStyle : new MoveArrowStyle();
             geometry = new ArrowMeshGeometry(_style);
 
             _renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

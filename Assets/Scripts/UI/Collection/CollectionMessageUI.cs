@@ -9,6 +9,7 @@ namespace Game.UI
     // Owns the lifetime and input block of transient profile errors/card descriptions.
     internal sealed class CollectionMessageUI : MonoBehaviour
     {
+        internal const string RewardDialogKey = "Prefabs/Rewards/RewardDialog";
         private static int showing;
         private static int closedFrame = -1;
         private GameObject previousSelection;
@@ -27,7 +28,7 @@ namespace Game.UI
             showing++; UIFocusUtility.SetOverlay(owner, true);
             if (rewardStyle)
             {
-                var view = Instantiate(GameAssetCatalog.Load<GameObject>("Prefabs/Rewards/RewardDialog").GetComponent<CollectionRewardView>(), canvas);
+                var view = Instantiate(GameAssetCatalog.Load<GameObject>(RewardDialogKey).GetComponent<CollectionRewardView>(), canvas);
                 view.Title.text = rewardTitle;
                 view.Body.text = message;
                 view.PrimaryButton.onClick.AddListener(owner.Close);

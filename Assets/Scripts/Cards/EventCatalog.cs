@@ -105,6 +105,9 @@ namespace Game.Cards
         // Scans `cardCatalogs` for the card named by cardKey ("<catalog.displayName>/<card.
         // displayName>") — null if the catalog or the card inside it can no longer be found,
         // same fallback StartingDeckCatalog.ResolveCard/NeutralArmyCatalog.ResolveCard use.
+        internal static bool CanGrantCard(CardDefinition card) => card != null
+            && (card.cardType == CardType.Unit || card.cardType == CardType.Equipment || card.cardType == CardType.Tactic);
+
         public CardDefinition ResolveCard(string cardKey)
             => FactionCardCatalog.ResolveAcross(cardCatalogs, cardKey, true, this);
     }

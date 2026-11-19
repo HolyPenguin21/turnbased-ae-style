@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using Game.Cards;
 using Game.Core;
 using Game.HexGrid;
 using Game.Map;
@@ -59,6 +60,30 @@ namespace Game.EditorTests
         }
         private void Validate(MatchPresentationData data) => MatchPresentationCodec.Validate(data, config, Player,
             new HexMapLayout { Cells = new[] { new MapLayoutCell { Q = 1 } } }, MatchIdentityState.Capture());
+        [Test] public void HistoricalCardRejectsAmbiguityEvenWhenAnExtractionCardMatches()
+        {
+            var deck = ScriptableObject.CreateInstance<StartingDeckCatalog>();
+            var faction = ScriptableObject.CreateInstance<FactionCardCatalog>();
+            const string key = "historical.card";
+            var card = new CardDefinition { authoredKey = key };
+            try
+            {
+                deck.catalogs.Add(faction);
+                config.collectionDeckCatalog = deck;
+                faction.cards.Add(card);
+                Assert.That(Invoke<CardDefinition>("Card", key, config), Is.SameAs(card));
+
+                faction.cards.Add(new CardDefinition { authoredKey = key });
+                config.extractionFacilityCards = new[] { new CardDefinition { authoredKey = key } };
+                Assert.That(Assert.Throws<ArgumentException>(() => Invoke<CardDefinition>("Card", key, config))
+                    .Message, Does.Contain("Duplicate authored card"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(deck);
+                Object.DestroyImmediate(faction);
+            }
+        }
         [Test] public void JsonRoundtrip_RetainsIndependentHistoricalRosterAfterHiddenCapture()
         {
             var saved = Remembered(out var live);

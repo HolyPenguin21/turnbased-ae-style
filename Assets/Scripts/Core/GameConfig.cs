@@ -16,7 +16,8 @@ namespace Game.Core
     // scene GameObject would. Camera feel (RtsCameraController) deliberately stays out of
     // this — it's tuning for one specific camera rig, not a shared/gameplay setting.
     [CreateAssetMenu(fileName = "GameConfig", menuName = "Game/Game Config")]
-    public class GameConfig : ScriptableObject
+    public class GameConfig : ScriptableObject, IMatchCardContent, IVisionRules, IExtractionSiteRules,
+        ICitadelPlacementRules, IProgressionContent, IMoveArrowStyle, IUnitDetailStyle
     {
         [Header("Army radio (presentation only)")]
         public ArmyRadioChatterSettings armyRadioChatter = new ArmyRadioChatterSettings();
@@ -235,6 +236,21 @@ namespace Game.Core
         [Header("Weather")]
         // Sandstorm map art (see Game.Map.SandstormMapLayer). Empty frames = layer draws nothing.
         public SandstormVisualStyle sandstormVisualStyle = new SandstormVisualStyle();
+
+        StartingDeckCatalog IStartingDeckContent.CollectionDeckCatalog => collectionDeckCatalog;
+        ResearchProductionCatalog IProgressionContent.CollectionResearchCatalog => collectionResearchCatalog;
+        IReadOnlyList<CardDefinition> IMatchCardContent.ExtractionFacilityCards => extractionFacilityCards == null ? null : System.Array.AsReadOnly(extractionFacilityCards);
+        int IVisionRules.ArmyVisionRadius => armyVisionRadius;
+        int IVisionRules.BuildingVisionRadius => buildingVisionRadius;
+        int IExtractionSiteRules.ResourceSiteStructurePoints => resourceSiteStructurePoints;
+        int IExtractionSiteRules.ResourceSiteDefense => resourceSiteDefense;
+        int IExtractionSiteRules.ResourceSiteFate => resourceSiteFate;
+        int ICitadelPlacementRules.MaxEdgeDistance => maxEdgeDistance;
+        int ICitadelPlacementRules.MinCityRuinsDistance => minCityRuinsDistance;
+        int ICitadelPlacementRules.CornerExclusionRadius => cornerExclusionRadius;
+        MoveArrowStyle IMoveArrowStyle.MoveArrowStyle => moveArrowStyle;
+        Color IUnitDetailStyle.StatBonusColor => statBonusColor;
+        Color IUnitDetailStyle.StatPenaltyColor => statPenaltyColor;
     }
 }
 

@@ -21,6 +21,14 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
     private const string StampPath = "Library/MatchSaveAssetManifest.stamp";
     private static bool building;
     private static bool queued;
+    private static DiscoverySample measurement;
+
+    private sealed class DiscoverySample
+    {
+        internal int Paths, CandidateProbes, AssetLoads, LoadedObjects, WorldDependencies;
+        internal double ScanMilliseconds;
+        internal long ScanManagedBytes;
+    }
     public int callbackOrder => -1000;
 
     static MatchSaveAssetManifestBuilder()
@@ -35,9 +43,9 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
     private static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
     {
         if (building) return;
-        // Editing UI/presentation prefabs or scenes cannot change save content; play/build still rebuild.
+        // Prefabs in UI folders can carry SpriteRenderers or world markers.
         if (imported.Concat(deleted).Concat(moved).Concat(movedFrom).Any(p => p != Output && p != Output + ".meta"
-            && !MatchSaveContentFingerprint.IsPresentationAuthoring(p))) Queue();
+            && MatchSaveContentFingerprint.IsDiscoveryInput(p))) Queue();
     }
     private static void Queue()
     {
@@ -76,12 +84,15 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
             var eventCatalogs = new List<EventCatalog>();
             var prefabs = new SortedDictionary<string, MapObjectVisual>(StringComparer.Ordinal);
             var requiredWorldDependencies = new HashSet<string>(StringComparer.Ordinal);
+            var sample = measurement;
+            long beforeScan = sample == null ? 0 : GC.GetAllocatedBytesForCurrentThread();
+            var timer = sample == null ? null : System.Diagnostics.Stopwatch.StartNew();
             var content = ContentPaths();
             foreach (string path in content)
             {
                 // Scene objects cannot be loaded via LoadAllAssetsAtPath; scenes hold no manifest content.
-                if (path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) continue;
-                foreach (var asset in LoadCandidates(path))
+                if (!MatchSaveContentFingerprint.IsDiscoveryInput(path)) continue;
+                foreach (var asset in LoadCandidates(path, sample))
                 {
                     if (asset is Sprite sprite) sprites[Key(sprite)] = sprite;
                     if (asset is Material material) materials[Key(material)] = material;
@@ -102,6 +113,13 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
                         }
                     }
                 }
+            }
+            if (sample != null)
+            {
+                sample.Paths = content.Length;
+                sample.ScanMilliseconds = timer.Elapsed.TotalMilliseconds;
+                sample.ScanManagedBytes = GC.GetAllocatedBytesForCurrentThread() - beforeScan;
+                sample.WorldDependencies = requiredWorldDependencies.Count;
             }
             // SpriteRenderer's built-in default material is authored engine content. Include it
             // even when no current prefab happens to use it (restored empty markers still may).
@@ -142,21 +160,61 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
     // Only sprites, materials, event catalogs and prefabs enter the manifest. Audio and text never
     // hold them, and a texture holds sprites only when imported as a Sprite; its
     // sub-assets are enough, so the texture itself is not loaded.
-    private static UnityEngine.Object[] LoadCandidates(string path)
+    private static UnityEngine.Object[] LoadCandidates(string path, DiscoverySample sample)
     {
         var type = AssetDatabase.GetMainAssetTypeAtPath(path);
-        if (type == null) return AssetDatabase.LoadAllAssetsAtPath(path);
-        if (typeof(Texture).IsAssignableFrom(type))
-            return AssetImporter.GetAtPath(path) is TextureImporter texture && texture.textureType != TextureImporterType.Sprite
-                ? Array.Empty<UnityEngine.Object>() : AssetDatabase.LoadAllAssetRepresentationsAtPath(path);
-        // Shaders stay: a Shader Graph asset carries its own Material sub-asset.
-        if (typeof(AudioClip).IsAssignableFrom(type) || typeof(TextAsset).IsAssignableFrom(type))
+        if (sample != null) sample.CandidateProbes++;
+        bool textureAsset = type != null && typeof(Texture).IsAssignableFrom(type);
+        if (textureAsset && AssetImporter.GetAtPath(path) is TextureImporter texture
+            && texture.textureType != TextureImporterType.Sprite)
             return Array.Empty<UnityEngine.Object>();
-        return AssetDatabase.LoadAllAssetsAtPath(path);
+        // Shaders stay: a Shader Graph asset carries its own Material sub-asset.
+        if (type != null && (typeof(AudioClip).IsAssignableFrom(type) || typeof(TextAsset).IsAssignableFrom(type)))
+            return Array.Empty<UnityEngine.Object>();
+        var assets = textureAsset ? AssetDatabase.LoadAllAssetRepresentationsAtPath(path)
+            : AssetDatabase.LoadAllAssetsAtPath(path);
+        if (sample != null)
+        {
+            sample.AssetLoads++;
+            sample.LoadedObjects += assets.Length;
+        }
+        return assets;
     }
+
+    [MenuItem("Tools/Match saves/Measure manifest discovery")]
+    public static void MeasureDiscovery()
+    {
+        if (building) return;
+        var sample = new DiscoverySample();
+        try
+        {
+            measurement = sample;
+            var total = System.Diagnostics.Stopwatch.StartNew();
+            Rebuild();
+            total.Stop();
+
+            measurement = null;
+            long previous = GC.GetAllocatedBytesForCurrentThread();
+            var unchanged = System.Diagnostics.Stopwatch.StartNew();
+            RebuildIfInputsChanged();
+            unchanged.Stop();
+            long unchangedBytes = GC.GetAllocatedBytesForCurrentThread() - previous;
+            // Dependencies from the imported graph. DetailedBuildReport is required for actual
+            // player packing and compressed size.
+            var dependencies = AssetDatabase.GetDependencies(Output, true);
+            Debug.Log($"Match save manifest: paths={sample.Paths}, type probes={sample.CandidateProbes}, "
+                + $"asset loads={sample.AssetLoads}, loaded objects={sample.LoadedObjects}, "
+                + $"world dependencies={sample.WorldDependencies}, manifest dependency paths={dependencies.Length}; "
+                + $"forced scan {sample.ScanMilliseconds:F2} ms/{sample.ScanManagedBytes} managed B, "
+                + $"forced rebuild {total.Elapsed.TotalMilliseconds:F2} ms, "
+                + $"unchanged check {unchanged.Elapsed.TotalMilliseconds:F2} ms/{unchangedBytes} managed B.");
+        }
+        finally { measurement = null; }
+    }
+
     // Size and write time of every content file and importer setting, plus the manifest file and
     // the engine version and generator source. A git checkout or an editor import changes the write time. Scenes are
-    // listed without their contents: the rebuild never reads them. Presentation prefabs are left out.
+    // listed without their contents: the rebuild never reads them.
     private static string InputStamp(string[] content)
     {
         using var hash = System.Security.Cryptography.SHA256.Create();
@@ -175,9 +233,7 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
         }
         foreach (string path in content.Append(Output))
         {
-            if (path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) { text.Append(path).Append('\n'); continue; }
-            // Presentation prefabs never reach the manifest; editing them must not force a later scan.
-            if (MatchSaveContentFingerprint.IsPresentationAuthoring(path)) continue;
+            if (!MatchSaveContentFingerprint.IsDiscoveryInput(path)) { text.Append(path).Append('\n'); continue; }
             text.Append(path).Append('|').Append(AssetDatabase.AssetPathToGUID(path));
             AppendFile(text, path);
             AppendFile(text, path + ".meta");

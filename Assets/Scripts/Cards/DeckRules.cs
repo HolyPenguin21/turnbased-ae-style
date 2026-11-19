@@ -22,8 +22,20 @@ namespace Game.Cards
         public static readonly Faction[] PlayableFactions = { Faction.IronConcord, Faction.Ashen, Faction.Vessels };
         public readonly StartingDeckCatalog Starting;
         public readonly ResearchProductionCatalog Research;
+        private readonly Func<string, CardDefinition> resolveStarting;
+        private readonly Func<string, CardDefinition> resolveResearch;
+
         public DeckRules(StartingDeckCatalog starting, ResearchProductionCatalog research)
-        { Starting = starting; Research = research; }
+            : this(starting, research, key => starting?.ResolveCard(key), key => research?.ResolveCard(key)) { }
+
+        internal DeckRules(StartingDeckCatalog starting, ResearchProductionCatalog research,
+            Func<string, CardDefinition> resolveStarting, Func<string, CardDefinition> resolveResearch)
+        {
+            Starting = starting;
+            Research = research;
+            this.resolveStarting = resolveStarting;
+            this.resolveResearch = resolveResearch;
+        }
 
         public static DeckCategory Category(CardDefinition card)
         {
@@ -62,26 +74,31 @@ namespace Game.Cards
         }
         public CardDefinition Resolve(string key)
         {
-            var card = Starting?.ResolveCard(key) ?? Research?.ResolveCard(key);
+            var card = resolveStarting(key) ?? resolveResearch(key);
             return card != null && card.authoredKey == key ? card : null;
         }
         public bool Permitted(CardDefinition card, Faction faction)
         {
             if (!PlayableFactions.Contains(faction) || Category(card) == DeckCategory.System) return false;
             if (Category(card) != DeckCategory.Main)
-                return Research != null && (Research.ResolveFor(ResearchProductionMode.Production, faction).Contains(card)
-                    || Research.ResolveFor(ResearchProductionMode.Research, faction).Contains(card));
+                return Research != null && (Research.ResolveFor(ResearchProductionMode.Production, faction, resolveResearch).Contains(card)
+                    || Research.ResolveFor(ResearchProductionMode.Research, faction, resolveResearch).Contains(card));
             // Own catalog, the shared Neutral catalog (opt out per card with deckBuilderExcluded),
             // plus explicit cross-catalog loans from the authored starting source.
-            return Starting?.GetCatalog(faction)?.cards.Contains(card) == true
-                || Starting?.GetCatalog(Faction.Neutral)?.cards.Contains(card) == true
-                || Starting?.GetDeck(faction)?.cards.Any(e => e != null && Starting.ResolveCard(e.cardKey) == card) == true;
+            return Starting?.GetCatalog(faction)?.cards?.Contains(card) == true
+                || Starting?.GetCatalog(Faction.Neutral)?.cards?.Contains(card) == true
+                || Starting?.GetDeck(faction)?.cards?.Any(e => e != null && resolveStarting(e.cardKey) == card) == true;
         }
+        // Vessels starter Mutators are intentional. Actual attachment still checks the host.
+        public static bool HasStarterHost(Faction faction, CardDefinition blueprint, IEnumerable<CardDefinition> main)
+            => (faction == Faction.Vessels && Category(blueprint) == DeckCategory.Mutator)
+                || main.Any(host => EquipmentSystem.FitsHost(blueprint, host, out _));
+
         public IEnumerable<CardDefinition> Cards(Faction faction)
         {
-            return (Starting?.catalogs ?? new List<FactionCardCatalog>())
-                .Concat(Research?.cardCatalogs ?? new List<FactionCardCatalog>())
-                .Where(c => c != null).SelectMany(c => c.cards).Where(c => c != null).Distinct()
+            return CardContentIndex.Definitions((Starting?.catalogs ?? new List<FactionCardCatalog>())
+                .Concat(Research?.cardCatalogs ?? new List<FactionCardCatalog>()))
+                .Where(c => c != null).Distinct()
                 .Where(c => Permitted(c, faction));
         }
         public static List<DeckCardEntry> Entries(SavedDeck deck, DeckCategory category)

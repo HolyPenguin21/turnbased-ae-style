@@ -313,9 +313,13 @@ namespace Game.Setup
 
         private void BeginHumanPlacement(PlayerSetupData player)
         {
-            BuildValidHexes(_currentCandidate);
+            _validHexes.Clear();
+            _validHexes.AddRange(PlacementOptions(player, _currentCandidate));
             if (_regionHighlights.TryGetValue(player, out GameObject region) && region != null)
+            {
+                region.GetComponent<HexClusterHighlight>().ShowCluster(_validHexes, map.OuterRadius);
                 region.SetActive(true);
+            }
             _placedHex = null;
             _canPlace = false;
             if (confirmButton != null)
@@ -345,8 +349,9 @@ namespace Game.Setup
 
         private void FinalizePlayer(PlayerSetupData player, HexCoord hex)
         {
+            if (map == null || !map.CanEnter(hex) || BuildingRegistry.FindAt(hex) != null)
+                throw new System.InvalidOperationException($"Cannot place the citadel for '{player.Nickname}' at {hex}.");
             using var mutation = VisionSystem.BeginMutation();
-            if (map == null || !map.CanEnter(hex)) return;
             player.CitadelHexQ = hex.Q;
             player.CitadelHexR = hex.R;
 
@@ -491,135 +496,12 @@ namespace Game.Setup
         {
             _startHexes.Clear();
             _regionHighlights.Clear();
-
-            List<HexCoord> eligible = GetEdgeEligibleHexes();
-            if (eligible.Count == 0 || players.Count == 0)
-                return;
-
-            List<HexCoord>[] sectors = BucketByAngleAroundCenter(eligible, players.Count);
-            var picked = new List<HexCoord>();
-
-            // Scales with map size (Small radius 5 → Huge radius 8) so players never spawn
-            // adjacent on a small field, even though angular sectors alone don't guarantee that —
-            // two hexes straddling a (randomly rotated) sector boundary can be near neighbors.
-            int minDistance = Mathf.Max(1, map.FieldRadius);
-
-            for (int i = 0; i < players.Count; i++)
-            {
-                // A sector can come up empty if the edge band is sparse there (e.g. corner/City
-                // ruins exclusions ate every candidate in it) — fall back to any still-unused
-                // eligible hex, but never skip the minimum-separation check while doing so.
-                List<HexCoord> pool = sectors[i].Count > 0 ? sectors[i] : eligible;
-                HexCoord pick = PickFarEnough(pool, picked, minDistance)
-                    ?? PickFarEnough(eligible, picked, minDistance)
-                    ?? PickFarthestFrom(pool.Count > 0 ? pool : eligible, picked);
-
-                eligible.Remove(pick);
-                foreach (List<HexCoord> sector in sectors)
-                    sector.Remove(pick);
-                picked.Add(pick);
-
-                _startHexes[players[i]] = pick;
-                SpawnRegionHighlight(players[i], pick);
-            }
-        }
-
-        // Random hex from `pool` that keeps at least `minDistance` from every already-picked
-        // starting hex — null if none in the pool qualifies, so the caller can widen the search
-        // instead of silently placing players too close together.
-        private static HexCoord? PickFarEnough(List<HexCoord> pool, List<HexCoord> picked, int minDistance)
-        {
-            if (pool.Count == 0)
-                return null;
-            List<HexCoord> candidates = picked.Count == 0
-                ? pool
-                : pool.Where(c => picked.All(p => HexGridMath.Distance(c, p) >= minDistance)).ToList();
-            return candidates.Count == 0 ? (HexCoord?)null : candidates[Random.Range(0, candidates.Count)];
-        }
-
-        // Last resort when nothing in `pool` (or the whole eligible set) meets minDistance — e.g.
-        // an unusually cramped edge band — pick whichever candidate maximises its distance to the
-        // nearest already-picked player, rather than a blind random pick with no separation at all.
-        private static HexCoord PickFarthestFrom(List<HexCoord> pool, List<HexCoord> picked)
-        {
-            if (picked.Count == 0)
-                return pool[Random.Range(0, pool.Count)];
-            return pool.OrderByDescending(c => picked.Min(p => HexGridMath.Distance(c, p))).First();
-        }
-
-        // Buckets `coords` into `sectorCount` angular slices around the field's (0,0) centre —
-        // used by starting-hex assignment above. Resource placement separately evaluates
-        // random whole-map layouts against the actual chosen citadels. The
-        // slice boundaries themselves are rotated by a random offset each call so which exact
-        // hexes fall together isn't identical from one game to the next, on top of the random
-        // pick each caller then makes within a bucket.
-        private static List<HexCoord>[] BucketByAngleAroundCenter(List<HexCoord> coords, int sectorCount)
-        {
-            var buckets = new List<HexCoord>[sectorCount];
-            for (int i = 0; i < sectorCount; i++)
-                buckets[i] = new List<HexCoord>();
-
-            float sectorWidth = 360f / sectorCount;
-            float angleOffset = Random.Range(0f, sectorWidth);
-
-            foreach (HexCoord coord in coords)
-            {
-                float adjusted = (AngleAroundCenterDegrees(coord) - angleOffset + 360f) % 360f;
-                int sector = Mathf.Clamp((int)(adjusted / sectorWidth), 0, sectorCount - 1);
-                buckets[sector].Add(coord);
-            }
-
-            return buckets;
-        }
-
-        // Angle (0-360) of a hex's world position around the field's (0,0) centre — outerRadius
-        // doesn't affect the angle itself, only the distance, so 1f is fine as a stand-in.
-        private static float AngleAroundCenterDegrees(HexCoord coord)
-        {
-            Vector3 world = HexGridMath.AxialToWorld(coord.Q, coord.R, 1f);
-            return (Mathf.Atan2(world.z, world.x) * Mathf.Rad2Deg + 360f) % 360f;
-        }
-
-        private List<HexCoord> GetEdgeEligibleHexes()
-        {
-            List<HexCoord> cityRuinsHexes = GetCityRuinsHexes();
-            List<HexCoord> corners = GetFieldCorners();
-            var origin = new HexCoord(0, 0);
-
-            var result = new List<HexCoord>();
-            foreach (HexCoord coord in map.AllCoords)
-            {
-                if (!map.CanEnter(coord)) continue;
-                int edgeDistance = map.FieldRadius - HexGridMath.Distance(origin, coord);
-                if (edgeDistance > gameConfig.maxEdgeDistance)
-                    continue;
-
-                // Off the corner tiles specifically (project owner's own spec, 2026-08-22 —
-                // "не прям в угловых участках карты"), and kept at least
-                // gameConfig.minCityRuinsDistance hexes from every "City ruins" hex so a
-                // fresh citadel never opens the game already standing next to a garrisoned
-                // outpost.
-                if (corners.Any(corner => HexGridMath.Distance(coord, corner) <= gameConfig.cornerExclusionRadius))
-                    continue;
-                if (cityRuinsHexes.Any(ruin => HexGridMath.Distance(coord, ruin) < gameConfig.minCityRuinsDistance))
-                    continue;
-
-                result.Add(coord);
-            }
-            return result;
-        }
-
-        // The field's own 6 corner hexes (a hexagon-of-hexes has 6, not 4) — anchor points for
-        // cornerExclusionRadius above. Every candidate already comes from map.AllCoords (see
-        // GetEdgeEligibleHexes), so unlike the old rectangular corners these are always real,
-        // on-map hexes too.
-        private List<HexCoord> GetFieldCorners()
-        {
-            var result = new List<HexCoord>();
-            int radius = map.FieldRadius;
-            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
-                result.Add(new HexCoord(dq * radius, dr * radius));
-            return result;
+            var plan = CitadelPlacementPlanner.Plan(map, gameConfig, GetCityRuinsHexes(), players.Count,
+                UnityMapGenerationRandom.Shared);
+            if (plan.Count != players.Count)
+                throw new System.InvalidOperationException("There are not enough eligible citadel regions for this match.");
+            for (int i = 0; i < plan.Count; i++) _startHexes.Add(players[i], plan[i]);
+            for (int i = 0; i < plan.Count; i++) SpawnRegionHighlight(players[i], plan[i]);
         }
 
         // Every hex whose terrain is "City ruins" — same name/lookup convention as
@@ -638,14 +520,6 @@ namespace Game.Setup
             return result;
         }
 
-        // A hex is offered as a citadel spot only if it actually exists on the map — every
-        // terrain type is buildable now, including Mountains, since none of them block
-        // movement or placement any more, just cost more to move through.
-        private bool IsSelectable(HexCoord coord)
-        {
-            return map.CanEnter(coord);
-        }
-
         private void SpawnRegionHighlight(PlayerSetupData player, HexCoord coord)
         {
             if (map == null)
@@ -656,10 +530,7 @@ namespace Game.Setup
             // actually exist, and any that are Mountains aren't valid citadel spots either.
             // HexClusterGlow.shader traces the true outer boundary of whichever of these end
             // up in the set itself, so there's no boundary geometry to build here anymore.
-            var cluster = new List<HexCoord> { coord };
-            foreach (HexCoord neighbor in HexGridMath.Neighbors(coord))
-                if (IsSelectable(neighbor))
-                    cluster.Add(neighbor);
+            var cluster = PlacementOptions(player, coord).ToList();
 
             var highlightObject = new GameObject("RegionHighlight");
             highlightObject.transform.SetParent(transform, false);
@@ -676,18 +547,16 @@ namespace Game.Setup
 
         // --- Citadel placement (current human player clicks within their neighbourhood) --
 
-        private void BuildValidHexes(HexCoord candidate)
+        private IEnumerable<HexCoord> PlacementOptions(PlayerSetupData player, HexCoord candidate)
         {
-            // The candidate itself is just the random reference point used to scatter
-            // players around the map — it's a perfectly valid citadel spot too, same as its
-            // 6 neighbours (GetEdgeEligibleHexes already guarantees the candidate itself isn't
-            // Mountains, so only the neighbours need the impassable check here).
-            _validHexes.Clear();
-            if (IsSelectable(candidate))
-                _validHexes.Add(candidate);
-            foreach (HexCoord neighbor in HexGridMath.Neighbors(candidate))
-                if (IsSelectable(neighbor))
-                    _validHexes.Add(neighbor);
+            // If regions overlap, each player keeps their fallback hex until they place a citadel.
+            // After placement, only the actual position is reserved.
+            var reserved = new HashSet<HexCoord>();
+            foreach (var pair in _startHexes)
+                if (pair.Key != player)
+                    reserved.Add(pair.Key.CitadelHexQ.HasValue && pair.Key.CitadelHexR.HasValue
+                        ? new HexCoord(pair.Key.CitadelHexQ.Value, pair.Key.CitadelHexR.Value) : pair.Value);
+            return CitadelPlacementPlanner.PlacementOptions(map, candidate, reserved);
         }
 
         private void Update()
@@ -744,8 +613,16 @@ namespace Game.Setup
 
             if (_regionHighlights.TryGetValue(_allPlayers[_currentPlayerIndex], out GameObject region) && region != null)
                 region.SetActive(false);
-            FinalizePlayer(_allPlayers[_currentPlayerIndex], _placedHex.Value);
-            AdvanceToNextPlayer();
+            try
+            {
+                FinalizePlayer(_allPlayers[_currentPlayerIndex], _placedHex.Value);
+                AdvanceToNextPlayer();
+            }
+            catch (System.Exception ex)
+            {
+                FailMatchLaunch(ex);
+                UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
+            }
         }
 
         private void FinishAllPlacements()
@@ -781,7 +658,6 @@ namespace Game.Setup
             GenerateNeutralArmies();
             GenerateCityRuinsGarrisons();
             GenerateRandomEvents();
-            GenerateSpecialHexes();
 
             // Fog needs an actual viewer the instant citadel placement ends — otherwise it stays
             // off (VisionSystem.IsVisibleToCurrentViewer fails open with no CurrentViewer) for

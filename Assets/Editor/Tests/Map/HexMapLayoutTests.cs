@@ -58,6 +58,37 @@ namespace Game.EditorTests
             catch (TargetInvocationException e) { throw e.InnerException; }
         }
 
+        private sealed class SeededRandom : IMapGenerationRandom
+        {
+            private readonly System.Random random;
+            internal SeededRandom(int seed) => random = new System.Random(seed);
+            internal int Calls { get; private set; }
+            public int Range(int minimum, int maximum) { Calls++; return random.Next(minimum, maximum); }
+            public float Range(float minimum, float maximum) => minimum + (maximum - minimum) * Value;
+            public float Value { get { Calls++; return (float)random.NextDouble(); } }
+        }
+
+        [Test] public void ExplicitSeedPlansPlayableAndDecorativeFootprintsWithoutTouchingGlobalRandom()
+        {
+            var random = new SeededRandom(739);
+            UnityEngine.Random.InitState(901);
+            float expected = UnityEngine.Random.value;
+            UnityEngine.Random.InitState(901);
+            var first = HexMapLayoutPlanner.Create(_config.mapGeneration, 4, Biome.Arid, random);
+            var second = HexMapLayoutPlanner.Create(_config.mapGeneration, 4, Biome.Arid, new SeededRandom(739));
+            Assert.That(random.Calls, Is.GreaterThan(first.Cells.Length));
+            Assert.That(first.Cells.Select(cell => (cell.Q, cell.R, cell.TerrainKey, cell.TextureKey)),
+                Is.EqualTo(second.Cells.Select(cell => (cell.Q, cell.R, cell.TerrainKey, cell.TextureKey))));
+            Assert.That(first.BorderCells.Select(cell => (cell.Q, cell.R, cell.TerrainKey, cell.TextureKey)),
+                Is.EqualTo(second.BorderCells.Select(cell => (cell.Q, cell.R, cell.TerrainKey, cell.TextureKey))));
+            Assert.That(first.Cells.Length, Is.EqualTo(61));
+            Assert.That(first.BorderCells.All(cell => HexGridMath.Distance(new HexCoord(0, 0), new HexCoord(cell.Q, cell.R)) > 4),
+                Is.True);
+            Restore(first);
+            Assert.That(_map.AllCoords.Count(), Is.EqualTo(61));
+            Assert.That(UnityEngine.Random.value, Is.EqualTo(expected));
+        }
+
         [Test] public void LayoutSnapshotsDoNotExposeTheirNestedArraysToCallers()
         {
             var input = new HexMapLayout
@@ -284,11 +315,11 @@ namespace Game.EditorTests
             _generator.Generate();
             HexMapLayout layout = _map.Layout.Copy();
             layout.Cells[0].TextureKey = "texture.removed-by-patch";
-            Assert.DoesNotThrow(() => HexMapGenerator.ValidateLayout(layout, _config));
+            Assert.DoesNotThrow(() => HexMapLayoutPlanner.Validate(layout, _config.mapGeneration));
             Restore(layout);
             Assert.That(_map.AllCoords.Count(), Is.EqualTo(7));
             layout.Cells[0].TerrainKey = "terrain.removed-by-patch";
-            Assert.Throws<System.ArgumentException>(() => HexMapGenerator.ValidateLayout(layout, _config));
+            Assert.Throws<System.ArgumentException>(() => HexMapLayoutPlanner.Validate(layout, _config.mapGeneration));
         }
 
         [Test] public void GeneratedMapRetainsItsVisualLayoutAfterGeneratorIsRemoved()
