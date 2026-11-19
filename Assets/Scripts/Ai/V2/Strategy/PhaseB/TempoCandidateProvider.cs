@@ -511,36 +511,18 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // A full hand (no draw possible) plays its surplus body into a ready or new army even past
-        // the scout portfolio (owner 2026-11-19, match Sable T9/T11: a frozen hand cost whole turns).
-        internal static bool HoldsScoutSurplus(PlayerSetupData player, MaterializationPlan plan,
-            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives, AiHandData hand) =>
-            (hand == null || hand.HasFreeSlot)
-            && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives);
-
         // §P1 — generic surplus must not add a scout beyond the physical IsSoloRecce portfolio
         // cap, across EVERY chain kind (RankedSurplus treats a recce card as ScoutCapability and
         // will build NewArmy / ReusableShell / Attach / Generate placements for it — the Recon
         // DemandLayer portfolio cap never sees those). Primary bound is the CURRENT desired
         // concurrency + a warm spare; ReconConcurrencyPolicy.HardCap is the absolute ceiling.
+        // The surplus enumeration already classifies a Recce card as an ordinary body while the
+        // portfolio is full (MaterializationChainEnumerator.SurplusCapability); this hold is the
+        // same rule at the decision, should the portfolio fill between the two reads.
         private static bool ScoutSurplusPortfolioSaturated(PlayerSetupData player, MaterializationPlan plan,
-            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
-        {
-            if (plan == null || plan.FinalCapability != CapabilityKind.ScoutCapability)
-                return false;
-            int solo = OwnWorld.Of(player).Armies.Count(a => a != null && AiArmyRoles.IsSoloRecce(a));
-            if (solo >= ReconConcurrencyPolicy.HardCap)
-                return true;
-            if (reconObjectives == null)
-                return false;
-            var runnable = reconObjectives
-                .Where(o => o != null && o.BaseValue > 0f)
-                .OrderByDescending(o => o.BaseValue)
-                .ThenBy(o => o.IntentKey)
-                .ToList();
-            int desired = ReconConcurrencyPolicy.DesiredTotal(snap, runnable);
-            return solo >= desired + AiConfigV2.scoutSurplusWarmSpare;
-        }
+            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives) =>
+            plan != null && plan.FinalCapability == CapabilityKind.ScoutCapability
+            && ReconConcurrencyPolicy.SurplusScoutPortfolioFull(player, snap, reconObjectives);
 
         private static List<MatSurplusDecision> ComputeMatDecisions(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
@@ -594,7 +576,8 @@ namespace Game.Ai.V2
                             + $"no garrison overfill ({floorWhy}); a surplus body belongs to a field army");
                     continue;
                 }
-                if (residual == null && HoldsScoutSurplus(player, plan, snap, reconObjectives, hand))
+                if (residual == null
+                    && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
                 {
                     if (verbose)
                         AiDebugLog.Write($"[AI][V2]   strat.B - hold {plan.StableKey} {AiCardLog.Plan(plan)}: "

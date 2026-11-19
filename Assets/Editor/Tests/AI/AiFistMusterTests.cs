@@ -267,27 +267,40 @@ namespace Game.EditorTests
                 Assert.That(moved, Is.GreaterThan(0), "a free army on the Base is the fist the mover joins");
         }
 
-        // Match 2026-11-19b (Sable T9/T11, owner): a full hand froze whole turns while its scout
-        // cards were held at the portfolio cap. A full hand plays its surplus body into a new army.
+        // Match 2026-11-19b (Sable T9/T11, owner): Scout cards and the Recce hero Lira Sable sat in
+        // a full hand at the scout cap. While the portfolio is full a Recce card is an ordinary
+        // body (garrison, ready or new army); Recon later pulls a scout out of the garrison.
         [Test]
-        public void ScoutSurplusAtThePortfolioCap_IsHeldOnlyWhileTheHandCanStillDraw()
+        public void RecceCardAtTheScoutCap_IsAnOrdinaryBody()
         {
             var us = new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
+            Assert.That(ReconConcurrencyPolicy.SurplusScoutPortfolioFull(us, null, null), Is.False,
+                "no scouts yet");
             for (int i = 0; i < ReconConcurrencyPolicy.HardCap; i++)
             {
                 UnitData scout = Body(us, "S" + i, 1);
                 scout.Abilities.Add("r1s4");
                 Army(us, Citadel, false, scout);
             }
-            var plan = new MaterializationPlan { FinalCapability = CapabilityKind.ScoutCapability };
-            var snap = new WorldSnapshot { Observer = us };
-            var hand = new AiHandData(null, us.Faction, 0);
-            Assert.That(TempoCandidateProvider.HoldsScoutSurplus(us, plan, snap, null, hand), Is.True,
-                "a hand with a free slot keeps the card and draws");
-            while (hand.HasFreeSlot)
-                hand.Hand.Add(new Game.Cards.CardData(new Game.Cards.CardDefinition { displayName = "Filler" }));
-            Assert.That(TempoCandidateProvider.HoldsScoutSurplus(us, plan, snap, null, hand), Is.False,
-                "a full hand plays the scout into a ready or new army");
+            Assert.That(ReconConcurrencyPolicy.SurplusScoutPortfolioFull(us, null, null), Is.True);
+
+            var recce = new Game.Cards.CardDefinition { cardType = Game.Cards.CardType.Unit,
+                grantedAbilities = new List<string> { "r1s4" } };
+            var fresh = new PlacementOption(Citadel, DeploymentKind.NewArmy, null);
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(recce, recce.grantedAbilities, fresh, false),
+                Is.EqualTo(CapabilityKind.ScoutCapability), "below the cap a solo Recce is a scout");
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(recce, recce.grantedAbilities, fresh, true),
+                Is.EqualTo(CapabilityKind.FieldCombatPower), "at the cap it is a body");
+            ArmyData emptyShell = Army(us, Citadel, false);
+            var shell = new PlacementOption(Citadel, DeploymentKind.ReusableShell, emptyShell);
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(recce, recce.grantedAbilities, shell, true),
+                Is.EqualTo(CapabilityKind.FieldCombatPower), "an empty shell at the cap is no scout either");
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(recce, recce.grantedAbilities, shell, false),
+                Is.EqualTo(CapabilityKind.ScoutCapability));
+            var heroDef = new Game.Cards.CardDefinition { cardType = Game.Cards.CardType.Hero,
+                grantedAbilities = new List<string> { "r1s6", "Stealth4" } };
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(heroDef, heroDef.grantedAbilities, fresh, true),
+                Is.EqualTo(CapabilityKind.Hero));
         }
 
         // ---- founding site --------------------------------------------------------------------

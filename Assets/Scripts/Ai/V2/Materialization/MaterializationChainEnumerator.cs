@@ -185,13 +185,15 @@ namespace Game.Ai.V2
         // capability, not another recon lane; the physical portfolio cap must still reject that
         // same hero when placed into a new/empty army. This classification is owned here, together
         // with the chain shapes. Phase A's explicit Scout demands keep their solo-only contract.
+        // 2026-11-19 (owner): while the scout portfolio is full (`scoutPortfolioFull`,
+        // ReconConcurrencyPolicy.SurplusScoutPortfolioFull) a Recce card is an ordinary body.
         internal static CapabilityKind SurplusCapability(CardDefinition def,
-            IReadOnlyList<string> abilities, PlacementOption opt)
+            IReadOnlyList<string> abilities, PlacementOption opt, bool scoutPortfolioFull)
         {
-            bool solo = opt.Kind == DeploymentKind.NewArmy
+            bool solo = !scoutPortfolioFull && (opt.Kind == DeploymentKind.NewArmy
                 || opt.Kind == DeploymentKind.ReusableShell
                 || (opt.Kind == DeploymentKind.ExistingArmy
-                    && (opt.Army == null || opt.Army.Members.Count == 0));
+                    && (opt.Army == null || opt.Army.Members.Count == 0)));
             if (solo && AbilityParams.AbilitiesHaveAnyRecce(abilities))
                 return CapabilityKind.ScoutCapability;
             return def.cardType == CardType.Hero
@@ -207,6 +209,11 @@ namespace Game.Ai.V2
         {
             List<CardData> handList = hand.Hand.ToList();
             var candidates = new List<MaterializationPlan>();
+            // A full scout portfolio makes every Recce card an ordinary body: any placement.
+            // Read once, and only when a Recce projection asks (the recon enumeration is not free).
+            bool? scoutsFullMemo = null;
+            bool ScoutsFull() => scoutsFullMemo ??= ReconConcurrencyPolicy.SurplusScoutPortfolioFull(
+                player, snap, snap == null ? null : ReconObjectiveEvaluator.FrameOrEnumerate(snap));
 
             for (int i = 0; i < handList.Count; i++)
             {
@@ -220,13 +227,14 @@ namespace Game.Ai.V2
 
                 // Only a Recce UNIT must be deployed solo in surplus. A Recce HERO can instead
                 // legally lead an existing body formation, which does not create a solo scout.
-                bool soloOnly = recce && !hero;
+                bool soloOnly = recce && !hero && !ScoutsFull();
                 IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment, card.Mutator);
 
                 foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments,
                              soloOnly, phaseBSurplus: true))
                 {
-                    CapabilityKind cap = SurplusCapability(def, baseAbilities, opt);
+                    CapabilityKind cap = SurplusCapability(def, baseAbilities, opt,
+                            AbilityParams.AbilitiesHaveAnyRecce(baseAbilities) && ScoutsFull());
                     MaterializationPlan direct = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.Direct, null,
                         card, i, null, -1, opt, baseAbilities);
                     direct.FinalCapability = cap;
@@ -243,7 +251,8 @@ namespace Game.Ai.V2
                             || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, def))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(card, eqDef);
-                        CapabilityKind projectedCap = SurplusCapability(def, projected, opt);
+                        CapabilityKind projectedCap = SurplusCapability(def, projected, opt,
+                            AbilityParams.AbilitiesHaveAnyRecce(projected) && ScoutsFull());
                         if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, def.cardType, projectedCap)) continue;
                         MaterializationPlan att = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.AttachDeploy, null,
                             card, i, eq, j, opt, projected);
@@ -283,7 +292,7 @@ namespace Game.Ai.V2
                             List<string> projected = EquipmentSystem.EffectiveAbilities(host, gd);
                             bool recce = AbilityParams.AbilitiesHaveAnyRecce(projected);
                             bool hero = hd.cardType == CardType.Hero;
-                            bool soloOnly = recce && !hero;
+                            bool soloOnly = recce && !hero && !ScoutsFull();
 
                             foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, hd, commitments,
                                          soloOnly, phaseBSurplus: true))
@@ -292,7 +301,8 @@ namespace Game.Ai.V2
                                     MaterializationChainKind.GenerateAttachDeploy, null, g,
                                     baseInHand: host, baseIdx: i, generatedIsEquipment: true,
                                     opt: opt, projected: projected);
-                                genEq.FinalCapability = SurplusCapability(hd, projected, opt);
+                                genEq.FinalCapability = SurplusCapability(hd, projected, opt,
+                                    AbilityParams.AbilitiesHaveAnyRecce(projected) && ScoutsFull());
                                 candidates.Add(genEq);
                             }
                         }
@@ -303,7 +313,7 @@ namespace Game.Ai.V2
                         continue;
                     bool genRecce = AbilityParams.AbilitiesHaveAnyRecce(gd.grantedAbilities);
                     bool genHero = gd.cardType == CardType.Hero;
-                    bool genSoloOnly = genRecce && !genHero;
+                    bool genSoloOnly = genRecce && !genHero && !ScoutsFull();
                     IReadOnlyList<string> genAbilities = MaterializationChainMatching.EffectiveAbilities(gd, null);
 
                     foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, gd, commitments,
@@ -312,7 +322,8 @@ namespace Game.Ai.V2
                         MaterializationPlan gen = MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateDeploy,
                             null, g, baseInHand: null, baseIdx: -1, generatedIsEquipment: false, opt: opt,
                             projected: genAbilities);
-                        gen.FinalCapability = SurplusCapability(gd, genAbilities, opt);
+                        gen.FinalCapability = SurplusCapability(gd, genAbilities, opt,
+                            AbilityParams.AbilitiesHaveAnyRecce(genAbilities) && ScoutsFull());
                         candidates.Add(gen);
                     }
                 }

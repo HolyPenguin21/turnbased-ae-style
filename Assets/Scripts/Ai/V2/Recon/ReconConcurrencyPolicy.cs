@@ -16,6 +16,28 @@ namespace Game.Ai.V2
 
         public static int HardCap => Mathf.Max(0, AiConfigV2.maxConcurrentReconExecutions);
 
+        // Section P1 - the physical solo-Recce portfolio is full: the CURRENT desired concurrency +
+        // a warm spare, HardCap the absolute ceiling. 2026-11-19 (owner): while it is full a Recce
+        // card is an ordinary body (garrison, ready or new army), never another scout; when a lane
+        // frees, Recon pulls a Recce out (ScoutMoverSelector.EligibleGarrisonExtraction).
+        internal static bool SurplusScoutPortfolioFull(Game.Players.PlayerSetupData player,
+            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
+        {
+            if (player == null)
+                return false;
+            int solo = OwnWorld.Of(player).Armies.Count(a => a != null && AiArmyRoles.IsSoloRecce(a));
+            if (solo >= HardCap)
+                return true;
+            if (reconObjectives == null)
+                return false;
+            var runnable = reconObjectives
+                .Where(o => o != null && o.BaseValue > 0f)
+                .OrderByDescending(o => o.BaseValue)
+                .ThenBy(o => o.IntentKey)
+                .ToList();
+            return solo >= DesiredTotal(snap, runnable) + AiConfigV2.scoutSurplusWarmSpare;
+        }
+
         // Distinct ground scouts a turn may bind (ReconAssignmentPlanner): fewer once the Attack
         // mobilization is open — its AP belongs to playing and gathering the strike force.
         public static int GroundActorsPerTurn(WorldSnapshot snap) =>

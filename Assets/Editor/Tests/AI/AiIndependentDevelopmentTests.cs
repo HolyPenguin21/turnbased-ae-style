@@ -221,7 +221,7 @@ namespace Game.EditorTests
                 baseInHand: null, baseIdx: -1, generatedIsEquipment: false,
                 opt: option, projected: abilities);
             plan.FinalCapability = MaterializationChainEnumerator.SurplusCapability(
-                definition, abilities, option);
+                definition, abilities, option, scoutPortfolioFull: false);
 
             Assert.That(plan.GeneratedBaseDef, Is.SameAs(definition));
             Assert.That(plan.Generation, Is.SameAs(generation));

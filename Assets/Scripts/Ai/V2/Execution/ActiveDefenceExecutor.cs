@@ -328,7 +328,8 @@ namespace Game.Ai.V2
                 return 0;
             // The ownership view needs the snapshot: MissionActorPolicy.Build claims nothing
             // without one (2026-11-19: the null snapshot made this filter a no-op).
-            HashSet<int> claimed = ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snapshot),
+            HashSet<int> claimed = ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snapshot)
+                    .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                 snapshot, null).ClaimedArmyIdSet;
             ArmyData host = OwnWorld.Of(player).Armies
                 .Where(a => a != null && a != mover && a.Hex.Equals(home) && !claimed.Contains(a.Id)

@@ -1133,8 +1133,12 @@ namespace Game.Ai.V2
                 || (card.cardType != CardType.Unit && card.cardType != CardType.Hero))
                 return float.NegativeInfinity;
             IReadOnlyList<string> abilities = MaterializationChainMatching.EffectiveAbilities(card, null);
+            // Exactly the same scout-portfolio rule as Phase B (MaterializationChainEnumerator).
+            bool scoutsFull = AbilityParams.AbilitiesHaveAnyRecce(abilities)
+                && ReconConcurrencyPolicy.SurplusScoutPortfolioFull(player, snap,
+                    ReconObjectiveEvaluator.FrameOrEnumerate(snap));
             bool soloOnly = card.cardType == CardType.Unit
-                && AbilityParams.AbilitiesHaveAnyRecce(abilities);
+                && AbilityParams.AbilitiesHaveAnyRecce(abilities) && !scoutsFull;
             List<PlacementOption> options = PlacementSelector.BuildOptions(
                 snap, player, card, commitments, soloOnly, phaseBSurplus: true);
             if (options.Count == 0)
@@ -1153,7 +1157,7 @@ namespace Game.Ai.V2
             {
                 // Exactly the same solo-Recce vs Hero vs combat classification as Phase B.
                 CapabilityKind capability = MaterializationChainEnumerator.SurplusCapability(
-                    card, abilities, option);
+                    card, abilities, option, scoutsFull);
                 bool recce = capability == CapabilityKind.ScoutCapability
                     && AbilityParams.AbilitiesHaveAnyRecce(abilities);
                 MaterializationPlan plan = MaterializationPlanFactory.MakeGeneratedPlan(
