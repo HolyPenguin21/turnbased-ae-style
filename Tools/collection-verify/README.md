@@ -1,7 +1,7 @@
 # Collection reward verification
 
 Run the real `CollectionService`, `CollectionProfileStore`, `CollectionProfile`, `RewardService`,
-`AtomicJsonFile` and `DeckRules` against temporary disk profiles with .NET 8:
+`StarterDeckMigration`, `AtomicJsonFile` and `DeckRules` against temporary disk profiles with .NET 8:
 
 ```bash
 DOTNET_BIN=/path/to/dotnet python3 Tools/collection-verify/run.py

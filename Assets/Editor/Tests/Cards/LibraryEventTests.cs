@@ -122,7 +122,9 @@ namespace Game.EditorTests
 
         [Test] public void ForeignFactionCardIsPermanentlySavedWithoutChangingSavedDeck()
         {
-            Assert.That(collection.Transact(p => p.savedDecks.Add(new SavedDeck { deckId = "unchanged", name = "Player deck", faction = Faction.IronConcord }), out _), Is.True);
+            var initial = collection.Snapshot;
+            initial.savedDecks.Add(new SavedDeck { deckId = "unchanged", name = "Player deck", faction = Faction.IronConcord });
+            collection = new CollectionService(collection.Rules, store, initial);
             Assert.That(collection.TryGrantRandomCollectionCard(out var acquired, out var error), Is.True, error);
             Assert.That(acquired, Is.SameAs(card));
             Assert.That(store.Load(out _).Owned(card.authoredKey), Is.EqualTo(1));
@@ -137,7 +139,9 @@ namespace Game.EditorTests
             own.cards.Add(full);
             own.cards.Add(new CardDefinition { authoredKey = "library.excluded", cardType = CardType.Unit, deckBuilderExcluded = true, deckCopyLimit = 2 });
             neutral.cards.Add(new CardDefinition { authoredKey = "library.tactic", cardType = CardType.Tactic, deckCopyLimit = 2 });
-            Assert.That(collection.Transact(p => p.ownedCards.Add(new DeckCardEntry { cardKey = full.authoredKey, count = 1 }), out _), Is.True);
+            var initial = collection.Snapshot;
+            initial.ownedCards.Add(new DeckCardEntry { cardKey = full.authoredKey, count = 1 });
+            collection = new CollectionService(collection.Rules, store, initial);
             for (int i = 0; i < 3; i++)
             {
                 Assert.That(collection.TryGrantRandomCollectionCard(out var acquired, out var error), Is.True, error);

@@ -79,6 +79,7 @@ namespace Game.Campaign
         private Action cancelModal, retryAction;
         private bool rewardOpen, defenceDeferred, acting, continueAfterCapture;
         private bool started;
+        private CollectionRewardUI rewardPresentation;
         private CampaignController presentationOwner;
         private string presentationOperationId;
         private readonly CampaignBattleResolver resolver = new CampaignBattleResolver();
@@ -91,7 +92,7 @@ namespace Game.Campaign
             SetupMaterials();
             if (!CampaignMatchBridge.Load(out string error)) { Failure(error ?? "No saved campaign.", () => SceneManager.LoadScene(SceneNames.MainMenu)); return; }
             map.EmblemFor = LogoFor;
-            try { var state = Controller.View; map.Build(state.Regions, ClickRegion, HoverRegion, state.BackgroundId, gameConfig.moveArrowStyle); }
+            try { var state = Controller.View; map.Build(state.CopyMapRegions(), ClickRegion, HoverRegion, state.BackgroundId, gameConfig.moveArrowStyle); }
             catch (Exception ex)
             {
                 Debug.LogWarning(ex);
@@ -112,8 +113,13 @@ namespace Game.Campaign
             deckStart.onClick.AddListener(StartBattle);
             deckCancel.onClick.AddListener(CancelDeck);
             deckAutoResolve.onClick.AddListener(() => Attempt(() => ResolveTest(selectedDeckId)));
-            resultContinue.onClick.AddListener(ContinueResult);
-            errorRetry.onClick.AddListener(() => { CloseModal(); retryAction?.Invoke(); });
+            errorRetry.onClick.AddListener(() =>
+            {
+                if (!isActiveAndEnabled || modalContent != errorWindow.transform) return;
+                var retry = retryAction;
+                CloseModal();
+                retry?.Invoke();
+            });
             errorMenu.onClick.AddListener(() => SceneManager.LoadScene(SceneNames.MainMenu));
         }
         // Shader-driven surfaces get per-screen material instances; the objects themselves are scene-authored.
@@ -146,21 +152,25 @@ namespace Game.Campaign
         }
         private void Recover()
         {
-            CloseModal(); rewardOpen = false;
-            if (!CampaignMatchBridge.RecoverReward(gameConfig, out string error)) { Failure(error, Recover); return; }
+            CloseRewardPresentation();
+            CloseModal();
+            var result = MatchResultOperation.Open(gameConfig, MatchResultOrigin.Campaign);
+            var state = result.Advance();
+            if (state.Stage == MatchResultStage.Retry) { Failure(state.Error, Recover); return; }
             Render();
             var op = Controller.View.PendingOperation;
-            if (op?.Manual == true && op.ResultRecorded && !op.RewardAcknowledged)
+            if (state.Stage == MatchResultStage.Reward)
             {
                 rewardOpen = true; RefreshMap();
-                var rewards = gameObject.GetComponent<CollectionRewardUI>() ?? gameObject.AddComponent<CollectionRewardUI>();
-                rewards.Resume(gameConfig, () => { rewardOpen = false; Recover(); });
+                if (rewardPresentation == null) rewardPresentation = GetComponent<CollectionRewardUI>();
+                if (rewardPresentation == null) rewardPresentation = gameObject.AddComponent<CollectionRewardUI>();
+                rewardPresentation.Present(gameConfig, result, () => { if (isActiveAndEnabled) Recover(); });
                 return;
             }
-            if (Controller.View.Phase == CampaignPhase.ShowingResult) ShowResult();
+            if (state.Stage == MatchResultStage.CampaignResult) ShowResult();
             else if (op?.Manual == true && !op.ResultRecorded && !defenceDeferred) OpenDeckSelection();
             else if (op != null && !op.Manual && !op.ResultRecorded)
-                Attempt(() => { Controller.ResolveFast(CampaignDeck.Ai(op.AttackerFaction, ProgressionContext.Collection.Rules, op.RandomSeed, op.AttackerDeckName), CampaignDeck.Ai(op.DefenderFaction, ProgressionContext.Collection.Rules, op.RandomSeed, op.DefenderDeckName), resolver); Render(); ShowResult(); });
+                Attempt(() => { Controller.ResolvePendingAiBattle(ProgressionContext.Collection.Rules, resolver); Render(); ShowResult(); });
         }
         private void Update()
         {
@@ -200,9 +210,16 @@ namespace Game.Campaign
             CloseModal(); selected = null; hovered = null; hoverLabel.text = ""; Render();
             map.PlayAttack(Controller.View.PendingOperation);
         }
+        private void CloseRewardPresentation()
+        {
+            if (rewardPresentation != null) rewardPresentation.ClearPresentation();
+            rewardOpen = false;
+        }
+
         private void OnEnable() { if (started && Controller != null) Recover(); }
         private void OnDisable()
         {
+            CloseRewardPresentation();
             acting = continueAfterCapture = false; presentationOwner = null; presentationOperationId = null;
             if (map != null) { map.CancelAttackAnimation(); map.CancelCapture(); }
             UIFocusUtility.SetOverlay(this, false);
@@ -220,7 +237,7 @@ namespace Game.Campaign
         {
             if (continueAfterCapture || acting) return;
             hovered = id;
-            var r = id.HasValue ? Controller.View.Regions.Find(x => x.RegionId == id) : null;
+            var r = id.HasValue ? Controller.View.FindRegion(id.Value) : null;
             hoverLabel.text = r == null ? "" : r.Name + "  ·  " + FactionName(r.OwnerFaction);
             RefreshMap();
         }
@@ -228,7 +245,7 @@ namespace Game.Campaign
         {
             if (ModalOpen || rewardOpen || acting || continueAfterCapture) return;
             var state = Controller.View;
-            if (selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, id)) { ConfirmAttack(selected.Value, id); return; }
+            if (selected.HasValue && state.CanAttack(state.HumanFaction, selected.Value, id)) { ConfirmAttack(selected.Value, id); return; }
             selected = id; Render();
         }
         private void Render()
@@ -255,7 +272,7 @@ namespace Game.Campaign
                     row.bar.color = map.Highlight.MapColor(f.Faction);
                 }
             }
-            var region = selected.HasValue ? s.Regions.Find(r => r.RegionId == selected.Value) : null;
+            var region = selected.HasValue ? s.FindRegion(selected.Value) : null;
             sidebarTitle.text = region == null ? "SELECT A REGION" : region.Name.ToUpperInvariant();
             // RegionPanel stays up: without a selection it shows the title and the hint in place of the region details.
             noSelectionHint.SetActive(region == null);
@@ -265,7 +282,7 @@ namespace Game.Campaign
             RenderFooter(s);
             RefreshMap();
         }
-        private void RenderHeader(CampaignState s)
+        private void RenderHeader(CampaignReadModel s)
         {
             bool finished = s.Phase == CampaignPhase.CampaignFinished;
             if (planetNameLabel != null) planetNameLabel.text = s.PlanetName.ToUpperInvariant();
@@ -278,16 +295,16 @@ namespace Game.Campaign
             if (playerFactionName != null) playerFactionName.text = FactionName(s.HumanFaction).ToUpperInvariant();
         }
         private const float RegionPreviewUvPerPixel = .12f / 135f; // the original 135 px preview showed .12 of the map width
-        private void ShowTerrain(RawImage preview, RegionState region, float width = .32f)
+        private void ShowTerrain(RawImage preview, CampaignRegionView region, float width = .32f)
         {
             preview.texture = map.SurfaceTexture;
-            var center = map.SurfaceUVAt(CampaignRegionGraphic.VisibleCenter(region));
+            var center = map.SurfaceUVAt(CampaignRegionGraphic.VisibleCenter(region.PolygonVertices));
             var size = preview.rectTransform.rect.size;
             if (size.x <= 0 || size.y <= 0) return;
             float previewHeight = width * (size.y / size.x) * ((float)map.SurfaceTexture.width / map.SurfaceTexture.height);
             preview.uvRect = new Rect(Mathf.Clamp(center.x - width / 2, 0, 1 - width), Mathf.Clamp(center.y - previewHeight / 2, 0, 1 - previewHeight), width, previewHeight);
         }
-        private void RenderRegion(CampaignState s, RegionState region)
+        private void RenderRegion(CampaignReadModel s, CampaignRegionView region)
         {
             var size = terrainPreview.rectTransform.rect.size;
             ShowTerrain(terrainPreview, region, size.x * RegionPreviewUvPerPixel); // fixed zoom: resizing the element reveals more map, not a bigger picture
@@ -336,15 +353,15 @@ namespace Game.Campaign
             attackPreviewMaterials.Clear();
             if (noAttacksLabel != null) noAttacksLabel.gameObject.SetActive(false);
         }
-        private void RenderAttacks(CampaignState s, RegionState region, string emptyText)
+        private void RenderAttacks(CampaignReadModel s, CampaignRegionView region, string emptyText)
         {
             ClearAttacks();
             var attacks = region.OwnerFaction == s.HumanFaction
-                ? region.NeighborIds.Where(id => CampaignRules.CanAttack(s, s.HumanFaction, region.RegionId, id)).Select(id => (from: region.RegionId, target: id)).ToList()
-                : s.Regions.Where(r => CampaignRules.CanAttack(s, s.HumanFaction, r.RegionId, region.RegionId)).Take(1).Select(r => (from: r.RegionId, target: region.RegionId)).ToList();
+                ? region.NeighborIds.Where(id => s.CanAttack(s.HumanFaction, region.RegionId, id)).Select(id => (from: region.RegionId, target: id)).ToList()
+                : s.Regions.Where(r => s.CanAttack(s.HumanFaction, r.RegionId, region.RegionId)).Take(1).Select(r => (from: r.RegionId, target: region.RegionId)).ToList();
             foreach (var (from, targetId) in attacks)
             {
-                var target = s.Regions.Find(r => r.RegionId == targetId);
+                var target = s.FindRegion(targetId);
                 var view = Instantiate(attackRowPrefab, attacksContent, false);
                 if (view.TerrainPreview != null) { ShowTerrain(view.TerrainPreview, target); RoundAttackPreview(view.TerrainPreview); }
                 if (view.OwnerLogo != null) SetLogo(view.OwnerLogo, target.OwnerFaction);
@@ -354,11 +371,11 @@ namespace Game.Campaign
             }
             if (noAttacksLabel != null) { noAttacksLabel.gameObject.SetActive(attacks.Count == 0); noAttacksLabel.text = emptyText; }
         }
-        private void RenderFooter(CampaignState s)
+        private void RenderFooter(CampaignReadModel s)
         {
             bool finished = s.Phase == CampaignPhase.CampaignFinished;
             // Title/body pairs; without a separate title slot they join into the original one-line status.
-            var (title, separator, body) = finished ? (s.Factions.Find(f => f.Faction == s.HumanFaction).Eliminated ? ("CAMPAIGN DEFEAT", " - ", "your faction has been eliminated.") : ("PLANET CONQUERED", " - ", "campaign completed."))
+            var (title, separator, body) = finished ? (s.Factions.First(f => f.Faction == s.HumanFaction).Eliminated ? ("CAMPAIGN DEFEAT", " - ", "your faction has been eliminated.") : ("PLANET CONQUERED", " - ", "campaign completed."))
                 : s.PendingOperation != null ? ("Pending battle", " - ", s.Phase.ToString()) : s.CurrentFaction == s.HumanFaction ? ("Your turn:", " ", "attack an adjacent enemy region or end turn.") : ("", "", "AI faction is choosing an attack.");
             statusLabel.text = title.Length == 0 ? body.ToUpperInvariant()
                 : "<color=#EE9E40>" + title.ToUpperInvariant() + "</color>" + separator + body.ToUpperInvariant();
@@ -403,15 +420,15 @@ namespace Game.Campaign
         {
             UIFocusUtility.SetOverlay(this, false);
             foreach (var window in new[] { confirmWindow, deckWindow, resultWindow, errorWindow }) window.SetActive(false);
-            modalBackdrop.SetActive(false); modalContent = null; cancelModal = null;
+            modalBackdrop.SetActive(false); modalContent = null; cancelModal = null; retryAction = null;
         }
         private void CancelAttackConfirmation() { CloseModal(); RefreshMap(); }
         private void ConfirmAttack(int from, int target)
         {
-            var s = Controller.View; if (!CampaignRules.CanAttack(s, s.HumanFaction, from, target)) return;
+            var s = Controller.View; if (!s.CanAttack(s.HumanFaction, from, target)) return;
             confirmFrom = from; confirmTarget = target;
             OpenModal(confirmWindow, CancelAttackConfirmation);
-            confirmText.text = s.Regions.Find(r => r.RegionId == from).Name + " > " + s.Regions.Find(r => r.RegionId == target).Name + BattleConditions(s.Regions.Find(r => r.RegionId == target));
+            confirmText.text = s.FindRegion(from).Name + " > " + s.FindRegion(target).Name + BattleConditions(s.FindRegion(target));
         }
         private void OpenDeckSelection()
         {
@@ -419,9 +436,9 @@ namespace Game.Campaign
             if (op == null || !op.Manual || op.ResultRecorded) return;
             OpenModal(deckWindow, CancelDeck);
             bool attack = op.AttackerFaction == s.HumanFaction;
-            string message = "Region: " + s.Regions.Find(r => r.RegionId == op.TargetRegionId).Name + "\nOperation: " + (attack ? "ATTACK" : "DEFENCE")
+            string message = "Region: " + s.FindRegion(op.TargetRegionId).Name + "\nOperation: " + (attack ? "ATTACK" : "DEFENCE")
                 + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  Defender: " + FactionName(op.DefenderFaction);
-            message += BattleConditions(s.Regions.Find(r => r.RegionId == op.TargetRegionId), op.Weather);
+            message += BattleConditions(s.FindRegion(op.TargetRegionId), op.Weather);
             if (s.Phase == CampaignPhase.BattleInProgress) message += "\nInterrupted battle: restart with a fresh tactical map. Territory unchanged.";
             deckInfo.text = message;
             ClearChildren(deckListContent);
@@ -452,7 +469,7 @@ namespace Game.Campaign
         private static string BiomeName(Biome biome) => biome == Biome.Arid ? "Arid badlands" : "Desert";
         // The player-facing battle conditions: the target region's properties and its weather (a
         // pending operation passes its own weather snapshot). No generator internals here.
-        private static string BattleConditions(RegionState target, MatchWeatherProfile? weather = null) =>
+        private static string BattleConditions(CampaignRegionView target, MatchWeatherProfile? weather = null) =>
             $"\n{BiomeName(target.Biome)} · {target.Specialization} · {target.Richness}\n{MatchWeatherConditions.Describe(weather ?? target.Weather)}";
         private void StartBattle()
         {
@@ -496,18 +513,22 @@ namespace Game.Campaign
         {
             var s = Controller.View; var op = s.PendingOperation;
             if (s.Phase != CampaignPhase.ShowingResult || op == null) return;
+            var owner = Controller;
+            resultContinue.onClick.RemoveAllListeners();
+            resultContinue.onClick.AddListener(() => ContinueResult(owner, op.OperationId));
             OpenModal(resultWindow);
-            string text = "Region: " + s.Regions.Find(r => r.RegionId == op.TargetRegionId).Name
+            string text = "Region: " + s.FindRegion(op.TargetRegionId).Name
                 + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  " + op.AttackerDeckName
                 + "\nDefender: " + FactionName(op.DefenderFaction) + "  ·  " + op.DefenderDeckName;
             if (!op.Manual || op.TestAutoResolve) text += $"\nPredicted chances: {op.WinChance:P0} / {1 - op.WinChance:P0}\nDeck scores: {op.AttackerScore:F1} / {op.DefenderScore:F1}";
             resultText.text = text + "\n\n" + s.PendingNotification;
         }
-        private void ContinueResult()
+        private void ContinueResult(CampaignController owner, string operationId)
         {
-            var op = Controller.View.PendingOperation;
-            if (op == null || acting || continueAfterCapture) return;
-            presentationOwner = Controller; presentationOperationId = op.OperationId;
+            if (!isActiveAndEnabled || acting || continueAfterCapture || modalContent != resultWindow.transform
+                || Controller != owner || owner.View.PendingOperation?.OperationId != operationId) return;
+            presentationOwner = owner;
+            presentationOperationId = operationId;
             Attempt(() =>
             {
                 // The result is acknowledged first; the existing capture presentation then precedes turn advance.
@@ -521,8 +542,12 @@ namespace Game.Campaign
         }
         private void CompleteResult()
         {
-            if (Controller != presentationOwner || Controller.View.PendingOperation?.OperationId != presentationOperationId) return;
-            Attempt(() => { Controller.Continue(presentationOperationId); CloseModal(); selected = null; Recover(); });
+            var controller = Controller;
+            if (!isActiveAndEnabled || controller == null || controller != presentationOwner
+                || controller.View.PendingOperation?.OperationId != presentationOperationId) return;
+            var result = MatchResultOperation.Open(gameConfig, MatchResultOrigin.Campaign);
+            if (!result.ContinueCampaign(presentationOperationId, out string error)) { Failure(error, CompleteResult); return; }
+            CloseModal(); selected = null; Recover();
         }
         private void Failure(string error, Action retry)
         {

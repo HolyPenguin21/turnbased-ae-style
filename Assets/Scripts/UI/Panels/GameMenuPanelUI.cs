@@ -192,6 +192,7 @@ namespace Game.UI
             if (!IsShowing) return;
             string destination = CampaignMatchBridge.ReturnScene(GameSession.MatchId);
             ContinueGame();
+            if (turnController != null && turnController.RetryPendingMatchResult()) return;
             Game.Setup.MatchStateInventory.EndMatch(turnController);
             SceneManager.LoadScene(destination);
         }

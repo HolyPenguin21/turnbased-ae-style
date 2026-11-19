@@ -12,6 +12,7 @@ using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Progression;
 using Game.Terrain;
 using Game.UI;
 using Game.Units;
@@ -342,7 +343,30 @@ namespace Game.Turns
                 root.SetActive(false);
         }
 
-        public event System.Action<Game.Progression.ParticipantResult> ParticipantFinished;
+        public event System.Action<ParticipantResult> ParticipantFinished;
+        internal event Action MatchResultReady;
+        private MatchResultOperation matchResult;
+        private long matchResultGeneration;
+        internal MatchResultOperation ResultOperation => GameSession.IsCurrent(matchResultGeneration)
+            && GameSession.Stage != MatchSessionStage.Prepared && matchResult?.MatchId == GameSession.MatchId ? matchResult : null;
+
+        private bool RecordResult(MatchResultOperation operation)
+        {
+            if (ResultOperation != null) return false;
+            matchResultGeneration = GameSession.Generation;
+            matchResult = operation;
+            operation.Advance();
+            return true;
+        }
+        internal bool RetryPendingMatchResult()
+        {
+            var result = ResultOperation;
+            if (result?.Current.Stage != MatchResultStage.Retry) return false;
+            result.Advance();
+            if (ResultOperation != null) MatchResultReady?.Invoke();
+            return true;
+        }
+
         public event System.Action<Game.Campaign.CompletedMatchResult> MatchFinished;
         // Non-campaign account reward rule (owner D2): one reward per match, defeat only when
         // the last living human falls. The campaign keeps its own branch below (one human).
@@ -350,7 +374,11 @@ namespace Game.Turns
         private void PublishOutcome(PlayerSetupData player, Game.Progression.MatchOutcome outcome)
         {
             if (player == null || !player.IsHuman || !GameSession.RewardsEligible || (debugWatchAiTurns && GameSession.CampaignContext == null)) return;
-            ParticipantFinished?.Invoke(new Game.Progression.ParticipantResult(GameSession.MatchId, player, outcome));
+            var result = new ParticipantResult(GameSession.MatchId, player, outcome);
+            bool recorded = GameSession.CampaignContext == null && !string.IsNullOrWhiteSpace(result.MatchId)
+                && RecordResult(MatchResultOperation.Open(gameConfig, MatchResultOrigin.Game, participant: result));
+            ParticipantFinished?.Invoke(result);
+            if (recorded && ResultOperation != null) MatchResultReady?.Invoke();
         }
         private void PublishOutcome(Game.Progression.ParticipantResult? result)
         {
@@ -361,8 +389,6 @@ namespace Game.Turns
         {
             UIFocusUtility.BlockingChanged += RecomputeBlockedState;
             PlayerDecisionRouter.Handoff = this;
-            if (GetComponent<CollectionRewardUI>() == null)
-                gameObject.AddComponent<CollectionRewardUI>().Configure(this, gameConfig);
             // OnValidate already applies this on every Inspector edit, but that never fires on a
             // plain scene load/Play Mode entry with the checkbox left untouched — this covers
             // that startup case too.
@@ -383,6 +409,12 @@ namespace Game.Turns
             if (aviationAttackPopup != null) aviationAttackPopup.VisibilityChanged += RecomputeBlockedState;
             if (aaChoicePopup != null) aaChoicePopup.VisibilityChanged += RecomputeBlockedState;
             RecomputeBlockedState();
+            if (gameConfig != null)
+            {
+                var rewards = GetComponent<CollectionRewardUI>();
+                if (rewards == null) rewards = gameObject.AddComponent<CollectionRewardUI>();
+                rewards.Configure(this, gameConfig);
+            }
         }
 
         private void OnDisable()
@@ -454,22 +486,23 @@ namespace Game.Turns
             var finalResult = new Game.Campaign.CompletedMatchResult(GameSession.MatchId,
                 survivors.Count == 1 ? survivors[0].Faction : Faction.None, player.Faction, survivors.Count == 0);
             GameSession.CompleteMatch(finalResult);
+            var campaignContext = GameSession.CampaignContext;
+            bool campaignResult = campaignContext != null && RecordResult(
+                MatchResultOperation.Open(gameConfig, MatchResultOrigin.Game, campaignContext, finalResult));
             MatchFinished?.Invoke(finalResult);
             if (!GameSession.IsCurrent(generation)) return;
-            // Record the whole-match outcome before the existing human reward transaction.
-            // Reward UI retries a failed campaign write before it can grant/dismiss anything.
-            if (GameSession.CampaignContext != null)
+            if (campaignContext != null)
             {
-                Game.Campaign.CampaignMatchBridge.RecordFinalResult(out _);
-                if (survivors.Count == 0) PublishOutcome(GameSession.FirstHuman, Game.Progression.MatchOutcome.Draw);
-                else if (player.IsHuman) PublishOutcome(player, Game.Progression.MatchOutcome.Defeat);
+                if (finalResult.Draw) PublishOutcome(GameSession.FirstHuman, MatchOutcome.Draw);
+                else if (player.IsHuman) PublishOutcome(player, MatchOutcome.Defeat);
+                else PublishOutcome(survivors[0], MatchOutcome.Victory);
+                if (campaignResult && GameSession.IsCurrent(generation)) MatchResultReady?.Invoke();
             }
-            if (GameSession.CampaignContext != null)
-            {
-                if (survivors.Count == 1) PublishOutcome(survivors[0], Game.Progression.MatchOutcome.Victory);
-            }
+            else if (finalResult.Draw && !_accountOutcome.HasPublished) PublishOutcome(GameSession.FirstHuman, MatchOutcome.Draw);
             else PublishOutcome(_accountOutcome.OnMatchFinished(GameSession.MatchId, survivors));
-            ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw - no citadels remain.");
+
+            if (GameSession.IsCurrent(generation))
+                ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw - no citadels remain.");
         }
 
         // Set true by CardHandUI for the duration of the human's equipment-attach mode (see
@@ -561,6 +594,7 @@ namespace Game.Turns
             _matchGreetingsShown.Clear();
             _turnConfirmationInProgress = false;
             _accountOutcome.Reset();
+            matchResult = null;
             Game.Ai.AiMatchStats.BeginMatch(GameSession.Players);
             ConfigureStealthTurnProviders();
             // The match's weather is fixed before the first tick and any AI reasoning.

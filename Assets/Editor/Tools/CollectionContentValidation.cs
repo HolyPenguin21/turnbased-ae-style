@@ -70,9 +70,7 @@ namespace Game.EditorTools
                             throw new BuildFailedException("Invalid AI deck card: " + deck.deckName + "/" + row.cardKey);
                     }
                 }
-                var profile = new CollectionProfile();
-                var service = new CollectionService(rules, null, profile);
-                service.InitializeStarters(profile);
+                var profile = new CollectionService(rules, null, new CollectionProfile()).CreateStarterProfile();
                 foreach (var deck in profile.savedDecks)
                 {
                     foreach (var row in deck.equipment.Concat(deck.mutators))

@@ -16,7 +16,7 @@ public sealed class CampaignCaptureTests
     [SetUp] public void Setup()
     { directory = Path.Combine(Path.GetTempPath(), "campaign-capture-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory); }
     [TearDown] public void Cleanup() { Directory.Delete(directory, true); }
-    private CampaignController PrepareManual(out CampaignOperation operation)
+    private CampaignController PrepareManual(out CampaignOperationView operation)
     {
         var state = new CampaignMapGenerator().Generate(37, Faction.Ashen, new CampaignGenerationSettings { RegionCount = 24 });
         state.CurrentTurnIndex = state.TurnOrder.IndexOf(state.HumanFaction);
@@ -60,7 +60,7 @@ public sealed class CampaignCaptureTests
         var error = Assert.Catch(() => c.ApplyResult());
         Assert.That(error, Is.InstanceOf<IOException>().Or.InstanceOf<UnauthorizedAccessException>());
         Assert.AreEqual(0, events); Assert.False(c.View.PendingOperation.OwnershipApplied);
-        Assert.AreEqual(op.DefenderFaction, c.View.Regions.Find(r => r.RegionId == op.TargetRegionId).OwnerFaction);
+        Assert.AreEqual(op.DefenderFaction, c.View.FindRegion(op.TargetRegionId).OwnerFaction);
         Directory.Delete(blocked); c.ApplyResult(); c.ApplyResult(); Assert.AreEqual(1, events);
     }
     [Test]
@@ -108,7 +108,7 @@ public sealed class CampaignCaptureTests
             bool captured = c.View.PendingOperation.Outcome == CampaignOutcome.AttackerVictory;
             Assert.AreEqual(captured ? 1 : 0, events);
             Assert.AreEqual(captured ? pair.Source.OwnerFaction : pair.Target.OwnerFaction,
-                c.View.Regions.Find(r => r.RegionId == pair.Target.RegionId).OwnerFaction);
+                c.View.FindRegion(pair.Target.RegionId).OwnerFaction);
             var reloaded = new CampaignController(new CampaignStore(directory).Load(out _), new CampaignStore(directory));
             reloaded.RegionOwnershipChanged += _ => events++; reloaded.ApplyResult();
             Assert.AreEqual(captured ? 1 : 0, events);
