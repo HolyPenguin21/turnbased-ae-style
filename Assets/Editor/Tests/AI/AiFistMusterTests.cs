@@ -57,6 +57,8 @@ namespace Game.EditorTests
             EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(bodies),
             IsStructuralRaidActor = true, MaxMovement = 3, CurrentMovement = 3, ActivationApCost = 1,
             ReachableOwnBaseHexes = new[] { Citadel, Staging },
+            // Analysis sets this for EVERY hero-led army (WorldAnalysis.Self: AiArmyRoles.IsHeroLed).
+            IsMobileEconomyBuilder = hero,
         };
 
         private static (WorldSnapshot Snap, AttackObjective Objective) World(PlayerSetupData us)
@@ -113,7 +115,7 @@ namespace Game.EditorTests
             Assert.That(FistMusterObjectiveEvaluator.StagingHex(snap, objective), Is.EqualTo(Staging),
                 "the fist gathers on the own Base nearest to the objective");
             Assert.That(FistMusterObjectiveEvaluator.FistHost(snap, Staging, new HashSet<int>())?.ArmyId,
-                Is.EqualTo(FistId));
+                Is.EqualTo(FistId), "a hero-led army is the fist (IsMobileEconomyBuilder is no exclusion)");
 
             List<FistMusterObjective> steps = FistMusterObjectiveEvaluator.Enumerate(snap, objective, new HashSet<int>());
 
@@ -157,9 +159,11 @@ namespace Game.EditorTests
             return army;
         }
 
-        [TestCase(2, true)]
-        [TestCase(9, false)]
-        public void FistOnAnotherBase_CoversTheFloorOfABaseItReachesBeforeTheEnemy(int fistQ, bool covers)
+        [TestCase(2, 4, true)]
+        [TestCase(9, 4, false)]
+        [TestCase(2, 2, false)]
+        public void FistOnAnotherBase_CoversTheNeedOfABaseItReachesBeforeTheEnemy_NeverItsRelease(
+            int fistQ, int enemyDistance, bool covers)
         {
             var us = new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
             var them = new PlayerSetupData { Nickname = "Them", ColorIndex = 4 };
@@ -169,26 +173,50 @@ namespace Game.EditorTests
             Army(us, fistBase, true, Body(us, "H", 2));
             var enemyBodies = new[] { new WorthIt.DefenderProfile(3f, false, attack: 6f, hitPoints: 6f),
                 new WorthIt.DefenderProfile(3f, false, attack: 6f, hitPoints: 6f) };
-            var raider = new AiMapMemory.KnownEnemySighting(new HexCoord(-4, 0), them, "raider", 2, 6f, 12f,
+            var raider = new AiMapMemory.KnownEnemySighting(new HexCoord(-enemyDistance, 0), them, "raider", 2, 6f, 12f,
                 enemyBodies, seenTurn: 10, armyId: 31, maxMovement: 3);
             AiMapMemory.RememberForTest(us, raider);
             const float available = 10f;   // share floor 0.5: the threat is the floor
 
             float threat = AiArmyRoles.GarrisonThreatFloor(us, threatened, false, out int eta);
             Assert.That(threat, Is.GreaterThan(0f));
-            Assert.That(eta, Is.EqualTo(2), "4 hexes at 3 MP");
-            float before = AiArmyRoles.GarrisonDefenceFloor(us, available, threatened, false);
-            Assert.That(before, Is.EqualTo(threat).Within(1e-3f));
+            Assert.That(eta, Is.EqualTo((enemyDistance + 2) / 3));
+            float release = AiArmyRoles.GarrisonDefenceFloor(us, available, threatened, false);
+            Assert.That(release, Is.EqualTo(threat).Within(1e-3f));
+            Assert.That(AiArmyRoles.GarrisonNeedFloor(us, available, threatened, false),
+                Is.EqualTo(release).Within(1e-3f), "no fist: need and release agree");
 
             ArmyData fist = Army(us, fistBase, false,
                 Enumerable.Range(0, 6).Select(i => Body(us, "F" + i, 8)).ToArray());
             float fistPower = AiPower.EffectiveArmyPower(fist.Members.ToList());
-            float after = AiArmyRoles.GarrisonDefenceFloor(us, available, threatened, false);
+            float need = AiArmyRoles.GarrisonNeedFloor(us, available, threatened, false);
             if (covers)
-                Assert.That(after, Is.EqualTo(System.Math.Max(AiArmyRoles.GarrisonDefenceFloor(available, false),
+                Assert.That(need, Is.EqualTo(System.Math.Max(AiArmyRoles.GarrisonDefenceFloor(available, false),
                     threat - fistPower)).Within(1e-3f), "two hexes away the fist arrives before the raider");
             else
-                Assert.That(after, Is.EqualTo(before).Within(1e-3f), "nine hexes away it arrives too late");
+                Assert.That(need, Is.EqualTo(release).Within(1e-3f),
+                    "too far, or on the same turn as the enemy (who may move first): no credit");
+            Assert.That(AiArmyRoles.GarrisonDefenceFloor(us, available, threatened, false),
+                Is.EqualTo(release).Within(1e-3f),
+                "the release floor never takes the credit: bodies freed by the fist would leave with it");
+        }
+
+        [Test]
+        public void LiveFistContainer_IsACombatArmyOrACommandingLoneHero_NeverAScoutOrSupportHero()
+        {
+            var us = new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
+            ArmyData fighters = Army(us, Staging, false, Body(us, "A", 6), Body(us, "B", 6));
+            Assert.That(FistMusterObjectiveEvaluator.IsLiveFistContainer(us, fighters), Is.True);
+            ArmyData garrison = Army(us, Staging, true, Body(us, "G", 6));
+            Assert.That(FistMusterObjectiveEvaluator.IsLiveFistContainer(us, garrison), Is.False);
+            var commander = new UnitData { Name = "Cmd", Owner = us, IsHero = true, CommandRating = 7,
+                HitPointsMax = 6, HitPointsCurrent = 6, MoveMax = 3, MoveCurrent = 3 };
+            Assert.That(FistMusterObjectiveEvaluator.IsLiveFistContainer(us, Army(us, Staging, false, commander)), Is.True);
+            var support = new UnitData { Name = "Sup", Owner = us, IsHero = true, CommandRating = 7,
+                HitPointsMax = 6, HitPointsCurrent = 6, MoveMax = 3, MoveCurrent = 3 };
+            support.TypeTags.Add(Game.Cards.UnitTypeTag.Support);
+            Assert.That(FistMusterObjectiveEvaluator.IsLiveFistContainer(us, Army(us, Staging, false, support)), Is.False,
+                "a Support hero stays home, it never commands the fist");
         }
 
         // ---- founding site --------------------------------------------------------------------
@@ -222,13 +250,14 @@ namespace Game.EditorTests
 
         // ---- no garrison overfill -------------------------------------------------------------
 
-        [TestCase(10f, true)]
-        [TestCase(30f, false)]
-        public void SurplusCard_DoesNotOverfillAGarrisonThatHoldsItsFloor(float floor, bool held)
+        [TestCase(100f, true)]
+        [TestCase(300f, false)]
+        public void SurplusCard_DoesNotOverfillAGarrisonThatHoldsItsNeedFloor(float available, bool held)
         {
             var us = new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
             ArmyData live = Army(us, Citadel, true, Body(us, "G1", 4), Body(us, "G2", 4));
             var bodies = new[] { Profile(4, 2, 6), Profile(4, 2, 6) };
+            // The Citadel share floor is 10% of the ground force: 10 against 20 held, 30 against 20.
             var garrison = new ArmySnapshot
             {
                 ArmyId = live.Id, Owner = us, Hex = Citadel, IsGarrison = true, Members = bodies,
@@ -239,8 +268,8 @@ namespace Game.EditorTests
                 Observer = us,
                 Self = new SelfSnapshot
                 {
-                    Citadel = Citadel, Armies = new List<ArmySnapshot> { garrison },
-                    GarrisonReleaseFloors = new Dictionary<int, float> { { live.Id, floor } },
+                    Citadel = Citadel, AvailablePower = available,
+                    Armies = new List<ArmySnapshot> { garrison },
                 },
             };
             var plan = new MaterializationPlan { Deploy = new PlacementOption(Citadel, DeploymentKind.Garrison, live) };

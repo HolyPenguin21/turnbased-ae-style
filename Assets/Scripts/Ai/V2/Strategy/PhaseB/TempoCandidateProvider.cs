@@ -484,20 +484,28 @@ namespace Game.Ai.V2
 
         // 2026-11-19 (owner, match Tessek vs Draven: garrisons held ~163 power against ~70 in the
         // field) — no garrison overfill: a generic surplus deposit (no unresolved demand it
-        // delivers) never goes into a garrison that already holds its defence floor
-        // (SelfSnapshot.GarrisonReleaseFloors — share, threat, residents and the mobile reserve).
-        // The card goes to a field army on the Base (the standing fist, FistMusterObjectiveEvaluator)
-        // or stays in hand; a garrison below its floor is filled as before.
+        // delivers) never goes into a garrison that already holds its need floor
+        // (AiArmyRoles.GarrisonNeedFloor — share, threat, residents and the mobile reserve; the
+        // same floor the hand demand fills). The card goes to a field army on the Base (the
+        // standing fist, FistMusterObjectiveEvaluator) or stays in hand; a garrison below its
+        // floor is filled as before.
         internal static bool GarrisonHoldsItsFloor(WorldSnapshot snap, MaterializationPlan plan,
-            AxisDemand residual, out string why)
+            AxisDemand residual, out string why, IDictionary<int, float> needFloors = null)
         {
             why = null;
             if (residual != null || plan == null || plan.Deploy.Kind != DeploymentKind.Garrison
-                || plan.Deploy.Army == null || snap?.Self?.GarrisonReleaseFloors == null
-                || !snap.Self.GarrisonReleaseFloors.TryGetValue(plan.Deploy.Army.Id, out float floor))
+                || plan.Deploy.Army == null || snap?.Self == null)
                 return false;
             ArmySnapshot garrison = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == plan.Deploy.Army.Id);
-            if (garrison == null || garrison.EffectiveArmyPower + 0.001f < floor)
+            if (garrison == null)
+                return false;
+            if (needFloors == null || !needFloors.TryGetValue(garrison.ArmyId, out float floor))
+            {
+                floor = AiArmyRoles.GarrisonNeedFloor(snap.Observer, snap.Self.AvailablePower,
+                    garrison.Hex, garrison.Hex.Equals(snap.Self.Citadel));
+                if (needFloors != null) needFloors[garrison.ArmyId] = floor;
+            }
+            if (garrison.EffectiveArmyPower + 0.001f < floor)
                 return false;
             why = $"garrison #{garrison.ArmyId} holds {garrison.EffectiveArmyPower:0.#} >= floor {floor:0.#}";
             return true;
@@ -539,6 +547,8 @@ namespace Game.Ai.V2
                     snap, player, root, hand, ctx, inv, commitments, result.Reservation,
                     witnessedUsefulApDemand);
             var admitted = new List<MatSurplusDecision>();
+            // One live need floor per garrison for this ranking (GarrisonHoldsItsFloor).
+            var needFloors = new Dictionary<int, float>();
             foreach ((MaterializationPlan plan, float utility) in ranked)
             {
                 AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
@@ -570,7 +580,7 @@ namespace Game.Ai.V2
                             + $"{F(AiConfigV2.garrisonSaturatedMinUtility)}");
                     continue;
                 }
-                if (GarrisonHoldsItsFloor(snap, plan, residual, out string floorWhy))
+                if (GarrisonHoldsItsFloor(snap, plan, residual, out string floorWhy, needFloors))
                 {
                     if (verbose)
                         AiDebugLog.Write($"[AI][V2]   strat.B - hold {plan.StableKey} {AiCardLog.Plan(plan)}: "

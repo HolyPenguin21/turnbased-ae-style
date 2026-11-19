@@ -23,6 +23,18 @@ namespace Game.Ai.V2
                 || LiveAttackOperation(activeIntents) != null
                 || AttackForceReadiness.MobilizationOpen(snap.Self))
                 return;
+            // A live defensive regroup or withdrawal owns where the armies stand: a muster to the
+            // staging Base would walk the same armies the other way on the next turn.
+            MissionIntent defensive = activeIntents?.FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
+                && i.ActiveDefence?.Phase == ActiveDefencePhase.Return
+                && (i.ActiveDefence.ReturnPurpose == ActiveDefenceReturnPurpose.RegroupForAsset
+                    || i.ActiveDefence.ReturnPurpose == ActiveDefenceReturnPurpose.SafeWithdrawal));
+            if (defensive != null)
+            {
+                AiDebugLog.WriteDeduped($"muster-hold#{snap.Observer?.ColorIndex}",
+                    $"[AI][V2][Muster] decision=HOLD reason=defensive_return_live:{defensive.IntentKey}");
+                return;
+            }
             AttackObjective objective = PreparationObjectives(objectives, activeIntents).FirstOrDefault();
             foreach (FistMusterObjective o in FistMusterObjectiveEvaluator.Enumerate(snap, objective, committed))
             {

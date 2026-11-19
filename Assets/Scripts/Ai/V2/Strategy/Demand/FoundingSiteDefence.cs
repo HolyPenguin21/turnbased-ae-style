@@ -69,18 +69,30 @@ namespace Game.Ai.V2
         }
 
         // The ground bodies the chosen builder founds the Base with: the bodies it keeps for the
-        // trip (RetainedIndices), the one a garrison extraction adds, or its whole roster.
+        // trip (RetainedIndices) or its whole roster, plus what the local garrison adds to it
+        // (AddedIndices into PreparationGarrison: a reinforcement, or the one body a garrison
+        // extraction takes — then the builder's own "army" IS that garrison and only the added
+        // body travels).
         internal static (float Power, int Bodies) EscortOf(EconomyBuilderSelection.EconomyBuilderChoice builder)
         {
             ArmySnapshot army = builder?.Army;
             if (army?.Members == null)
                 return (0f, 0);
-            IEnumerable<int> indices = builder.Route.RequiresGarrisonExtraction ? builder.AddedIndices
-                : builder.RetainedIndices != null && builder.RetainedIndices.Count > 0 ? builder.RetainedIndices
-                : Enumerable.Range(0, army.Members.Count);
-            List<Game.Combat.WorthIt.DefenderProfile> bodies = indices
-                .Where(i => i >= 0 && i < army.Members.Count && AiArmyRoles.IsGroundBattleBody(army.Members[i]))
-                .Select(i => army.Members[i]).ToList();
+            var bodies = new List<Game.Combat.WorthIt.DefenderProfile>();
+            if (!builder.Route.RequiresGarrisonExtraction)
+            {
+                IEnumerable<int> own = builder.RetainedIndices != null && builder.RetainedIndices.Count > 0
+                    ? builder.RetainedIndices : Enumerable.Range(0, army.Members.Count);
+                bodies.AddRange(own.Where(i => i >= 0 && i < army.Members.Count
+                        && AiArmyRoles.IsGroundBattleBody(army.Members[i]))
+                    .Select(i => army.Members[i]));
+            }
+            IReadOnlyList<Game.Combat.WorthIt.DefenderProfile> donor = builder.Route.RequiresGarrisonExtraction
+                ? army.Members : builder.PreparationGarrison?.Members;
+            if (donor != null && builder.AddedIndices != null)
+                bodies.AddRange(builder.AddedIndices.Where(i => i >= 0 && i < donor.Count
+                        && AiArmyRoles.IsGroundBattleBody(donor[i]))
+                    .Select(i => donor[i]));
             return (AiPower.EffectiveArmyPowerFromProfiles(bodies), bodies.Count);
         }
     }

@@ -356,25 +356,40 @@ namespace Game.Ai
         // FieldStrikePotential, AttackForcePool, Housekeeping's GarrisonPowerFloor, the hand
         // demand and GarrisonRelief (AggressionDemandEvaluator.HeldBaseGarrisonShortfall).
         // Match 2026-11-13: Brynn's Base (1,-6) asked 87.7 from hand with Fester 52.4 on the hex.
-        // 2026-11-19 (owner, mobile reserve) — the threat part is answered first by the own field
-        // armies standing on OTHER own Bases that reach this one no later than the earliest enemy
-        // raising its threat floor (MobileReserveCredit): the standing fist covers every Base it
-        // can reach in time, not only the one it stands on. The peacetime share is never credited.
         public static float GarrisonDefenceFloor(PlayerSetupData player, float groundAvailablePower,
+            HexCoord garrisonHex, bool isCitadel) =>
+            Math.Max(0f, Math.Max(GarrisonDefenceFloor(groundAvailablePower, isCitadel),
+                    GarrisonThreatFloor(player, garrisonHex, isCitadel))
+                - ResidentFieldPower(player, garrisonHex));
+
+        // 2026-11-19 (owner, match Tessek vs Draven) — the NEED side of the same floor: how much the
+        // garrison must still be GIVEN (the hand demand, GarrisonRelief's recipient shortfall, the
+        // Phase B no-overfill rule). Two credits apply here and only here:
+        //  * the mobile reserve — the threat part is first answered by the own field armies standing
+        //    on OTHER own Bases that reach this one before the earliest enemy raising it
+        //    (MobileReserveCredit: "the fist covers every Base it reaches before the threat"); the
+        //    peacetime share is never credited;
+        //  * an Attack host gathering on its staging Base stands there as its defence.
+        // The RELEASE floor above (who may leave: every donor, the strike measures, Housekeeping)
+        // takes neither: bodies freed on the strength of the fist would join the fist and leave
+        // with it (found-problem pattern 36), stripping the Base the credit was for.
+        public static float GarrisonNeedFloor(PlayerSetupData player, float groundAvailablePower,
             HexCoord garrisonHex, bool isCitadel)
         {
             float threat = GarrisonThreatFloor(player, garrisonHex, isCitadel, out int enemyEta);
             if (threat > 0f)
                 threat = Math.Max(0f, threat - MobileReserveCredit(player, garrisonHex, enemyEta));
             return Math.Max(0f, Math.Max(GarrisonDefenceFloor(groundAvailablePower, isCitadel), threat)
-                - ResidentFieldPower(player, garrisonHex));
+                - ResidentFieldPower(player, garrisonHex, gatheringHostResides: true));
         }
 
         // 2026-11-19 (owner, match Tessek vs Draven: "fist power counts toward the floor of every own
         // Base it reaches before the threatening enemy") — the power of the own ground field armies
         // that stand on another own Base, hold it (the resident rule: not moving for a departing
-        // operation) and reach `garrisonHex` within `enemyEta` turns (hex distance against their
-        // MaxMovement, the same upper-bound reach the threat floor gives the enemy). Each army
+        // operation; an Attack host gathering there counts) and reach `garrisonHex` strictly
+        // before the enemy (fewer turns than `enemyEta`: on an equal turn the enemy may move
+        // first; hex distance against their MaxMovement, the same upper-bound reach the threat
+        // floor gives the enemy). Each army
         // lends only what its own Base does not need: its power minus that Base's unmet threat
         // (threat floor without any credit, less the garrison there). 0 without a timed threat.
         public static float MobileReserveCredit(PlayerSetupData player, HexCoord garrisonHex, int enemyEta)
@@ -394,10 +409,10 @@ namespace Game.Ai
                     continue;
                 List<UnitData> bodies = a.Members.Where(u => u != null && !u.IsPrisoner && !u.IsSummoned
                     && IsGroundBattleBody(u)).ToList();
-                if (bodies.Count == 0 || LeavesOnOperation(intents, a.Id, a.Hex))
+                if (bodies.Count == 0 || LeavesOnOperation(intents, a.Id, a.Hex, gatheringHostResides: true))
                     continue;
                 int eta = (int)Math.Ceiling(HexGridMath.Distance(a.Hex, garrisonHex) / (double)Math.Max(1, a.MaxMovement));
-                if (eta > enemyEta)
+                if (eta >= enemyEta)
                     continue;
                 if (!unmetByBase.TryGetValue(a.Hex, out float unmet))
                 {
@@ -421,7 +436,10 @@ namespace Game.Ai
         // ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset reads with its committed set). A
         // lifecycle leg (a return home) is not a departure, unless it heads to another hex (a
         // GarrisonRelief detachment walking away from its donor).
-        public static float ResidentFieldPower(PlayerSetupData player, HexCoord hex)
+        // `gatheringHostResides` — the need side only (GarrisonNeedFloor): an Attack host still
+        // gathering on its staging Base counts as standing there.
+        public static float ResidentFieldPower(PlayerSetupData player, HexCoord hex,
+            bool gatheringHostResides = false)
         {
             if (player == null)
                 return 0f;
@@ -434,7 +452,7 @@ namespace Game.Ai
                 List<UnitData> bodies = a.Members.Where(u => u != null && !u.IsPrisoner && !u.IsSummoned
                     && IsGroundBattleBody(u)).ToList();
                 if (!CountsAsHexResident(a.IsGarrison, AviationRules.IsAirArmy(a), a.IsPrison,
-                        bodies.Count > 0, LeavesOnOperation(intents, a.Id, hex)))
+                        bodies.Count > 0, LeavesOnOperation(intents, a.Id, hex, gatheringHostResides)))
                     continue;
                 power += AiPower.EffectiveArmyPower(bodies);
             }
@@ -447,15 +465,17 @@ namespace Game.Ai
             bool hasMembers, bool committedElsewhere) =>
             !isAir && !isPrison && hasMembers && (isGarrison || !committedElsewhere);
 
-        private static bool LeavesOnOperation(IEnumerable<MissionIntent> intents, int armyId, HexCoord hex)
+        private static bool LeavesOnOperation(IEnumerable<MissionIntent> intents, int armyId, HexCoord hex,
+            bool gatheringHostResides = false)
         {
             foreach (MissionIntent i in intents ?? Enumerable.Empty<MissionIntent>())
             {
                 if (i == null || i.Status != IntentStatus.Active || i.PreferredMoverArmyId != armyId)
                     continue;
-                // 2026-11-19 (owner, fist muster: "the gathering fist is its Base's defence") — the
-                // host of an Attack still gathering on its staging Base is not leaving that hex.
-                if (i.Attack != null && i.Attack.Phase == AttackMissionPhase.Gather
+                // 2026-11-19 (owner, fist muster: "the gathering fist is its Base's defence") — on
+                // the need side, the host of an Attack still gathering on its staging Base is not
+                // leaving that hex.
+                if (gatheringHostResides && i.Attack != null && i.Attack.Phase == AttackMissionPhase.Gather
                     && i.Attack.PrimaryArmyId == armyId && i.Attack.StagingHex.HasValue
                     && i.Attack.StagingHex.Value.Equals(hex))
                     continue;
@@ -715,11 +735,11 @@ namespace Game.Ai
 
         // 2026-11-19 (fist muster) — the hero the garrison may hand to a heroless fist on its hex
         // as its commander: a sparable hero (CanSpareGarrisonMember — never a facility operator,
-        // never the last member, no facility it is needed for) that is no Support garrison hero
-        // (IsGarrisonHero stays home by rule), the widest command first.
+        // never the last member, no facility it is needed for) that is no Support garrison hero and
+        // has no support vocation (both stay home by rule), the widest command first.
         internal static UnitData BestSparableCommandHero(PlayerSetupData player, ArmyData garrison) =>
             SparableHeroes(player, garrison, null, null)
-                .Where(u => !IsGarrisonHero(u))
+                .Where(u => !IsGarrisonHero(u) && !Game.Ai.V2.HeroRoleEvaluator.HasSupportVocation(u))
                 .OrderByDescending(u => u.CommandRating).ThenBy(u => u.Name)
                 .FirstOrDefault();
 

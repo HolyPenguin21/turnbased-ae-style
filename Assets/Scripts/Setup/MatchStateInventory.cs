@@ -183,6 +183,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.ActionPrice", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.CombatOpportunityAnalyzer", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.ForceNeedModel", MatchStateKind.Cache),
+            // muster steps, weakly keyed by the WorldSnapshot they were computed for
+            new MatchStateEntry("Game.Ai.V2.FistMusterObjectiveEvaluator", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.EconomyBuilderSelection", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.EquipmentEfficiency", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.Initiative.InitiativeOutcomeEvaluator", MatchStateKind.Cache),

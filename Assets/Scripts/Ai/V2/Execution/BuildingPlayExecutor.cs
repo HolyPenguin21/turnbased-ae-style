@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.HexGrid;
@@ -88,6 +89,10 @@ namespace Game.Ai.V2
             if (!root.CanSpendActionPoints(totalAp) || !totalCost.CanAfford(root))
                 return BuildingPlayResult.Fail("base and immediate garrison are not jointly affordable");
 
+            // 2026-11-19 (owner, FoundingSiteDefence) — on a site the known enemy reaches, the
+            // whole escort stays as the new garrison (the builder took its whole roster for that,
+            // EconomyBuilderSelection); elsewhere one body stays, as before.
+            bool threatenedSite = AiArmyRoles.FoundingSiteThreat(player, hex, out _) > AiConfigV2.allocatorSliceEpsilon;
             using var mutation = WorldDeltaLifecycle.BeginTransaction();
             InfrastructureBuildOutcome outcome = InfrastructureActions.TryFoundBase(
                 ctx.HexSelection, card.Definition, hex, player,
@@ -102,6 +107,8 @@ namespace Game.Ai.V2
                             CardPlayPlan.Into(defender, hex, DeploymentKind.Garrison, garrison), consumeCard: false);
                         if (!deployed.Deployed) return false;
                     }
+                    if (threatenedSite)
+                        LeaveEscortAsGarrison(player, ctx, hex, builderArmyId);
                     return ArmyRegistry.FindGarrisonAt(hex, player)?.Members
                         .Any(AiArmyRoles.IsGroundBattleBody) == true;
                 });
@@ -201,6 +208,38 @@ namespace Game.Ai.V2
         // already has a ground defender, or the hero would be left with nothing to travel with.
         // The body that costs the builder most to carry (highest activation AP, then lowest power)
         // is the one that stays.
+        // 2026-11-19 (owner) — a threatened new Base keeps the builder's whole escort: every ground
+        // body of the builder that fits the new garrison and joins it free stays; the hero walks
+        // on alone. Same builder identification and free-transfer rule as LeaveGarrisonBody.
+        internal static void LeaveEscortAsGarrison(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
+            int? builderArmyId)
+        {
+            ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex, player);
+            if (garrison == null)
+                return;
+            foreach (ArmyData builder in ArmyRegistry.AllAt(hex).Where(a => a != null && !a.IsGarrison
+                && a.Owner == player && !a.IsAirfield && !a.IsAirArmy && !a.IsPrison
+                && a.Members.Any(u => u != null && u.IsHero)
+                && (!builderArmyId.HasValue || a.Id == builderArmyId.Value)).OrderBy(a => a.Id).ToList())
+            {
+                var stayed = new List<string>();
+                foreach (UnitData body in builder.Members
+                             .Where(u => u != null && !u.IsHero && AiArmyRoles.IsGroundBattleBody(u))
+                             .OrderByDescending(u => AiPower.ToPowerUnit(u).BasePower).ToList())
+                {
+                    if ((body.ActivationApCost > 0 && garrison.RequiresActivationCharge(body))
+                        || !ArmyActions.CanTransferMembers(new[] { body }, builder, garrison, out _))
+                        continue;
+                    if (ArmyActions.TransferMember(body, builder, garrison, ctx.HexSelection, out _))
+                        stayed.Add(body.Name);
+                }
+                if (stayed.Count > 0)
+                    AiDebugLog.Write($"[AI][V2][Economy] {player.Nickname}: threatened new base at ({hex.Q},{hex.R}) "
+                        + $"keeps the escort [{string.Join(",", stayed)}] as its garrison; builder #{builder.Id} "
+                        + $"keeps {builder.Members.Count} member(s)");
+            }
+        }
+
         internal static void LeaveGarrisonBody(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
             int? builderArmyId = null)
         {

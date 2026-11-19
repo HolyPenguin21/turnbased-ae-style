@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
@@ -67,11 +68,31 @@ namespace Game.Ai.V2
                 : AttackPreparationPolicy.PreparationStagingBase(snap, objective.Hex);
 
         // A field container that may hold the fist: never a garrison, prison, aircraft, airfield,
-        // carrier, dedicated scout, economy builder or a facility operator's bench.
+        // carrier, dedicated scout, an Economy-protected roster or a facility operator's bench;
+        // a lone hero only when it can command (no Support / home-vocation hero). (Not
+        // IsMobileEconomyBuilder: Analysis sets it for EVERY hero-led army.) The live twin the
+        // arrival join reads is IsLiveFistContainer.
         internal static bool IsFistContainer(ArmySnapshot a) =>
             a != null && !a.IsGarrison && !a.IsPrison && !a.IsAir && !a.IsAirfield
-            && !a.IsCarrierContainer && !a.IsSoloRecce && !a.IsMobileEconomyBuilder
-            && !a.EconomyRosterProtected && !a.OperatorDutyBlocksDeparture;
+            && !a.IsCarrierContainer && !a.IsSoloRecce
+            && !a.EconomyRosterProtected && !a.OperatorDutyBlocksDeparture
+            && !(GroundCombatActorEligibility.IsHeroAssemblyHost(a) && a.HeroIsHomeVocation);
+
+        // Live twin of IsFistContainer + the host shape (ActiveDefenceExecutor.JoinFist): a
+        // structural ground combat army or a lone commanding hero, no scout, no aircraft, no
+        // facility operator of its hex. Claims are the caller's.
+        internal static bool IsLiveFistContainer(PlayerSetupData player, ArmyData a)
+        {
+            if (a == null || a.Members.Count == 0 || a.IsGarrison || a.IsPrison || a.IsAirfield
+                || a.IsCarrierContainer || AviationRules.IsAirArmy(a) || AiArmyRoles.IsSoloRecce(a)
+                || a.Members.Any(u => u != null && (u.IsAviation
+                    || (u.IsHero && AiArmyRoles.IsFacilityOperator(player, a.Hex, u)))))
+                return false;
+            bool loneHero = a.Members.Count == 1 && a.Members[0] != null && a.Members[0].IsHero;
+            return loneHero ? !AiArmyRoles.IsGarrisonHero(a.Members[0])
+                    && !HeroRoleEvaluator.HasSupportVocation(a.Members[0])
+                : AiArmyRoles.IsStructuralGroundCombatActor(a);
+        }
 
         // The fist on `staging`: the free field army there with the widest command, then the
         // strongest. Null when none stands there.
@@ -169,8 +190,12 @@ namespace Game.Ai.V2
             }
 
             // ---- Detach: safe garrisons elsewhere lend their spare bodies ------------------
+            // A threatened staging garrison is GarrisonRelief's recipient: the same safe donors
+            // and shells answer it there (one owner; the leg keys would also coincide).
             int hostFree = host == null ? int.MaxValue : host.FreeBattleSlots;
-            foreach (ArmySnapshot donor in garrisons)
+            bool reliefOwnsDonors = stagingGarrison != null
+                && stagingGarrison.GarrisonThreatFloor > AiConfigV2.allocatorSliceEpsilon;
+            foreach (ArmySnapshot donor in reliefOwnsDonors ? new List<ArmySnapshot>() : garrisons)
             {
                 if (donor.Hex.Equals(staging) || donor.GarrisonThreatFloor > AiConfigV2.allocatorSliceEpsilon
                     || hostFree <= 0)

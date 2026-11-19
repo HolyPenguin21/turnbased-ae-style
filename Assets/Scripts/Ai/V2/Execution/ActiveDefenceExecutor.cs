@@ -326,10 +326,8 @@ namespace Game.Ai.V2
             HashSet<int> claimed = ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All
                 .Where(i => i != null && i.Status == IntentStatus.Active), null, null).ClaimedArmyIdSet;
             ArmyData host = OwnWorld.Of(player).Armies
-                .Where(a => a != null && a != mover && a.Hex.Equals(home) && a.Members.Count > 0
-                    && !a.IsGarrison && !a.IsPrison && !a.IsAirfield && !a.IsCarrierContainer
-                    && !AviationRules.IsAirArmy(a) && !claimed.Contains(a.Id)
-                    && !a.Members.Any(u => u != null && u.IsAviation))
+                .Where(a => a != null && a != mover && a.Hex.Equals(home) && !claimed.Contains(a.Id)
+                    && FistMusterObjectiveEvaluator.IsLiveFistContainer(player, a))
                 .OrderByDescending(a => a.Capacity).ThenByDescending(a => a.Members.Count).ThenBy(a => a.Id)
                 .FirstOrDefault();
             if (host == null)
