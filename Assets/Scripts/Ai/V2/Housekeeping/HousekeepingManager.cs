@@ -112,18 +112,18 @@ namespace Game.Ai.V2
             // same comparable utility space as Play / Draw / Hold / EndTurn. Housekeeping past this
             // point is ONLY the zero-AP / zero-resource structural reorganisation pass.
 
-            Run(snapshot, player, root, ctx, commitments, result);
+            yield return Run(snapshot, player, root, ctx, commitments, result);
             AiTurnSession.ReleaseCapabilityLeases(player, ctx?.TurnNumber ?? 0);
             yield break;
         }
 
-        internal static void Run(WorldSnapshot snapshot, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+        internal static IEnumerator Run(WorldSnapshot snapshot, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ActorCommitments commitments, HousekeepingResult result)
         {
             if (player == null || ctx == null)
             {
                 AiDebugLog.Write("[AI][V2] housekeeping - no player/ctx, nothing to do.");
-                return;
+                yield break;
             }
 
             int apBefore = root != null ? root.ActionPoints : 0;
@@ -131,14 +131,22 @@ namespace Game.Ai.V2
             if (analysis.Groups.Count == 0)
             {
                 AiDebugLog.Write("[AI][V2] housekeeping - no local force group worth reorganising.");
-                return;
+                yield break;
             }
 
             AiDebugLog.Write("[AI][V2][HOUSEKEEPING] -- LOCAL FORCE PACKAGING ----------------");
             foreach (LocalForceGroup group in analysis.Groups)
             {
                 LogGroupInput(group, analysis);
-                ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
+                // Under a deployed enemy every candidate runs the whole-hex simulation: the plan
+                // gives frames back between candidates (FramePacer) and reports its cost.
+                var pacer = new FramePacer();
+                StagePerfMark planStart = StagePerfTelemetry.Mark(pacer);
+                var plan = new ReorganizationPlan();
+                yield return ArmyReorganizationPlanner.PlanRoutine(group, pacer, plan);
+                if (group.ThreatBenchmarks.Count > 0)
+                    StagePerfTelemetry.Log(pacer, planStart, "housekeeping.plan",
+                        $"{plan.HexKey} threats={group.ThreatBenchmarks.Count}");
                 if (plan.IsEmpty)
                 {
                     AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   {plan.HexKey} decision: "

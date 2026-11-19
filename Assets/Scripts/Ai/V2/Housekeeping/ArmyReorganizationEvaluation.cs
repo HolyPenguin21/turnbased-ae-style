@@ -13,14 +13,18 @@ namespace Game.Ai.V2
             // The whole hex against this attacker: every contactable formation in the rules' fight
             // order, the attacker's wounds carried from one battle to the next.
             public readonly float HexReadiness;
+            // Below this HexReadiness difference two rosters hold the hex equally (Monte Carlo
+            // noise, AiConfigV2.housekeepingHexHoldMargin in this threat's ETA weighting).
+            public readonly float HexTolerance;
             public readonly float FirstReadiness;
             public readonly float SecondReadiness;
 
-            public ThreatContactRow(int threatArmyId, float hexReadiness, float firstReadiness,
-                float secondReadiness)
+            public ThreatContactRow(int threatArmyId, float hexReadiness, float hexTolerance,
+                float firstReadiness, float secondReadiness)
             {
                 ThreatArmyId = threatArmyId;
                 HexReadiness = hexReadiness;
+                HexTolerance = hexTolerance;
                 FirstReadiness = firstReadiness;
                 SecondReadiness = secondReadiness;
             }
@@ -29,9 +33,6 @@ namespace Game.Ai.V2
         private static Outcome Evaluate(VState s)
         {
             bool hasThreatBenchmarks = s.ThreatBenchmarks.Count > 0;
-            IReadOnlyList<float> contactReadiness = hasThreatBenchmarks
-                ? BuildThreatContactReadiness(s)
-                : System.Array.Empty<float>();
 
             int garrisonDeficit = 0;
             int legality = 0;
@@ -168,18 +169,21 @@ namespace Game.Ai.V2
             if (hasThreatBenchmarks)
             {
                 // Already ordered by the worst enemy contact first. Keep enemy identity and the
-                // first/second contact layers adjacent; never collapse them back per container.
-                formationStrengths.AddRange(contactReadiness);
-            }
-            else
-            {
-                // No deployed enemy benchmark: retain the canonical AiPower fallback.
-                formationStrengths.Sort((a, b) => b.CompareTo(a));
+                // hex/first/second layers adjacent; never collapse them back per container.
+                // Built only when the discrete keys above tie (Outcome.CompareTo): the whole-hex
+                // simulation is the expensive term, and a candidate already worse on a discrete
+                // key never needs it. Candidates are fresh VState clones, never mutated after.
+                return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
+                    singles, nonViable, commandWaste, formationDefect,
+                    new LazyProfile(() => BuildThreatContactReadiness(s)), -composition,
+                    s.Transfers.Count);
             }
 
+            // No deployed enemy benchmark: retain the canonical AiPower fallback.
+            formationStrengths.Sort((a, b) => b.CompareTo(a));
             return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
-                singles, nonViable, commandWaste, formationDefect, formationStrengths, -composition,
-                s.Transfers.Count);
+                singles, nonViable, commandWaste, formationDefect, new LazyProfile(formationStrengths),
+                -composition, s.Transfers.Count);
         }
 
         // Threat-first defensive profile. For each concrete enemy attacker, reproduce
@@ -187,7 +191,7 @@ namespace Game.Ai.V2
         // The plan then compares the worst threat's whole-hex hold (HexReadiness), its first
         // defender, its second line, and only then the next threat. No position coefficient or
         // per-container max is used.
-        private static IReadOnlyList<float> BuildThreatContactReadiness(VState state)
+        private static LazyProfile.Data BuildThreatContactReadiness(VState state)
         {
             var rows = new List<ThreatContactRow>();
 
@@ -240,6 +244,7 @@ namespace Game.Ai.V2
                     ? ContactReadiness(state, threat, ranked[1].defenders, ranked[1].commander)
                     : NoDefenderReadiness(threat.EtaToGroup);
                 rows.Add(new ThreatContactRow(threat.ArmyId, HexReadiness(state, threat, ranked),
+                    AiConfigV2.housekeepingHexHoldMargin / (1f + Math.Max(0, threat.EtaToGroup)),
                     first, second));
             }
 
@@ -257,13 +262,17 @@ namespace Game.Ai.V2
             });
 
             var profile = new List<float>(rows.Count * 3);
+            var tolerances = new List<float>(rows.Count * 3);
             foreach (ThreatContactRow row in rows)
             {
                 profile.Add(row.HexReadiness);
                 profile.Add(row.FirstReadiness);
                 profile.Add(row.SecondReadiness);
+                tolerances.Add(row.HexTolerance);
+                tolerances.Add(0f);
+                tolerances.Add(0f);
             }
-            return profile;
+            return new LazyProfile.Data(profile, tolerances);
         }
 
         // 2026-11-18 (owner, match Kryll vs Tessek T31) — the hex is held or lost as a whole: the
@@ -280,7 +289,8 @@ namespace Game.Ai.V2
             foreach (var r in ranked)
                 armies.Add(new WorthIt.DefendingArmy(r.defenders, r.commander, armyId: r.containerId));
             float attackerWins = WorthIt.EstimateHexControl(threat.Members, threat.Commander, armies,
-                state.HexDefenseBonus, environment: state.Environment).WinChance;
+                state.HexDefenseBonus, environment: state.Environment,
+                monteCarloTrials: AiConfigV2.housekeepingHexHoldTrials).WinChance;
             return 1f - attackerWins / (1f + Math.Max(0, threat.EtaToGroup));
         }
 

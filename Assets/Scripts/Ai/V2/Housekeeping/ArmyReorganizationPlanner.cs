@@ -44,13 +44,14 @@ namespace Game.Ai.V2
             // WorthIt.EstimateHexControl), its first real contact defender, its second line, then the next
             // threat, each using group-local ETA. Without a benchmark it falls back to the
             // strongest-first canonical AiPower formation profile. Higher is always better.
-            public readonly IReadOnlyList<float> FormationStrengths;
+            private readonly LazyProfile _formationStrengths;
+            public IReadOnlyList<float> FormationStrengths => _formationStrengths.Value;
             public readonly float NegComposition;
             public readonly int Operations;
 
             public Outcome(int gd, int legal, int operatorExposure, int preparationSlotWaste,
                 int singles, int nonViable, int commandWaste, int formationDefect,
-                IReadOnlyList<float> formationStrengths, float negComp, int operations)
+                LazyProfile formationStrengths, float negComp, int operations)
             {
                 GarrisonDeficit = gd;
                 Legality = legal;
@@ -60,7 +61,7 @@ namespace Game.Ai.V2
                 NonViable = nonViable;
                 CommanderMismatch = commandWaste;
                 FormationDefect = formationDefect;
-                FormationStrengths = formationStrengths ?? System.Array.Empty<float>();
+                _formationStrengths = formationStrengths ?? new LazyProfile(System.Array.Empty<float>());
                 NegComposition = negComp;
                 Operations = operations;
             }
@@ -76,7 +77,8 @@ namespace Game.Ai.V2
                 c = CommanderMismatch.CompareTo(o.CommanderMismatch); if (c != 0) return c;
                 c = FormationDefect.CompareTo(o.FormationDefect); if (c != 0) return c;
 
-                c = CompareFormationProfiles(FormationStrengths, o.FormationStrengths);
+                c = CompareFormationProfiles(FormationStrengths, o.FormationStrengths,
+                    _formationStrengths.Tolerances, o._formationStrengths.Tolerances);
                 if (c != 0) return c;
 
                 if (NegComposition < o.NegComposition - FloatEps) return -1;
@@ -84,15 +86,19 @@ namespace Game.Ai.V2
                 return Operations.CompareTo(o.Operations);
             }
 
-            private static int CompareFormationProfiles(IReadOnlyList<float> a, IReadOnlyList<float> b)
+            private static int CompareFormationProfiles(IReadOnlyList<float> a, IReadOnlyList<float> b,
+                IReadOnlyList<float> toleranceA, IReadOnlyList<float> toleranceB)
             {
                 int common = System.Math.Min(a?.Count ?? 0, b?.Count ?? 0);
                 for (int i = 0; i < common; i++)
                 {
                     float av = a[i];
                     float bv = b[i];
-                    if (av > bv + FloatEps) return -1; // stronger is better
-                    if (av < bv - FloatEps) return 1;
+                    float eps = System.Math.Max(FloatEps, System.Math.Max(
+                        toleranceA != null && i < toleranceA.Count ? toleranceA[i] : 0f,
+                        toleranceB != null && i < toleranceB.Count ? toleranceB[i] : 0f));
+                    if (av > bv + eps) return -1; // stronger is better
+                    if (av < bv - eps) return 1;
                 }
 
                 // Threat-backed profiles have a fixed three entries per contactable threat;
@@ -101,6 +107,43 @@ namespace Game.Ai.V2
                 // pressure to seed itself.
                 return 0;
             }
+        }
+
+        // The readiness profile of one Outcome, built at most once and only when asked
+        // (the threat-backed profile runs WorthIt.EstimateHexControl per threat).
+        private sealed class LazyProfile
+        {
+            // Per-entry equality tolerance (null or 0 = FloatEps): the whole-hex readiness is a
+            // Monte Carlo estimate, so a difference inside its noise is no improvement.
+            internal readonly struct Data
+            {
+                public readonly IReadOnlyList<float> Values;
+                public readonly IReadOnlyList<float> Tolerances;
+                public Data(IReadOnlyList<float> values, IReadOnlyList<float> tolerances)
+                {
+                    Values = values ?? System.Array.Empty<float>();
+                    Tolerances = tolerances;
+                }
+            }
+
+            private System.Func<Data> _build;
+            private Data? _data;
+
+            public LazyProfile(IReadOnlyList<float> value) => _data = new Data(value, null);
+            public LazyProfile(System.Func<Data> build) => _build = build;
+
+            private Data Get()
+            {
+                if (!_data.HasValue)
+                {
+                    _data = _build();
+                    _build = null;
+                }
+                return _data.Value;
+            }
+
+            public IReadOnlyList<float> Value => Get().Values;
+            public IReadOnlyList<float> Tolerances => Get().Tolerances;
         }
 
         private sealed class VState
@@ -129,12 +172,27 @@ namespace Game.Ai.V2
         public static ReorganizationPlan Plan(LocalForceGroup group)
         {
             var plan = new ReorganizationPlan { Q = group?.Q ?? 0, R = group?.R ?? 0 };
+            // No pacer: the routine never yields, so one MoveNext loop runs it to the end.
+            System.Collections.IEnumerator steps = PlanRoutine(group, null, plan);
+            while (steps.MoveNext()) { }
+            return plan;
+        }
+
+        // The same plan, giving frames back between candidate evaluations (FramePacer): under a
+        // deployed enemy every candidate runs the whole-hex simulation, so one hex can take far
+        // more than a frame (Kryll (0,4) T31: ~140 candidates). Nothing mutates the world between
+        // AI frames, and the group is a snapshot, so a split plan equals an unsplit one.
+        internal static System.Collections.IEnumerator PlanRoutine(LocalForceGroup group, FramePacer pacer,
+            ReorganizationPlan plan)
+        {
+            plan.Q = group?.Q ?? 0;
+            plan.R = group?.R ?? 0;
             if (group == null || !group.WorthPlanning())
             {
                 if (group != null)
                     foreach (ReorgContainer c in group.Containers)
                         plan.ExpectedMembership[c.ArmyId] = c.Units.Select(u => u.Key).ToList();
-                return plan;
+                yield break;
             }
 
             var state = new VState { HexDefenseBonus = group.HexDefenseBonus, Environment = group.Environment };
@@ -165,6 +223,8 @@ namespace Game.Ai.V2
                         best = candidate;
                         bestOutcome = o;
                     }
+                    if (pacer != null && pacer.Expired)
+                        yield return pacer.Checkpoint();
                 }
 
                 if (best == null)
@@ -183,7 +243,6 @@ namespace Game.Ai.V2
             plan.Transfers.AddRange(state.Transfers);
             foreach (var kv in state.Roster)
                 plan.ExpectedMembership[kv.Key] = kv.Value.Select(u => u.Key).ToList();
-            return plan;
         }
 
         private static bool IsFieldContainer(ReorgContainer c) => c != null && c.IsMutableGround;

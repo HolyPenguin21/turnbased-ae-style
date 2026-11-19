@@ -25,6 +25,15 @@ namespace Game.Ai.V2
         // at most one accepted structural move; the loop stops early the moment no move improves
         // the lexicographic outcome.
         public const int housekeepingMaxPlanIterationsPerHex = 24;
+        // Whole-hex readiness under a deployed enemy (ArmyReorganizationEvaluation.HexReadiness):
+        // sequential trials of WorthIt.EstimateHexControl, and the attacker-win difference below
+        // which two rosters count as equal. Measured 2026-11-18 on Kryll's (0,4) T31 rosters
+        // (7 armies vs Dust Dogs, 30 unit orders of the SAME roster): 25 trials sd 0.10 (0.16-0.56)
+        // and the plan stopped at Ironclad 4/7; 50 trials sd 0.06 and it reached 7/7 with fewer
+        // iterations (1.66 s vs 1.45 s per plan, uncached Mono). The margin is one such sd: a fold
+        // that really helps there gained 0.45; a reshuffle inside the noise moves nothing.
+        public const int housekeepingHexHoldTrials = 50;
+        public const float housekeepingHexHoldMargin = 0.06f;
 
         // --- Hero operational-role model (spec §8). A combat-leadership score from canonical hero
         //     data only: CommandRating (how large a force it can lead) plus the hero's own

@@ -890,19 +890,55 @@ namespace Game.EditorTests
         [Test]
         public void NearThreat_HeroArmyWithRoom_TakesTheHeroless2BodyArmies_ForTheWholeHexHold()
         {
+            LocalForceGroup group = KryllBaseUnderDustDogs(out ReorgUnit dorian);
+
+            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
+
+            Assert.That(plan.ExpectedMembership[2].Count(k => k != dorian.Key), Is.EqualTo(6),
+                "Ironclad takes both heroless pairs: " + plan.DebugSummary());
+        }
+
+        // The planner gives frames back between candidates (FramePacer); a plan split over frames
+        // is the plan computed in one go.
+        [Test]
+        public void PacedPlan_EqualsThePlanComputedInOneGo()
+        {
+            ReorganizationPlan direct = ArmyReorganizationPlanner.Plan(KryllBaseUnderDustDogs(out _, keySeed: 9000));
+            var paced = new ReorganizationPlan();
+            var pacer = new FramePacer();
+            var stack = new Stack<System.Collections.IEnumerator>();
+            stack.Push(ArmyReorganizationPlanner.PlanRoutine(KryllBaseUnderDustDogs(out _, keySeed: 9000), pacer, paced));
+            while (stack.Count > 0)
+            {
+                System.Collections.IEnumerator top = stack.Peek();
+                if (!top.MoveNext()) { stack.Pop(); continue; }
+                if (top.Current is System.Collections.IEnumerator nested) stack.Push(nested);
+            }
+
+            Assert.That(paced.Transfers.Count, Is.EqualTo(direct.Transfers.Count));
+            foreach (var kv in direct.ExpectedMembership)
+                Assert.That(paced.ExpectedMembership[kv.Key], Is.EqualTo(kv.Value), $"army {kv.Key}");
+        }
+
+        // Garrison 4/4, a hero army 3/7 and two heroless 2-body armies under a 5-body attacker that
+        // beats every formation alone (garrison and the packed army both lose ~1.00), while the
+        // whole hex holds better packed (1.00 -> 0.66; one fold alone 0.94, inside the margin).
+        private static LocalForceGroup KryllBaseUnderDustDogs(out ReorgUnit dorian, int keySeed = 0)
+        {
+            if (keySeed > 0) _key = keySeed;
             System.Func<ReorgUnit> F = () => RFighter(4f, 2f, 4f);
             var garrisonBodies = new[] { F(), F(), F(), F() };
-            ReorgUnit dorian = RHero(7, support: false);
+            dorian = RHero(7, support: false);
             var ironcladBodies = new[] { F(), F() };
             var locusts = new[] { F(), F() };
             var sand = new[] { F(), F() };
-            ReorgContainer garrison = RGarrison(1, garrisonBodies);
-            ReorgContainer ironclad = RFree(2, new[] { dorian }.Concat(ironcladBodies).ToArray());
-            ReorgContainer locustsArmy = RFree(3, locusts);
-            ReorgContainer sandArmy = RFree(4, sand);
             var group = new LocalForceGroup
             {
-                Containers = new List<ReorgContainer> { garrison, ironclad, locustsArmy, sandArmy },
+                Containers = new List<ReorgContainer>
+                {
+                    RGarrison(1, garrisonBodies), RFree(2, new[] { dorian }.Concat(ironcladBodies).ToArray()),
+                    RFree(3, locusts), RFree(4, sand),
+                },
             };
             group.ThreatBenchmarks.Add(new ReorgThreatBenchmark
             {
@@ -912,11 +948,7 @@ namespace Game.EditorTests
                 TargetableUnitKeys = new HashSet<int>(garrisonBodies.Concat(ironcladBodies)
                     .Concat(locusts).Concat(sand).Select(u => u.Key)),
             });
-
-            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
-
-            Assert.That(plan.ExpectedMembership[2].Count(k => k != dorian.Key), Is.EqualTo(6),
-                "Ironclad takes both heroless pairs: " + plan.DebugSummary());
+            return group;
         }
 
         // 2026-10-15 (user decision) — playtest: Aldric and Dorian stood as lone free heroes on

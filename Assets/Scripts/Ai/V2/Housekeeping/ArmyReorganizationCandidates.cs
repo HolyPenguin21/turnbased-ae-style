@@ -377,6 +377,46 @@ namespace Game.Ai.V2
                 }
             }
 
+            // 1b. 2026-11-18 (owner, match Kryll vs Tessek T31) — under a deployed enemy, every
+            // legal whole-fold of a heroless army into ONE occupied field formation at once. The
+            // whole-hex hold can move only when the formations behind the first contact are merged
+            // together: one fold
+            // may sit inside the Monte Carlo margin while the second gives the gain (synthetic
+            // 5 vs 4+3+2+2+2: 1.00 -> 0.94 -> 0.66), so a fold-by-fold climb stops at the first.
+            // One candidate per destination; the readiness profile judges it like any other.
+            if (state.ThreatBenchmarks.Count > 0)
+            {
+                foreach (int dstId in armyIds)
+                {
+                    ReorgContainer dst = state.Meta[dstId];
+                    if (dst.IsGarrison || !dst.IsFieldReceiver || state.Roster[dstId].Count == 0)
+                        continue;
+                    VState merged = state;
+                    int folds = 0;
+                    foreach (int srcId in armyIds)
+                    {
+                        if (srcId == dstId)
+                            continue;
+                        ReorgContainer src = state.Meta[srcId];
+                        if (!IsFieldContainer(src) || !src.CanDonate)
+                            continue;
+                        List<ReorgUnit> srcUnits = merged.Roster[srcId];
+                        // Heroless bodies only: a second commander folded in is slot waste that
+                        // would sink the whole candidate; hero-led armies keep step 1's single folds.
+                        if (srcUnits.Count == 0 || srcUnits.Any(u => u.IsHero
+                            || u.IsCommitted || u.IsAviation || merged.MovedUnitKeys.Contains(u.Key)))
+                            continue;
+                        VState next = TryWholeFold(merged, srcId, dstId);
+                        if (next == null)
+                            continue;
+                        merged = next;
+                        folds++;
+                    }
+                    if (folds >= 2)
+                        yield return merged;
+                }
+            }
+
             // 2. Deposit a singleton/non-viable field member into the local garrison.
             int garrisonId = armyIds.FirstOrDefault(id => state.Meta[id].IsGarrison);
             if (state.Meta.TryGetValue(garrisonId, out ReorgContainer garr)

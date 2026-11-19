@@ -328,10 +328,15 @@ namespace Game.Combat
         // Territorial outcome of the sequential fights. An escaping non-fighting hero yields
         // the hex just as a captured one does. Capture/kill odds belong to EstimateSequential
         // and EstimateCaptureKill; summons remain real defenders through WithBattleSummons.
+        // `monteCarloTrials` (0 = the shared MonteCarloTrials) — the sequential trials of a
+        // multi-army hex, for a caller that compares close rosters and pays for the precision
+        // (Housekeeping's whole-hex readiness). A single army keeps the shared Estimate.
         public static BattleEstimate EstimateHexControl(IReadOnlyCollection<DefenderProfile> attackerUnits,
             SideCommander attackerCommander, IReadOnlyList<DefendingArmy> defendingArmies,
-            float hexDefenseBonus, AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default)
+            float hexDefenseBonus, AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default,
+            int monteCarloTrials = 0)
         {
+            int trials = monteCarloTrials > 0 ? monteCarloTrials : MonteCarloTrials;
             // Every caller, including territorial AI admission, reads the battle hex's weather.
             // Normalise it here before ordering, seeds and cache keys; capture has no weather rule.
             environment = BattleWeather(environment, defendingArmies);
@@ -379,6 +384,7 @@ namespace Game.Combat
             return CachedEstimate(2, seed, m,
                 buf =>
                 {
+                    buf.Add(trials);
                     AppendKey(buf, attackerCommander);
                     AppendKey(buf, attackerUnits, 0f, attackerCommander.Initiative, storm, attackerCommander);
                     buf.Add(order.Count);
@@ -398,13 +404,13 @@ namespace Game.Combat
                     foreach (DefendingArmy army in order)
                         defenderTemplates.Add(ToBattleUnits(army.Units, army.DefenseBonus(hexDefenseBonus),
                             army.Commander.Initiative, army.Commander, storm));
-                    return SimulateSequential(baseline, order, defenderTemplates, seed, attackerCommander, m);
+                    return SimulateSequential(baseline, order, defenderTemplates, seed, attackerCommander, m, trials);
                 });
         }
 
         private static BattleEstimate SimulateSequential(List<BattleUnit> baseline,
             IReadOnlyList<DefendingArmy> order, List<List<BattleUnit>> defenderTemplates, int seed,
-            SideCommander attackerCommander, AbilityMagnitudes magnitudes)
+            SideCommander attackerCommander, AbilityMagnitudes magnitudes, int trials)
         {
             var rng = new System.Random(seed);
             float startHp = baseline.Where(u => !u.IsHero).Sum(u => u.Hp);
@@ -417,7 +423,7 @@ namespace Game.Combat
             var survivorStats = new List<BattleUnit>(baseline.Count);
             var scratch = new SimulationScratch(baseline.Count,
                 defenderTemplates.Count > 0 ? defenderTemplates.Max(d => d.Count) : 0);
-            for (int t = 0; t < MonteCarloTrials; t++)
+            for (int t = 0; t < trials; t++)
             {
                 attackers.Clear(); attackers.AddRange(baseline);
                 entryStats.Clear(); entryStats.AddRange(baseline);
@@ -477,7 +483,7 @@ namespace Game.Combat
                 }
                 else if (result == 0) draws++;
             }
-            return new BattleEstimate((wins + draws * 0.5f) / MonteCarloTrials,
+            return new BattleEstimate((wins + draws * 0.5f) / trials,
                 wins > 0 ? survivingRatioSum / wins : 0f,
                 wins > 0 ? (float)criticalOnWin / wins : 0f);
         }
