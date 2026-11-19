@@ -37,7 +37,8 @@ namespace Game.Ai.V2
         internal static float HeldBaseGarrisonShortfall(WorldSnapshot snap, ArmySnapshot garrison,
             out float floor)
         {
-            floor = AiArmyRoles.GarrisonDefenceFloor(snap.Observer, snap.Self.AvailablePower,
+            // 2026-11-19 — the need side (mobile reserve, gathering host): what must still be GIVEN.
+            floor = AiArmyRoles.GarrisonNeedFloor(snap.Observer, snap.Self.AvailablePower,
                 garrison.Hex, garrison.Hex.Equals(snap.Self.Citadel));
             int bodies = garrison.Members?.Count(AiArmyRoles.IsGroundBattleBody) ?? 0;
             return bodies == 0

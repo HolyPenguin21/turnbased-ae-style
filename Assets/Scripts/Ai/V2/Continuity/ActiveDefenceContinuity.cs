@@ -57,6 +57,22 @@ namespace Game.Ai.V2
             if (defence.Phase == ActiveDefencePhase.Return)
             {
                 if (actor.Hex.Equals(defence.ReturnHex)) return false;
+                // Muster (2026-11-19) — a leg of the admission turn only: on the next turn the army
+                // is free again and competes for every lane on its own value (a fresh muster walks
+                // it on if nothing better wants it). Losing the staging Base ends it at once.
+                if (defence.ReturnPurpose == ActiveDefenceReturnPurpose.Muster)
+                {
+                    string end = defence.ImmediateTurn != (snap?.TurnNumber ?? 0) ? "muster_turn_over"
+                        : !ActiveDefenceObjectiveEvaluator.IsDefendableAsset(snap,
+                            defence.ProtectedAssetKind, defence.ProtectedAssetHex) ? "staging_base_lost" : null;
+                    if (end != null)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Muster][Continuity] decision=END actor={actor.ArmyId} reason={end}");
+                        return false;
+                    }
+                    ResumeTransientSuspension(intent);
+                    return true;
+                }
                 // GarrisonRelief — the detachment delivers its bodies whatever became of the threat;
                 // only losing the recipient base ends it (the shell then stands free where it is).
                 if (defence.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)

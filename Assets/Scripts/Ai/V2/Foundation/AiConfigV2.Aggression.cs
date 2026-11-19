@@ -40,6 +40,12 @@ namespace Game.Ai.V2
         // first was priced (activation AP x (eta-1)): a 7-AP fist 9 turns away paid 63 against
         // a benefit of ~20, so no fresh assault beyond ~2 turns was ever funded.
         public const int attackDeliveryHorizonTurns = 5;
+        // 2026-11-19 (owner, match Tessek vs Draven) — the standing fist mustered before the
+        // mobilization gate (FistMusterObjectiveEvaluator). A muster step is worth the best Attack
+        // objective's value times the share of the strike bar it brings (power / what the fist
+        // still lacks). A hero adds command: its share is this weight times the capacity it
+        // adds over the current fist host (a lone hero has no power of its own).
+        public const float fistMusterCommandShare = 0.5f;
         // 2026-10-01 (user decision) — a preparation's frozen target roster is re-frozen when the
         // peak (TotalMilitaryPotential) grew by more than this share since it was frozen.
         public const float attackTargetRosterRefreezeGrowth = 0.10f;

@@ -481,6 +481,8 @@ namespace Game.Ai.V2
 
             TryAppendAttackPreparation(snap, objectives, activeIntents, committed, proposals, ctx,
                 attackProposed, intentState);
+            // 2026-11-19 (owner) — before the gate opens, idle bodies muster into the standing fist.
+            AppendFistMuster(snap, objectives, activeIntents, committed, proposals);
 
             RecordAttackDeferrals(activeIntents, proposals, assaultWhy, deferredThisPass);
         }
@@ -622,7 +624,7 @@ namespace Game.Ai.V2
         // ---- T01: the mobilization trigger and the first preparation step -----------------------
         //
         // Opens ONE new preparation when the mobilization gate is open (AttackObjectiveEvaluator
-        // .MobilizationOpen: the deployed share reaches three quarters, or the field bodies can
+        // .MobilizationOpen: the deployed share reaches three fifths, or the field bodies can
         // already form the strike army) and no Attack operation is live. It never admits a march: the prepared
         // fist marches only through the ordinary strict >80% peak + coverage path. The objective is
         // the objective owner's best (Enumerate's TaskScore order), incl. a location-only starting

@@ -23,7 +23,10 @@ namespace Game.Ai.V2
     // GarrisonRelief (2026-10-18) — the Aggression relief mission: a detachment of a safe base's
     // spare garrison bodies walks to a threatened own base and joins its garrison
     // (GarrisonReliefObjectiveEvaluator). It answers no enemy army (EnemyArmyId = -1).
-    public enum ActiveDefenceReturnPurpose { SafeWithdrawal = 0, RegroupForAsset = 1, GarrisonRelief = 2 }
+    // Muster (2026-11-19): a fist muster leg (FistMusterObjectiveEvaluator) — an idle army, a
+    // garrison detachment or a staging-garrison intake joining the standing fist on the staging Base.
+    // It lives for the turn it was admitted only (ImmediateTurn), so the army stays free to compete.
+    public enum ActiveDefenceReturnPurpose { SafeWithdrawal = 0, RegroupForAsset = 1, GarrisonRelief = 2, Muster = 3 }
 
     // Why an Intercept exists. Zero keeps every existing intent a strategic defence of an asset.
     // ImmediateOpportunity is one fight the defender can START in the very own turn it is admitted
@@ -41,7 +44,8 @@ namespace Game.Ai.V2
         public ActiveDefencePhase Phase;
         public ActiveDefenceReturnPurpose ReturnPurpose;
         public ActiveDefenceInterceptPurpose InterceptPurpose;
-        // ImmediateOpportunity only: the global turn it was admitted in (it ends with that turn).
+        // ImmediateOpportunity Intercept and Muster Return: the global turn it was admitted in
+        // (it ends with that turn).
         public int ImmediateTurn;
         public int? EnemyEta;
         public int EnemyArmyId;

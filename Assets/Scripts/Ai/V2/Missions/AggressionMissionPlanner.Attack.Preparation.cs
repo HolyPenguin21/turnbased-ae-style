@@ -14,7 +14,7 @@ namespace Game.Ai.V2
         // ---- T01: the mobilization trigger and the first preparation step -----------------------
         //
         // Opens ONE new preparation when the mobilization gate is open (AttackObjectiveEvaluator
-        // .MobilizationOpen: the deployed share reaches three quarters, or the field bodies can
+        // .MobilizationOpen: the deployed share reaches three fifths, or the field bodies can
         // already form the strike army) and no Attack operation is live. It never admits a march: the prepared
         // fist marches only through the ordinary strict >80% peak + coverage path. The objective is
         // the objective owner's best (Enumerate's TaskScore order), incl. a location-only starting
@@ -39,7 +39,7 @@ namespace Game.Ai.V2
                 self.AttackPeak);
             string share = $"deployed={F(self.DeployedPower)} available={F(self.AvailablePower)} "
                 + $"share={(self.AvailablePower > 0f ? 100f * self.DeployedPower / self.AvailablePower : 0f):0.00}% "
-                + $"gate>=75% fieldStrike={F(self.FieldStrikePotential)} gate>{F(AttackForceReadiness.RequiredPower(self.AttackPeak))} "
+                + $"gate>=60% fieldStrike={F(self.FieldStrikePotential)} gate>{F(AttackForceReadiness.RequiredPower(self.AttackPeak))} "
                 + $"open={(open ? (byShare && byField ? "share+field" : byShare ? "share" : byField ? "field" : "held") : "0")}";
             MissionIntent live = LiveAttackOperation(activeIntents);
             string skip = !open ? "trigger_closed"
@@ -49,17 +49,20 @@ namespace Game.Ai.V2
                 : !AttackPreparationPolicy.PreparationStagingBase(snap, objectives[0].Hex).HasValue
                     ? "no_own_base" : null;
             string logKey = $"mobilization#{snap.Observer?.ColorIndex}";
+            // A genuinely open gate is kept open for the next two turns so a one-pass flicker
+            // cannot cost the start of the operation. 2026-11-19 (match Tessek vs Draven, D1) —
+            // held on EVERY genuine open, not only when this pass proposes the preparation:
+            // Tessek T24 opened by field strike, the same pass admitted a direct assault on
+            // 8-turn-old intel (skip direct_assault_or_gather_proposed), the fist withdrew and the
+            // gate was closed again from T25 — no preparation for the rest of the match.
+            if (byShare || byField)
+                OperationContinuationWindow.HoldMobilization(snap.Observer, snap.TurnNumber);
             if (skip != null)
             {
                 AiDebugLog.WriteDeduped(logKey,
                     $"[AI][V2][Attack][Mobilization] decision=NONE {share} reason={skip}");
                 return;
             }
-
-            // A preparation is about to be proposed from a genuinely open gate: keep the gate open
-            // for the next two turns so a one-pass flicker cannot cost the start of the operation.
-            if (byShare || byField)
-                OperationContinuationWindow.HoldMobilization(snap.Observer, snap.TurnNumber);
 
             AttackObjective objective = objectives[0];
             HexCoord citadel = AttackPreparationPolicy.PreparationStagingBase(snap, objective.Hex).Value;
