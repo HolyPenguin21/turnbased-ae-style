@@ -129,6 +129,13 @@ namespace Game.EditorTests
             data.Visuals.Add(appearance); data.Visuals.Add(appearance);
             Assert.Throws<ArgumentException>(() => Validate(data));
         }
+        [Test] public void Validate_RejectsNegativeRememberedCombatRecordBeforeRestore()
+        {
+            var data = Remembered(out _);
+            Validate(data);
+            data.Memory.Single().Armies.Single().Members.Single().DamageTaken = -1;
+            Assert.Throws<ArgumentException>(() => Validate(data));
+        }
         [Test] public void Validate_RejectsNonfinitePoseAndUnissuedHistoricalIdentity()
         {
             var data = Remembered(out _);

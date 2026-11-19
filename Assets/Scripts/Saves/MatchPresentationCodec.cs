@@ -199,7 +199,8 @@ namespace Game.Saves
                     {
                         if (unit == null || unit.RuntimeId <= 0 || unit.RuntimeId > identity.UnitHighWaterMark || !unitIds.Add(unit.RuntimeId)
                             || unit.Abilities == null || unit.TypeTags == null || !Enum.IsDefined(typeof(BattleRow), unit.Row)
-                            || unit.MoveMax < 0 || unit.MoveCurrent < 0 || unit.ActivationApCost < 0 || unit.AirfieldCapacity < 0)
+                            || unit.MoveMax < 0 || unit.MoveCurrent < 0 || unit.ActivationApCost < 0 || unit.AirfieldCapacity < 0
+                            || !Record(unit).IsValid)
                             throw new ArgumentException("Invalid historical unit.");
                         StateReference.Player(unit.OwnerId, player);
                         if (!string.IsNullOrEmpty(unit.CapturedFromId)) StateReference.Player(unit.CapturedFromId, player);
@@ -232,6 +233,11 @@ namespace Game.Saves
                     throw new ArgumentException("Unknown or duplicate knowledge hex.");
             return result;
         }
+        private static UnitCombatRecord Record(MatchRememberedUnitData unit) => new UnitCombatRecord
+        {
+            BattlesSurvived = unit.BattlesSurvived, DamageDealt = unit.DamageDealt,
+            DamageTaken = unit.DamageTaken, Kills = unit.Kills,
+        };
         private static void ValidateCost(ResourceCost value)
         {
             if (value == null || value.human < 0 || value.energy < 0 || value.materials < 0 || value.tech < 0)
@@ -294,10 +300,8 @@ namespace Game.Saves
                 unit.Attack = entry.Attack; unit.Defense = entry.Defense; unit.Range = entry.Range; unit.HitPointsMax = entry.HitPointsMax;
                 unit.HitPointsCurrent = entry.HitPointsCurrent; unit.Row = (BattleRow)entry.Row; unit.Initiative = entry.Initiative;
                 unit.AirfieldCapacity = entry.AirfieldCapacity;
-                var record = new UnitCombatRecord { BattlesSurvived = entry.BattlesSurvived, DamageDealt = entry.DamageDealt,
-                    DamageTaken = entry.DamageTaken, Kills = entry.Kills };
-                if (!record.IsValid) throw new ArgumentException("Invalid historical unit combat record.");
-                unit.CombatRecord = record;
+                unit.CombatRecord = Record(entry); // range checked by Validate before any restore
+
                 unit.Abilities.UnionWith(entry.Abilities);
                 foreach (int tag in entry.TypeTags) unit.TypeTags.Add((UnitTypeTag)tag);
                 army.Members.Add(unit);
