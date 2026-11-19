@@ -51,8 +51,10 @@ namespace Game.Ai.V2
         public const float threatConfidenceExact = 1.0f;
         public const float threatConfidenceLastKnown = 0.7f;
 
-        // Severity is a property of the hostile pressure itself. ResponseEta is diagnostic only:
-        // the nearest arrival is not proof that the arriving roster can actually win the fight.
+        // Severity is a property of the hostile pressure itself: the nearest own arrival is not
+        // proof that the arriving roster can win the fight, so it is no Severity input (an unused
+        // per-army ResponseEta was removed in the 2026-11-19 audit; deadlines read
+        // ActiveDefenceObjectiveEvaluator.GroundArrivalEta).
         public const float severityWinChanceWeight = 0.35f;
         public const float severityDamageWeight = 0.25f;
         public const float severityEtaWeight = 0.25f;

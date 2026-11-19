@@ -666,7 +666,7 @@ namespace Game.EditorTests
             snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(farSite, enemy, true, null, null, 0,
                 true, 0f, 8) };
             Assert.That(ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, marcher.Hex, farSite,
-                marcher.CurrentMovement, marcher.MaxMovement, fastestByTurns: true),
+                marcher.CurrentMovement, marcher.MaxMovement),
                 Is.GreaterThanOrEqualTo(snap.Threat.Threats[0].EnemyEta.Value), "the blow lands after the enemy");
 
             AttackMarchAssessment trade = AttackMarchPolicy.Assess(snap, citadel, marcher);
@@ -817,10 +817,11 @@ namespace Game.EditorTests
                 tiles[new HexCoord(1, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = 3 };
                 map.SetData(3, 1f, tiles);
                 snap.Map = map;
-                Assert.That(ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, from, destination, 2, 3),
-                    Is.EqualTo(2), "the cheap [3,1] route wastes the remaining movement");
+                Assert.That(SafeStepPathing.FindSafePath(map, snap.Observer, from, destination, 3,
+                    SafeRouteProfile.Combat).TotalCost, Is.EqualTo(4),
+                    "the cheapest [3,1] route would waste the remaining movement (2 turns)");
                 Assert.That(ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, from, destination,
-                    2, 3, fastestByTurns: true), Is.EqualTo(1), "the 5-MP bypass beats EnemyEta=2");
+                    2, 3), Is.EqualTo(1), "the 5-MP bypass execution walks beats EnemyEta=2");
                 if (!finishOpponent)
                     Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.EqualTo(destination));
                 else
@@ -1569,8 +1570,10 @@ namespace Game.EditorTests
                 HexPath cheap = SafeStepPathing.FindSafePath(map, snap.Observer, from, destination,
                     3, SafeRouteProfile.Combat);
                 Assert.That(cheap.TotalCost, Is.EqualTo(8));
-                Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, destination), Is.EqualTo(3),
-                    "reinforcement timing keeps its existing cheapest-route contract");
+                // 2026-11-19 (audit D3) — reinforcement timing is judged on the route execution
+                // walks (turn-optimal), not on the 8-MP cheapest one (3 turns).
+                Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, destination), Is.EqualTo(2),
+                    "reinforcement timing uses the turn-optimal route execution walks");
 
                 bool timely = ActiveDefenceObjectiveEvaluator.CanInterceptRosterBeforeThreat(snap,
                     from, destination, 3, 3, 3, out int eta);

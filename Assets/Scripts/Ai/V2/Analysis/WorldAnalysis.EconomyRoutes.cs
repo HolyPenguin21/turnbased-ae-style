@@ -18,6 +18,24 @@ namespace Game.Ai.V2
     // the snapshot carries for Demand. The same WorldAnalysis owner as WorldAnalysis.Economy.cs.
     public static partial class WorldAnalysis
     {
+        // Economy chooses the closest physically reachable shelter (a pure snapshot read, shared
+        // by Analysis and Continuity). Combat's "most active base" ranking intentionally has a
+        // different purpose and keeps its separate owner.
+        internal static HexCoord? SelectEconomyHome(WorldSnapshot snap, HexCoord from,
+            IReadOnlyDictionary<HexCoord, int> routeCosts, bool avoidCurrentHex = false)
+        {
+            if (snap?.Self?.BaseHexes == null || routeCosts == null) return null;
+            IEnumerable<HexCoord> candidates = snap.Self.BaseHexes.Where(h =>
+                routeCosts.TryGetValue(h, out int cost) && cost < int.MaxValue);
+            if (avoidCurrentHex && candidates.Any(h => !h.Equals(from)))
+                candidates = candidates.Where(h => !h.Equals(from));
+            return candidates.OrderBy(h => routeCosts[h])
+                .ThenBy(h => AiReturnBasePolicy.BaseThreatSeverityAt(snap, h))
+                .ThenByDescending(h => h.Equals(snap.Self.Citadel))
+                .ThenBy(h => h.Q).ThenBy(h => h.R)
+                .Select(h => (HexCoord?)h).FirstOrDefault();
+        }
+
         internal static IReadOnlyDictionary<HexCoord, int> EconomyHomeRoutes(
             PlayerSetupData player, AiTurnContext ctx, HexCoord from, int maxMovement,
             IReadOnlyList<HexCoord> bases)

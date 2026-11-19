@@ -87,38 +87,43 @@ namespace Game.Ai.V2
                 .Select(x => AssessEconomyArmy(snap, target, x.route, x.army,
                     buildApCost, includeReturn, requiresFoundingGarrison))
                 .Where(x => LogIfIneligible(snap, target, x))
-                .Where(x => EconomyExtractionDeliveryAllowed(x)
-                    || activeIntents?.Any(i => EconomyContinuity.HoldsEconomyBuildSite(i, target)
-                        && i.PreferredMoverArmyId == x.Route.ArmyId) == true)
-                .Where(x => EconomySupportBuilderAllowed(x)
-                    || activeIntents?.Any(i => EconomyContinuity.HoldsEconomyBuildSite(i, target)
-                        && i.PreferredMoverArmyId == x.Route.ArmyId) == true)
-                .Where(x => x.Route.IsOnTarget
-                    || ActiveAssignment(activeIntents, x.Army.ArmyId) == null
-                    || ActiveAssignment(activeIntents, x.Army.ArmyId).Kind == MissionKind.Economy
-                    || EconomyLoanAllowed(ActiveAssignment(activeIntents, x.Army.ArmyId), buildValue,
-                        x, buildApCost, out _))
+                .Select(x => new
+                {
+                    Choice = x,
+                    Assignment = ActiveAssignment(activeIntents, x.Army.ArmyId),
+                    // Continuity already pinned this army to this very site: the delivery and
+                    // support horizons that admit a NEW builder do not apply to it.
+                    PinnedHere = activeIntents?.Any(i => EconomyContinuity.HoldsEconomyBuildSite(i, target)
+                        && i.PreferredMoverArmyId == x.Route.ArmyId) == true,
+                    Opportunity = EconomyMissionOpportunityCost(x, activeIntents, target),
+                })
+                .Where(x => (EconomyExtractionDeliveryAllowed(x.Choice) || x.PinnedHere)
+                    && (EconomySupportBuilderAllowed(x.Choice) || x.PinnedHere))
+                .Where(x => x.Choice.Route.IsOnTarget
+                    || x.Assignment == null
+                    || x.Assignment.Kind == MissionKind.Economy
+                    || EconomyLoanAllowed(x.Assignment, buildValue, x.Choice, buildApCost, out _))
                 // Economy's own builders come first only while taking them is free (this
                 // site's own build, or a builder already walking home); a builder busy on
                 // another site is priced like any other donor below.
-                .OrderBy(x => EconomyBuilderIsSupport(x) ? 1 : 0)
-                .ThenByDescending(x => (x.Route.HasActiveEconomyCommitment
-                        || ActiveAssignment(activeIntents, x.Route.ArmyId)?.Kind == MissionKind.Economy)
-                    && EconomyMissionOpportunityCost(x, activeIntents, target)
-                        <= AiConfigV2.allocatorSliceEpsilon)
-                .ThenBy(x => x.Suitability == EconomyArmySuitability.Ready ? 0
-                    : x.Suitability == EconomyArmySuitability.LightenAtBase ? 1 : 2)
+                .OrderBy(x => EconomyBuilderIsSupport(x.Choice) ? 1 : 0)
+                .ThenByDescending(x => (x.Choice.Route.HasActiveEconomyCommitment
+                        || x.Assignment?.Kind == MissionKind.Economy)
+                    && x.Opportunity <= AiConfigV2.allocatorSliceEpsilon)
+                .ThenBy(x => x.Choice.Suitability == EconomyArmySuitability.Ready ? 0
+                    : x.Choice.Suitability == EconomyArmySuitability.LightenAtBase ? 1 : 2)
                 // Among equally suitable builders use canonical delivery plus the ONE
                 // donor interruption loss. Otherwise a cheaper AP loan can still lose
                 // intrinsic value to a slightly dearer uncommitted actor.
                 .ThenBy(x => TaskScoreEvaluator.Price(
-                        Mathf.Max(0f, x.TotalAssignmentApCost - buildApCost))
-                    + EconomyMissionOpportunityCost(x, activeIntents, target))
-                .ThenBy(x => x.TotalAssignmentApCost)
-                .ThenBy(x => x.Route.EffectiveArmyPower)
-                .ThenBy(x => x.Route.ArmySize)
-                .ThenBy(x => x.Route.TravelCost + (includeReturn ? x.Route.ReturnTravelCost : 0))
-                .ThenBy(x => x.Route.ArmyId)
+                        Mathf.Max(0f, x.Choice.TotalAssignmentApCost - buildApCost))
+                    + x.Opportunity)
+                .ThenBy(x => x.Choice.TotalAssignmentApCost)
+                .ThenBy(x => x.Choice.Route.EffectiveArmyPower)
+                .ThenBy(x => x.Choice.Route.ArmySize)
+                .ThenBy(x => x.Choice.Route.TravelCost + (includeReturn ? x.Choice.Route.ReturnTravelCost : 0))
+                .ThenBy(x => x.Choice.Route.ArmyId)
+                .Select(x => x.Choice)
                 .ToList();
         }
 
@@ -127,6 +132,14 @@ namespace Game.Ai.V2
             EconomyAssessmentCache = new System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
                 Dictionary<(HexCoord, EconomyBuilderRouteSnapshot, ArmySnapshot, float, bool, bool), EconomyBuilderChoice>>();
 
+        // The army's assessment for this site: one of three delivery shapes, each with the exact
+        // roster it departs with (EconomyBuilderChoice), or Ineligible with the reason.
+        //  · garrison extraction — the hero leaves a garrison (AssessGarrisonExtraction);
+        //  · its own roster is safe — Ready, or LightenAtBase when a local garrison can take the
+        //    bodies the trip does not need (AssessOwnRoster);
+        //  · its own roster is not safe — ReinforceAtBase from the local garrison (AssessReinforcement).
+        // Founding must deliver a ground body, not merely prefer one; a defender already on the
+        // site is a frozen witness. Final Materialization/Execution revalidates the transfer.
         internal static EconomyBuilderChoice AssessEconomyArmy(WorldSnapshot snap,
             HexCoord target, EconomyBuilderRouteSnapshot route, ArmySnapshot army,
             float buildApCost, bool includeReturn, bool? requiresFoundingGarrison = null)
@@ -143,120 +156,36 @@ namespace Game.Ai.V2
             // copy, but must never overwrite the result observed by the next reader.
             return assessed.DetachedDecision();
 
-            // Founding must deliver a ground body, not merely prefer one. Extraction keeps its
-            // threat-driven escort, drawn only from bodies the garrison floor spares. A defender
-            // already on the site is a frozen witness; final Materialization/Execution revalidates the physical transfer before spending.
             EconomyBuilderChoice Compute()
             {
                 bool defendedSite = snap?.Self?.Armies?.Any(a => a != null && a.IsGarrison
                     && a.Hex.Equals(target) && a.Members?.Any(AiArmyRoles.IsGroundBattleBody) == true) == true;
-                return ComputeCore(founding && !defendedSite);
-            }
-
-            EconomyBuilderChoice ComputeCore(bool enforceGarrisonBody)
-            {
+                bool enforceGarrisonBody = founding && !defendedSite;
                 var choice = new EconomyBuilderChoice
                 {
                     Route = route,
                     Army = army,
                     FoundsBase = founding,
-                    TotalAssignmentApCost = EstimateEconomyAssignmentAp(
-                        route, buildApCost, includeReturn),
+                    TotalAssignmentApCost = EstimateEconomyAssignmentAp(route, buildApCost, includeReturn),
                     Suitability = EconomyArmySuitability.Ineligible,
                     IneligibleReason = "insufficient_safe_escort",
                 };
                 if (army == null)
                     return choice;
-
-                if (route.RequiresGarrisonExtraction)
-                {
-                    // Analysis publishes structural extraction feasibility through the existing
-                    // Shell/Host/Create resolver. Demand consumes that immutable witness.
-                    if (!route.ExtractionContainerAvailable)
-                    {
-                        choice.IneligibleReason = "no_garrison_extraction_container";
-                        return choice;
-                    }
-                    choice.Suitability = EconomyArmySuitability.Ready;
-                    choice.IneligibleReason = null;
-                    choice.MinimumEscortCount = 0;
-                    // Extraction is a one-time preparation stage, never a recurring activation.
-                    choice.PreparationApCost = route.ExtractionApCost;
-                    EconomyBuilderRouteSnapshot projectedRoute = route;
-                    choice.Route = projectedRoute;
-                    choice.TotalAssignmentApCost = choice.PreparationApCost + EstimateEconomyAssignmentAp(
-                        projectedRoute, buildApCost, includeReturn);
-                    choice.ProjectedActivationApCost = projectedRoute.ActivationApCost;
-                    choice.ProjectedMaxMovement = route.MaxMovement;
-                    List<AiMapMemory.KnownEnemySighting> extractionThreats = (route.RouteThreats
-                        ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                        .Where(t => t.Owner?.IsNeutral != true).ToList();
-                    if (enforceGarrisonBody || extractionThreats.Count > 0)
-                    {
-                        // Extracting the hero alone cannot satisfy founding, nor walk a threatened
-                        // route (the field path's minimum escort is 1 under any enemy threat). Pin a
-                        // concrete body that the original garrison can spare, then use the existing
-                        // composition preparation to put it into the resolved field container
-                        // before departure. Playtest 2026-10-18: Thane's hero left the Citadel
-                        // alone, then took its only defender as the escort.
-                        int escort = Enumerable.Range(0, army.Members?.Count ?? 0)
-                            .Where(i => AiArmyRoles.IsGroundBattleBody(army.Members[i])
-                                && GarrisonMaySpare(army, new List<int> { i })
-                                && route.ExtractedHeroCapacity >= 2
-                                && (i >= army.NonHeroMoveMax.Count || army.NonHeroMoveMax[i] >= route.MaximumStepCost)
-                                && EconomyRosterSafe(new[] { army.Members[i] }, route.ExtractedHeroCommander,
-                                    extractionThreats, 1))
-                            .OrderBy(i => i < army.NonHeroActivationApCosts.Count ? army.NonHeroActivationApCosts[i] : 0)
-                            // 2026-11-16 — the garrison release rule no longer picks the bodies: the
-                            // escort takes the weakest sufficient one and leaves the strong for the strike.
-                            .ThenBy(i => AiPower.EffectiveArmyPowerFromProfiles(new[] { army.Members[i] }))
-                            .ThenBy(i => i).DefaultIfEmpty(-1).First();
-                        if (escort < 0)
-                        {
-                            choice.Suitability = EconomyArmySuitability.Ineligible;
-                            choice.IneligibleReason = "extracted_hero_needs_sparable_garrison_body";
-                            return choice;
-                        }
-                        choice.PreparationGarrison = army;
-                        choice.AddedIndices = new List<int> { escort };
-                        choice.MinimumEscortCount = 1;
-                        int bodyAp = escort < army.NonHeroActivationApCosts.Count ? army.NonHeroActivationApCosts[escort] : 0;
-                        int bodyMove = escort < army.NonHeroMoveMax.Count ? army.NonHeroMoveMax[escort] : route.MaxMovement;
-                        projectedRoute.ActivationApCost += bodyAp;
-                        projectedRoute.MaxMovement = Mathf.Max(1, Mathf.Min(route.MaxMovement, bodyMove));
-                        projectedRoute.CurrentMovement = Mathf.Min(route.CurrentMovement,
-                            escort < army.NonHeroCurrentMovement.Count ? army.NonHeroCurrentMovement[escort] : bodyMove);
-                        projectedRoute.ArmySize = 2;
-                        choice.Route = projectedRoute;
-                        choice.ProjectedActivationApCost = projectedRoute.ActivationApCost;
-                        choice.ProjectedMaxMovement = projectedRoute.MaxMovement;
-                        if (route.ExtractionContainerActivated) choice.PreparationApCost += bodyAp;
-                        choice.TotalAssignmentApCost = choice.PreparationApCost + EstimateEconomyAssignmentAp(
-                            projectedRoute, buildApCost, includeReturn);
-                    }
-                    AiDebugLog.WriteDeduped($"{target}|{army.ArmyId}",
-                        $"[ECO][Builder] site=({target.Q},{target.R}) "
-                        + $"actor=#{army.ArmyId} source=Garrison route=VALID "
-                        + $"extraction=snapshot requiredAp={route.ExtractionApCost:0.##} "
-                        + "decision=READY");
-                    return choice;
-                }
-
+                // Neutral sightings never call for an escort (KnownThreatsAffectingEconomyRoute).
                 List<AiMapMemory.KnownEnemySighting> threats = (route.RouteThreats
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                    .Where(t => t.Owner?.IsNeutral != true)
-                    .ToList();
-                bool atBase = snap?.Self?.BaseHexes?.Contains(army.Hex) == true;
+                    .Where(t => t.Owner?.IsNeutral != true).ToList();
+                if (route.RequiresGarrisonExtraction)
+                    return AssessGarrisonExtraction(choice, target, threats, enforceGarrisonBody,
+                        buildApCost, includeReturn);
+                int minimumEscort = threats.Count == 0 && !enforceGarrisonBody ? 0 : 1;
+                choice.MinimumEscortCount = minimumEscort;
                 ArmySnapshot localGarrison = snap?.Self?.Armies?.FirstOrDefault(a => a != null
                     && a.IsGarrison && a.Hex.Equals(army.Hex) && a != army);
-                bool mayPrepare = atBase && localGarrison != null && !localGarrison.HasActivatedThisTurn
+                bool mayPrepare = snap?.Self?.BaseHexes?.Contains(army.Hex) == true
+                    && localGarrison != null && !localGarrison.HasActivatedThisTurn
                     && !army.EconomyRosterProtected;
-                bool safeRear = threats.Count == 0;
-                int minimumEscort = safeRear ? 0 : 1;
-                if (enforceGarrisonBody)
-                    minimumEscort = Mathf.Max(minimumEscort, 1);
-                choice.MinimumEscortCount = minimumEscort;
-
                 List<int> currentIndices = Enumerable.Range(0, army.Members?.Count ?? 0)
                     .Where(i => AiArmyRoles.IsGroundBattleBody(army.Members[i])
                         && (i >= (army.NonHeroIsAviation?.Count ?? 0)
@@ -264,133 +193,229 @@ namespace Game.Ai.V2
                 List<WorthIt.DefenderProfile> current = currentIndices
                     .Select(i => army.Members[i]).ToList();
                 if (EconomyRosterSafe(current, army.Commander, threats, minimumEscort))
-                {
-                    List<int> retained = mayPrepare
-                        ? MinimumSafeEconomyEscortIndices(army, threats, minimumEscort,
-                            route.MaximumStepCost, localGarrison.Capacity > 0
-                                ? Mathf.Max(0, localGarrison.Capacity - localGarrison.OccupiedBattleSlots)
-                                : int.MaxValue, currentIndices.Count)
-                        : currentIndices;
-                    if (retained == null) return choice;
-                    choice.RetainedIndices = retained;
-                    choice.PreparationGarrison = mayPrepare ? localGarrison : null;
-                    int smallest = retained?.Count ?? current.Count;
-                    choice.MinimumEscortCount = smallest;
-                    int knownBodyAp = army.NonHeroActivationApCosts?.Sum() ?? 0;
-                    int heroAp = army.HeroActivationApCost > 0
-                        ? army.HeroActivationApCost
-                        : Mathf.Max(0, route.ActivationApCost - knownBodyAp);
-                    int heroMove = army.HeroMoveMax > 0
-                        ? army.HeroMoveMax : route.MaxMovement;
-                    choice.ProjectedActivationApCost = heroAp
-                        + retained.Sum(i => i < army.NonHeroActivationApCosts.Count
-                            ? army.NonHeroActivationApCosts[i] : 0);
-                    choice.ProjectedMaxMovement = retained.Count == 0
-                        ? heroMove
-                        : Mathf.Min(heroMove,
-                            retained.Min(i => i < army.NonHeroMoveMax.Count
-                                ? army.NonHeroMoveMax[i] : army.MaxMovement));
-                    EconomyBuilderRouteSnapshot projectedRoute = route;
-                    projectedRoute.ActivationApCost = choice.ProjectedActivationApCost;
-                    projectedRoute.MaxMovement = Mathf.Max(1, choice.ProjectedMaxMovement);
-                    if (army.NonHeroCurrentMovement.Count == army.Members.Count && army.NonHeroCurrentMovement.Count > 0)
-                        projectedRoute.CurrentMovement = retained.Count == 0 ? army.HeroCurrentMovement
-                            : Mathf.Min(army.HeroCurrentMovement, retained.Min(i => army.NonHeroCurrentMovement[i]));
-                    choice.Route = projectedRoute;
-                    choice.TotalAssignmentApCost = choice.PreparationApCost + EstimateEconomyAssignmentAp(
-                        projectedRoute, buildApCost, includeReturn);
-                    choice.Suitability = mayPrepare && current.Count > smallest
-                        ? EconomyArmySuitability.LightenAtBase
-                        : EconomyArmySuitability.Ready;
-                    return choice;
-                }
-
-                if (!mayPrepare || snap?.Self?.Armies == null)
+                    return AssessOwnRoster(choice, threats, minimumEscort, currentIndices,
+                        mayPrepare ? localGarrison : null, buildApCost, includeReturn);
+                if (!mayPrepare)
                 {
                     if (localGarrison?.HasActivatedThisTurn == true)
                         choice.IneligibleReason = "escort_activated_this_turn";
                     return choice;
                 }
-                ArmySnapshot garrison = snap.Self.Armies.FirstOrDefault(a => a != null
-                    && a.IsGarrison && a.Hex.Equals(army.Hex));
-                if (garrison == null || garrison == army)
-                    return choice;
-                if (garrison.HasActivatedThisTurn)
-                {
-                    choice.IneligibleReason = "escort_activated_this_turn";
-                    return choice;
-                }
-                List<WorthIt.DefenderProfile> reserve =
-                    garrison?.Members?.ToList() ?? new List<WorthIt.DefenderProfile>();
-                List<int> reserveIndices = Enumerable.Range(0, reserve.Count)
-                    .Where(i => AiArmyRoles.IsGroundBattleBody(reserve[i])
-                        && (i >= (garrison.NonHeroIsAviation?.Count ?? 0)
-                            || !garrison.NonHeroIsAviation[i])).ToList();
-                for (int add = 1; add <= reserve.Count; add++)
-                {
-                    List<int> best = null;
-                    int bestAp = int.MaxValue;
-                    int bestMove = int.MinValue;
-                    float bestPower = float.MaxValue;
-                    foreach (List<int> subset in Combinations(reserveIndices, add))
-                    {
-                        // No economy escort strips the garrison's protected defence floor — the
-                        // same rule every other donor obeys (AiArmyRoles.CanSpareGarrisonMembers).
-                        if (!GarrisonMaySpare(garrison, subset))
-                            continue;
-                        var projected = new List<WorthIt.DefenderProfile>(current);
-                        projected.AddRange(subset.Select(i => reserve[i]));
-                        if ((army.Capacity > 0 && army.MemberCount + subset.Count > army.Capacity)
-                            || !EconomyRosterSafe(projected, army.Commander, threats, minimumEscort))
-                            continue;
-                        int addedAp = subset.Sum(i => i < garrison.NonHeroActivationApCosts.Count
-                            ? garrison.NonHeroActivationApCosts[i] : 0);
-                        int addedMove = subset.Min(i => i < garrison.NonHeroMoveMax.Count
-                            ? garrison.NonHeroMoveMax[i] : garrison.MaxMovement);
-                        if (Mathf.Min(route.MaxMovement, addedMove) < route.MaximumStepCost) continue;
-                        float addedPower = AiPower.EffectiveArmyPowerFromProfiles(
-                            subset.Select(i => reserve[i]).ToList());
-                        // 2026-11-16 — among equal AP and speed the weaker escort: the strong
-                        // bodies stay available to the strike (the release rule no longer picks).
-                        if (best == null || addedAp < bestAp
-                            || (addedAp == bestAp && addedMove > bestMove)
-                            || (addedAp == bestAp && addedMove == bestMove && addedPower < bestPower - 0.001f))
-                        {
-                            best = subset;
-                            bestAp = addedAp;
-                            bestMove = addedMove;
-                            bestPower = addedPower;
-                        }
-                    }
-                    if (best != null)
-                    {
-                        choice.RetainedIndices = currentIndices;
-                        choice.AddedIndices = best;
-                        choice.PreparationGarrison = garrison;
-                        choice.PreparationApCost = army.HasActivatedThisTurn
-                            ? best.Where(i => i >= garrison.NonHeroRuntimeIds.Count
-                                || !army.ActivationCoveredUnitRuntimeIds.Contains(garrison.NonHeroRuntimeIds[i]))
-                                .Sum(i => i < garrison.NonHeroActivationApCosts.Count
-                                    ? garrison.NonHeroActivationApCosts[i] : 0) : 0f;
-                        choice.MinimumEscortCount = current.Count + best.Count;
-                        choice.Suitability = EconomyArmySuitability.ReinforceAtBase;
-                        choice.ProjectedActivationApCost = route.ActivationApCost + bestAp;
-                        choice.ProjectedMaxMovement = Mathf.Min(route.MaxMovement,
-                            bestMove > 0 ? bestMove : route.MaxMovement);
-                        EconomyBuilderRouteSnapshot projectedRoute = route;
-                        projectedRoute.ActivationApCost = choice.ProjectedActivationApCost;
-                        projectedRoute.MaxMovement = Mathf.Max(1, choice.ProjectedMaxMovement);
-                        if (garrison.NonHeroCurrentMovement.Count == reserve.Count)
-                            projectedRoute.CurrentMovement = Mathf.Min(route.CurrentMovement,
-                                best.Min(i => garrison.NonHeroCurrentMovement[i]));
-                        choice.Route = projectedRoute;
-                        choice.TotalAssignmentApCost = choice.PreparationApCost + EstimateEconomyAssignmentAp(
-                            projectedRoute, buildApCost, includeReturn);
-                        return choice;
-                    }
-                }
+                return AssessReinforcement(choice, threats, minimumEscort, currentIndices, current,
+                    localGarrison, buildApCost, includeReturn);
+            }
+        }
+
+        // The hero leaves a garrison (Analysis resolved the container). Under a threat, or when it
+        // founds a Base, it takes one concrete body the garrison can spare (playtest 2026-10-18:
+        // Thane's hero left the Citadel alone, then took its only defender as the escort).
+        private static EconomyBuilderChoice AssessGarrisonExtraction(EconomyBuilderChoice choice,
+            HexCoord target, List<AiMapMemory.KnownEnemySighting> threats, bool enforceGarrisonBody,
+            float buildApCost, bool includeReturn)
+        {
+            EconomyBuilderRouteSnapshot route = choice.Route;
+            ArmySnapshot army = choice.Army;
+            if (!route.ExtractionContainerAvailable)
+            {
+                choice.IneligibleReason = "no_garrison_extraction_container";
                 return choice;
             }
+            choice.Suitability = EconomyArmySuitability.Ready;
+            choice.IneligibleReason = null;
+            choice.MinimumEscortCount = 0;
+            // Extraction is a one-time preparation stage, never a recurring activation.
+            choice.PreparationApCost = route.ExtractionApCost;
+            ProjectRoute(choice, route.ActivationApCost, route.MaxMovement, null, buildApCost, includeReturn);
+            if (enforceGarrisonBody || threats.Count > 0)
+            {
+                List<int> escortPick = route.ExtractedHeroCapacity < 2 ? null : WeakestSufficientSubset(
+                    Enumerable.Range(0, army.Members?.Count ?? 0)
+                        .Where(i => AiArmyRoles.IsGroundBattleBody(army.Members[i])).ToList(),
+                    1, 1, subset =>
+                    {
+                        int i = subset[0];
+                        int move = i < army.NonHeroMoveMax.Count ? army.NonHeroMoveMax[i] : route.MaxMovement;
+                        if (!GarrisonMaySpare(army, subset)
+                            || (i < army.NonHeroMoveMax.Count && move < route.MaximumStepCost)
+                            || !EconomyRosterSafe(new[] { army.Members[i] }, route.ExtractedHeroCommander,
+                                threats, 1))
+                            return null;
+                        return (BodyAp(army, i), move, BodyPower(army, i));
+                    });
+                if (escortPick == null)
+                {
+                    choice.Suitability = EconomyArmySuitability.Ineligible;
+                    choice.IneligibleReason = "extracted_hero_needs_sparable_garrison_body";
+                    return choice;
+                }
+                int escort = escortPick[0];
+                choice.PreparationGarrison = army;
+                choice.AddedIndices = escortPick;
+                choice.MinimumEscortCount = 1;
+                int bodyAp = BodyAp(army, escort);
+                int bodyMove = escort < army.NonHeroMoveMax.Count ? army.NonHeroMoveMax[escort] : route.MaxMovement;
+                if (route.ExtractionContainerActivated) choice.PreparationApCost += bodyAp;
+                ProjectRoute(choice, route.ActivationApCost + bodyAp,
+                    Mathf.Max(1, Mathf.Min(route.MaxMovement, bodyMove)),
+                    Mathf.Min(route.CurrentMovement, escort < army.NonHeroCurrentMovement.Count
+                        ? army.NonHeroCurrentMovement[escort] : bodyMove),
+                    buildApCost, includeReturn, armySize: 2);
+            }
+            AiDebugLog.WriteDeduped($"{target}|{army.ArmyId}",
+                $"[ECO][Builder] site=({target.Q},{target.R}) "
+                + $"actor=#{army.ArmyId} source=Garrison route=VALID "
+                + $"extraction=snapshot requiredAp={route.ExtractionApCost:0.##} "
+                + "decision=READY");
+            return choice;
+        }
+
+        // The army's own roster is safe: it goes as is (Ready), or — at a base whose garrison
+        // can take them — leaves the bodies the trip does not need (LightenAtBase).
+        private static EconomyBuilderChoice AssessOwnRoster(EconomyBuilderChoice choice,
+            List<AiMapMemory.KnownEnemySighting> threats, int minimumEscort, List<int> currentIndices,
+            ArmySnapshot localGarrison, float buildApCost, bool includeReturn)
+        {
+            EconomyBuilderRouteSnapshot route = choice.Route;
+            ArmySnapshot army = choice.Army;
+            List<int> retained = localGarrison != null
+                ? MinimumSafeEconomyEscortIndices(army, threats, minimumEscort,
+                    route.MaximumStepCost, localGarrison.Capacity > 0
+                        ? Mathf.Max(0, localGarrison.Capacity - localGarrison.OccupiedBattleSlots)
+                        : int.MaxValue, currentIndices.Count)
+                : currentIndices;
+            if (retained == null) return choice;
+            choice.RetainedIndices = retained;
+            choice.PreparationGarrison = localGarrison;
+            choice.MinimumEscortCount = retained.Count;
+            int knownBodyAp = army.NonHeroActivationApCosts?.Sum() ?? 0;
+            int heroAp = army.HeroActivationApCost > 0
+                ? army.HeroActivationApCost
+                : Mathf.Max(0, route.ActivationApCost - knownBodyAp);
+            int heroMove = army.HeroMoveMax > 0 ? army.HeroMoveMax : route.MaxMovement;
+            int? currentMovement = army.NonHeroCurrentMovement.Count == army.Members.Count
+                && army.NonHeroCurrentMovement.Count > 0
+                    ? retained.Count == 0 ? army.HeroCurrentMovement
+                        : Mathf.Min(army.HeroCurrentMovement, retained.Min(i => army.NonHeroCurrentMovement[i]))
+                    : (int?)null;
+            ProjectRoute(choice, heroAp + retained.Sum(i => BodyAp(army, i)),
+                retained.Count == 0 ? heroMove
+                    : Mathf.Min(heroMove, retained.Min(i => i < army.NonHeroMoveMax.Count
+                        ? army.NonHeroMoveMax[i] : army.MaxMovement)),
+                currentMovement, buildApCost, includeReturn);
+            choice.Suitability = localGarrison != null && currentIndices.Count > retained.Count
+                ? EconomyArmySuitability.LightenAtBase
+                : EconomyArmySuitability.Ready;
+            return choice;
+        }
+
+        // The army's own roster is not safe: at a base, the fewest bodies the local garrison can
+        // spare that make it safe join it (ReinforceAtBase).
+        private static EconomyBuilderChoice AssessReinforcement(EconomyBuilderChoice choice,
+            List<AiMapMemory.KnownEnemySighting> threats, int minimumEscort, List<int> currentIndices,
+            List<WorthIt.DefenderProfile> current, ArmySnapshot garrison, float buildApCost,
+            bool includeReturn)
+        {
+            EconomyBuilderRouteSnapshot route = choice.Route;
+            ArmySnapshot army = choice.Army;
+            IReadOnlyList<WorthIt.DefenderProfile> reserve = garrison.Members
+                ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
+            List<int> reserveIndices = Enumerable.Range(0, reserve.Count)
+                .Where(i => AiArmyRoles.IsGroundBattleBody(reserve[i])
+                    && (i >= (garrison.NonHeroIsAviation?.Count ?? 0)
+                        || !garrison.NonHeroIsAviation[i])).ToList();
+            List<int> best = WeakestSufficientSubset(reserveIndices, 1, reserveIndices.Count, subset =>
+            {
+                // No economy escort strips the garrison's protected defence floor — the
+                // same rule every other donor obeys (AiArmyRoles.CanSpareGarrisonMembers).
+                if (!GarrisonMaySpare(garrison, subset)
+                    || (army.Capacity > 0 && army.MemberCount + subset.Count > army.Capacity))
+                    return null;
+                var projected = new List<WorthIt.DefenderProfile>(current);
+                projected.AddRange(subset.Select(i => reserve[i]));
+                if (!EconomyRosterSafe(projected, army.Commander, threats, minimumEscort))
+                    return null;
+                int addedMove = subset.Min(i => i < garrison.NonHeroMoveMax.Count
+                    ? garrison.NonHeroMoveMax[i] : garrison.MaxMovement);
+                if (Mathf.Min(route.MaxMovement, addedMove) < route.MaximumStepCost)
+                    return null;
+                return (subset.Sum(i => BodyAp(garrison, i)), addedMove,
+                    AiPower.EffectiveArmyPowerFromProfiles(subset.Select(i => reserve[i]).ToList()));
+            });
+            if (best == null)
+                return choice;
+            int bestAp = best.Sum(i => BodyAp(garrison, i));
+            int bestMove = best.Min(i => i < garrison.NonHeroMoveMax.Count
+                ? garrison.NonHeroMoveMax[i] : garrison.MaxMovement);
+            choice.RetainedIndices = currentIndices;
+            choice.AddedIndices = best;
+            choice.PreparationGarrison = garrison;
+            choice.PreparationApCost = army.HasActivatedThisTurn
+                ? best.Where(i => i >= garrison.NonHeroRuntimeIds.Count
+                    || !army.ActivationCoveredUnitRuntimeIds.Contains(garrison.NonHeroRuntimeIds[i]))
+                    .Sum(i => BodyAp(garrison, i)) : 0f;
+            choice.MinimumEscortCount = current.Count + best.Count;
+            choice.Suitability = EconomyArmySuitability.ReinforceAtBase;
+            ProjectRoute(choice, route.ActivationApCost + bestAp,
+                Mathf.Min(route.MaxMovement, bestMove > 0 ? bestMove : route.MaxMovement),
+                garrison.NonHeroCurrentMovement.Count == reserve.Count
+                    ? Mathf.Min(route.CurrentMovement, best.Min(i => garrison.NonHeroCurrentMovement[i]))
+                    : (int?)null,
+                buildApCost, includeReturn);
+            return choice;
+        }
+
+        // THE projection of a delivery roster onto its witnessed route: the roster's activation AP
+        // and movement (current movement only when the roster's bodies report it), and the
+        // assignment AP priced on that projected route.
+        private static void ProjectRoute(EconomyBuilderChoice choice, int activationAp, int maxMovement,
+            int? currentMovement, float buildApCost, bool includeReturn, int? armySize = null)
+        {
+            EconomyBuilderRouteSnapshot projected = choice.Route;
+            choice.ProjectedActivationApCost = activationAp;
+            choice.ProjectedMaxMovement = maxMovement;
+            projected.ActivationApCost = activationAp;
+            projected.MaxMovement = Mathf.Max(1, maxMovement);
+            if (currentMovement.HasValue) projected.CurrentMovement = currentMovement.Value;
+            if (armySize.HasValue) projected.ArmySize = armySize.Value;
+            choice.Route = projected;
+            choice.TotalAssignmentApCost = choice.PreparationApCost
+                + EstimateEconomyAssignmentAp(projected, buildApCost, includeReturn);
+        }
+
+        private static int BodyAp(ArmySnapshot army, int index) =>
+            index < (army?.NonHeroActivationApCosts?.Count ?? 0) ? army.NonHeroActivationApCosts[index] : 0;
+
+        private static float BodyPower(ArmySnapshot army, int index) =>
+            AiPower.EffectiveArmyPowerFromProfiles(new[] { army.Members[index] });
+
+        // 2026-11-16 (owner) — THE escort pick of every delivery shape: the fewest bodies, then the
+        // least activation AP, then the fastest, then the WEAKEST sufficient set — the strong
+        // bodies stay available to the strike. `evaluate` returns null for an inadmissible set.
+        private static List<int> WeakestSufficientSubset(IReadOnlyList<int> indices, int minCount,
+            int maxCount, System.Func<List<int>, (int Ap, int Move, float Power)?> evaluate)
+        {
+            for (int count = Mathf.Max(0, minCount); count <= Mathf.Min(maxCount, indices.Count); count++)
+            {
+                List<int> best = null;
+                (int Ap, int Move, float Power) bestKey = default;
+                foreach (List<int> subset in Combinations(indices, count))
+                {
+                    (int Ap, int Move, float Power)? key = evaluate(subset);
+                    if (!key.HasValue)
+                        continue;
+                    (int ap, int move, float power) = key.Value;
+                    if (best == null || ap < bestKey.Ap
+                        || (ap == bestKey.Ap && move > bestKey.Move)
+                        || (ap == bestKey.Ap && move == bestKey.Move && power < bestKey.Power - 0.001f))
+                    {
+                        best = subset;
+                        bestKey = key.Value;
+                    }
+                }
+                if (best != null)
+                    return best;
+            }
+            return null;
         }
 
         // Whether the garrison snapshot lets the bodies at `indices` (its NonHero order) leave without
@@ -420,9 +445,12 @@ namespace Game.Ai.V2
                 return false;
             return threats.All(t => WorthIt.CanDamageAll(roster, t.Defenders)
                 && WorthIt.WinChance(roster, t.Defenders, 0f, commander, t.Commander)
-                    >= AiConfig.economyEscortMinWinChance);
+                    >= AiConfigV2.economyEscortMinWinChance);
         }
 
+        // The bodies of `army` it keeps for the trip (the rest unload into the local garrison):
+        // the weakest sufficient set (WeakestSufficientSubset) the garrison has room to take the
+        // others of, fast enough for the route's steepest step.
         internal static List<int> MinimumSafeEconomyEscortIndices(ArmySnapshot army,
             IReadOnlyList<AiMapMemory.KnownEnemySighting> threats, int minimumEscort,
             int minimumMovement = 0, int unloadRoom = int.MaxValue, int existingBodies = 0)
@@ -432,35 +460,18 @@ namespace Game.Ai.V2
             List<int> indices = Enumerable.Range(0, pool.Count)
                 .Where(i => i >= (army.NonHeroIsAviation?.Count ?? 0)
                     || !army.NonHeroIsAviation[i]).ToList();
-            for (int count = Mathf.Max(0, minimumEscort); count <= indices.Count; count++)
+            return WeakestSufficientSubset(indices, minimumEscort, indices.Count, subset =>
             {
-                List<int> best = null;
-                int bestAp = int.MaxValue;
-                int bestMove = int.MinValue;
-                foreach (List<int> subset in Combinations(indices, count))
-                {
-                    if (existingBodies - subset.Count > unloadRoom) continue;
-                    int ap = subset.Sum(i => i < army.NonHeroActivationApCosts.Count
-                        ? army.NonHeroActivationApCosts[i] : 0);
-                    int move = subset.Count == 0 ? army.HeroMoveMax
-                        : subset.Min(i => i < army.NonHeroMoveMax.Count
-                            ? army.NonHeroMoveMax[i] : army.MaxMovement);
-                    move = Mathf.Min(army.HeroMoveMax > 0 ? army.HeroMoveMax : army.MaxMovement, move);
-                    if (move < minimumMovement) continue;
-                    if (best != null && (ap > bestAp || (ap == bestAp && move <= bestMove)))
-                        continue;
-                    List<WorthIt.DefenderProfile> roster = subset.Select(i => pool[i]).ToList();
-                    if (EconomyRosterSafe(roster, army.Commander, threats, minimumEscort))
-                    {
-                        best = subset;
-                        bestAp = ap;
-                        bestMove = move;
-                    }
-                }
-                if (best != null)
-                    return best;
-            }
-            return null;
+                if (existingBodies - subset.Count > unloadRoom) return null;
+                int move = subset.Count == 0 ? army.HeroMoveMax
+                    : subset.Min(i => i < army.NonHeroMoveMax.Count
+                        ? army.NonHeroMoveMax[i] : army.MaxMovement);
+                move = Mathf.Min(army.HeroMoveMax > 0 ? army.HeroMoveMax : army.MaxMovement, move);
+                if (move < minimumMovement) return null;
+                List<WorthIt.DefenderProfile> roster = subset.Select(i => pool[i]).ToList();
+                if (!EconomyRosterSafe(roster, army.Commander, threats, minimumEscort)) return null;
+                return (subset.Sum(i => BodyAp(army, i)), move, AiPower.EffectiveArmyPowerFromProfiles(roster));
+            });
         }
 
         private static IEnumerable<List<T>> Combinations<T>(IReadOnlyList<T> source,
@@ -491,11 +502,7 @@ namespace Game.Ai.V2
             float buildApCost, bool includeReturn)
         {
             int move = Mathf.Max(1, route.MaxMovement);
-            int outboundTurns = route.TravelCost <= 0 ? 0
-                : route.CurrentMovement > 0
-                    ? 1 + Mathf.CeilToInt(Mathf.Max(0,
-                        route.TravelCost - route.CurrentMovement) / (float)move)
-                    : Mathf.CeilToInt(route.TravelCost / (float)move);
+            int outboundTurns = DeliveryTurns(route);
             // The "already paid" discount only applies when this turn's activation actually bought
             // MP toward the first leg of the route (route.CurrentMovement > 0, matching the branch
             // above that folded this turn into outboundTurns). When CurrentMovement == 0 the
@@ -518,6 +525,14 @@ namespace Game.Ai.V2
                 + (paidOutboundActivations + returnTurns) * Mathf.Max(0, route.ActivationApCost);
         }
 
+        // THE outbound delivery time of a builder route in owner turns: this turn counts only when
+        // its remaining movement moves the builder; every further turn brings a full MaxMovement.
+        internal static int DeliveryTurns(EconomyBuilderRouteSnapshot route) =>
+            route.TravelCost <= 0 ? 0
+                : (route.CurrentMovement > 0 ? 1 : 0)
+                    + Mathf.CeilToInt(Mathf.Max(0, route.TravelCost - route.CurrentMovement)
+                        / (float)Mathf.Max(1, route.MaxMovement));
+
         internal static bool EconomyBuilderIsSupport(EconomyBuilderChoice choice) => choice != null
             && (choice.Route.BuilderHasHomeVocation ?? choice.Army?.HeroIsHomeVocation ?? false);
 
@@ -526,11 +541,9 @@ namespace Game.Ai.V2
             if (!EconomyBuilderIsSupport(choice)) return true;
             EconomyBuilderRouteSnapshot route = choice.Route;
             int move = Mathf.Max(1, route.MaxMovement);
-            int delivery = (route.CurrentMovement > 0 && route.TravelCost > 0 ? 1 : 0)
-                + Mathf.CeilToInt(Mathf.Max(0, route.TravelCost - route.CurrentMovement) / (float)move);
             int home = route.ReturnTravelCost == int.MaxValue ? int.MaxValue
                 : Mathf.CeilToInt(Mathf.Max(0, route.ReturnTravelCost) / (float)move);
-            return delivery <= AiConfigV2.economySupportBuilderMaxDeliveryTurns
+            return DeliveryTurns(route) <= AiConfigV2.economySupportBuilderMaxDeliveryTurns
                 && home <= AiConfigV2.economySupportBuilderMaxDeliveryTurns;
         }
 
@@ -541,10 +554,7 @@ namespace Game.Ai.V2
             if (choice == null) return false;
             if (choice.FoundsBase || choice.Route.IsOnTarget) return true;
             EconomyBuilderRouteSnapshot route = choice.Route;
-            int turns = route.TravelCost <= 0 ? 0
-                : (route.CurrentMovement > 0 ? 1 : 0)
-                    + Mathf.CeilToInt(Mathf.Max(0, route.TravelCost - route.CurrentMovement)
-                        / (float)Mathf.Max(1, route.MaxMovement));
+            int turns = DeliveryTurns(route);
             bool allowed = turns <= AiConfigV2.economyExtractionMaxDeliveryTurns;
             if (!allowed)
                 AiDebugLog.WriteDeduped($"delivery-horizon|{route.ArmyId}|{route.TravelCost}",

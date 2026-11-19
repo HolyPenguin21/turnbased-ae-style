@@ -153,7 +153,7 @@ namespace Game.Ai.V2
                 // player, losing a Base does not. The race (the blow lands before the enemy acts)
                 // is required only when the stronghold that falls is our own Citadel.
                 int strikeEta = ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, primary.Hex,
-                    target.Hex, primary.CurrentMovement, primary.MaxMovement, fastestByTurns: true);
+                    target.Hex, primary.CurrentMovement, primary.MaxMovement);
                 bool mateFirst = decisive && target.Kind == AttackTargetKind.Citadel
                     && (!homeIsCitadel || strikeEta == 0 || strikeEta < enemyEta);
                 if (!mateFirst)
@@ -306,7 +306,7 @@ namespace Game.Ai.V2
                 {
                     if (!army.Hex.Equals(t.Asset.Hex)
                         && !ActiveDefenceObjectiveEvaluator.CanArriveBeforeThreat(snap, army,
-                            t.Asset.Hex, eta, out _, fastestByTurns: true)) continue;
+                            t.Asset.Hex, eta, out _)) continue;
                     // 2026-11-18 (owner, match Tessek vs Halden T19-T20) — losing the own Citadel
                     // ends the player, so an army that can be back in time is needed there even
                     // when it cannot lift the hold to activeDefenceHoldWinChance: leaving it is

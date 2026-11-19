@@ -103,6 +103,19 @@ namespace Game.Ai.V2
                     site.NewResourceClusterHexes
                     / AiConfigV2.economyBaseExpansionClusterFullCount));
 
+        // Why Economy candidates were not emitted in one EconomyDemands call — counted by the
+        // extraction and Base candidate owners and logged once per pass.
+        private sealed class EconomyRejections
+        {
+            public int NoBuilder, Payback, Surplus, StrategicValue, DeliveryValue, Threshold,
+                Suppressed, NewHeroFallback, NewHeroPaired;
+            public int Total => NoBuilder + Payback + Surplus + Suppressed + StrategicValue
+                + DeliveryValue + Threshold;
+        }
+
+        // Economy's demands of one pass: build candidates (extraction sites, Bases) ranked and
+        // deduplicated by hex / builder / card (SelectEconomyBuilds), plus collector capability and
+        // held global income sources, which carry their own owners.
         internal static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b,
             PlayerSetupData player, AiTurnContext ctx, PlayerRoot root,
             IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null)
@@ -115,163 +128,19 @@ namespace Game.Ai.V2
 
             var standings = s.Economy.PerType.ToDictionary(x => x.Type, x => x);
             var candidates = new List<AxisDemand>();
-            int rejectedNoBuilder = 0;
-            int rejectedPayback = 0;
-            int rejectedSurplus = 0;
-            int rejectedStrategicValue = 0;
-            int rejectedDeliveryValue = 0;
-            int newHeroFallback = 0;
-            int newHeroPaired = 0;
-            int rejectedSuppressed = 0;
+            var rejected = new EconomyRejections();
             // The delivery-failure streak Continuity records per (resource, site) — the SAME
             // suppression Base candidates read in AddBaseCandidates. A project nobody could
             // deliver for consecutive turns is not re-selected (and its H/E/M/T is not held)
             // during its cooldown.
             IMissionIntentView intentState = player != null ? s.Intents : null;
-
             foreach (EconomyExtractionOpportunity site in s.Economy.ExtractionOpportunities
                 ?? System.Array.Empty<EconomyExtractionOpportunity>())
             {
-                if (!standings.TryGetValue(site.ResourceType, out EconomyResourceStanding rs))
-                    continue;
-                if (intentState != null && intentState.Economy.IsExtractionDeliverySuppressed(
-                        s.TurnNumber, site.ResourceType, site.Hex))
-                {
-                    rejectedSuppressed++;
-                    continue;
-                }
-                CardDefinition def = ExtractionDefinition(ctx, site.ResourceType);
-                if (ctx?.GameConfig != null && def == null)
-                    continue;
-
-                float resourcePriority = TaskScoreEvaluator.ResourcePriority(rs);
-                float gain = Mathf.Max(0f, site.MarginalIncomeGain);
-
-                // Continuity owns the actor for an existing objective. A later, cheaper builder
-                // must not supply a different delivery cost for that same durable operation.
-                MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i =>
-                    EconomyContinuity.HoldsEconomyBuildSite(i, site.Hex)
-                    && i.Economy.Kind == EconomyTaskKind.BuildExtraction
-                    && i.Economy.ResourceType == site.ResourceType
-                    && i.PreferredMoverArmyId.HasValue);
-                // Keep negative committed revaluations so Phase A can retire the build through
-                // Continuity, freeing its own reservations and recovering the pinned builder.
-                bool committed = pinnedExtraction != null;
-                if (gain <= AiConfigV2.allocatorSliceEpsilon && !committed)
-                    continue;
-
-                // Keep raw income for execution; value and payback use only
-                // economically useful marginal income from the frozen snapshot.
-                float usefulGain = rs.UsefulMarginalIncomeGain(gain);
-                if (usefulGain <= AiConfigV2.allocatorSliceEpsilon && !committed)
-                {
-                    rejectedSurplus++;
-                    continue;
-                }
-
-                float resourceCost = StrategicCardEvaluator.ResourceCostSum(def?.resourceCost);
-                float resourcePrice = ActionPrice.Resources(def?.resourceCost, s);
-                float cardAp = def?.apCost ?? 0f;
-                float payback = EconomyPaybackTurns(usefulGain, resourceCost, cardAp);
-                if (payback > AiConfigV2.economyExtractionMaxPaybackTurns && !committed)
-                {
-                    rejectedPayback++;
-                    continue;
-                }
-
-                // Threat near the site/route is an escort requirement (builder ranking), not a
-                // score term. A threatened home defers every build through its own slots.
-                int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
-                TaskScore siteOnlyScore = BuildExtractionScore(s, usefulGain, resourcePriority,
-                    payback, homeDistance, cardAp, resourcePrice);
-                float citadelRisk = siteOnlyScore.CitadelThreatRisk;
-
-                EconomyBuilderSelection.EconomyBuilderChoice builder = EconomyBuilderSelection.SelectEconomyBuilder(
-                    s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
-                    siteOnlyScore.Value, cardAp, includeReturn: true,
-                    pinnedBuilderArmyId: pinnedExtraction?.PreferredMoverArmyId);
-                float travel = builder?.Route.TravelCost
-                    ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
-                float opportunity = EconomyBuilderSelection.EconomyMissionOpportunityCost(builder, activeIntents, site.Hex);
-                float assignmentAp = builder?.TotalAssignmentApCost ?? cardAp;
-                float extraAp = Mathf.Max(0f, assignmentAp - cardAp);
-
-                // extraAp is already the real re-activation AP for this multi-turn route
-                // (EstimateEconomyAssignmentAp: paid outbound/return activations x real
-                // ActivationApCost) — travel was a second, redundant raw-distance charge on
-                // top of that same real fact.
-                TaskScore score = BuildExtractionScore(s, usefulGain, resourcePriority, payback,
-                    homeDistance, cardAp, resourcePrice, extraAp, opportunity);
-                float value = score.Value;
-
-                if (siteOnlyScore.Value <= AiConfigV2.allocatorSliceEpsilon && !committed)
-                {
-                    rejectedStrategicValue++;
-                    continue;
-                }
-                // The ready hero makes this site a loss. Unless Continuity already owns that hero
-                // for it, offer the site builder-less instead: Materialization may still deliver it
-                // with a NEW hero, but only when that is cheaper than the ready one and the new
-                // hero's own delivery stays under the site's value.
-                bool readyLossToNewHero = value <= AiConfigV2.allocatorSliceEpsilon
-                    && builder != null && !committed;
-                // A rejected long existing route must not become an impossible Hero prerequisite
-                // whose deferred reservation freezes H/E/M/T before Materialization can reject it.
-                if (!committed && (builder == null || readyLossToNewHero)
-                    && site.MinimumNewBuilderDeliveryTurns.HasValue
-                    && site.MinimumNewBuilderDeliveryTurns.Value > AiConfigV2.economyExtractionMaxDeliveryTurns)
-                {
-                    rejectedDeliveryValue++;
-                    // D0 (match 2026-11-13): int.MaxValue is "no hero card to deliver at all",
-                    // not a long delivery — name it so a log reader does not chase the horizon.
-                    string horizonReason = site.MinimumNewBuilderDeliveryTurns.Value == int.MaxValue
-                        ? "no_ready_builder_and_no_hero_card" : "extraction_delivery_horizon";
-                    AiDebugLog.WriteDeduped($"new-builder-horizon|{site.Hex}|{site.ResourceType}",
-                        $"[AI][V2][Economy][Demand] target=({site.Hex.Q},{site.Hex.R}) "
-                        + $"resource={site.ResourceType} decision=REJECT reason={horizonReason} "
-                        + $"minimumNewBuilderTurns={site.MinimumNewBuilderDeliveryTurns.Value}");
-                    continue;
-                }
-                if (value <= AiConfigV2.allocatorSliceEpsilon && !readyLossToNewHero && !committed)
-                {
-                    if (builder == null) rejectedNoBuilder++;
-                    else rejectedDeliveryValue++;
-                    continue;
-                }
-                if (readyLossToNewHero)
-                    newHeroFallback++;
-
-                candidates.Add(new AxisDemand
-                {
-                    RequestingAxis = DesireAxis.Economy,
-                    Capability = CapabilityKind.EconomicInfrastructure,
-                    DesiredAmount = 1f,
-                    TargetHex = site.Hex,
-                    EconomyResourceType = site.ResourceType,
-                    EconomyBuildResourceCost = def?.resourceCost,
-                    EconomyBuildApCost = def?.apCost ?? 0,
-                    MinimumFollowupAp = def?.apCost ?? 0,
-                    EconomyExpectedIncomeGain = gain,
-                    EconomySiteValue = siteOnlyScore.Value,
-                    EconomyTravelCost = travel,
-                    EconomyHeroOpportunityCost = readyLossToNewHero ? 0f : opportunity,
-                    EconomyAssignmentApCost = readyLossToNewHero ? cardAp : assignmentAp,
-                    EconomyPaybackTurns = payback,
-                    EconomyPreferredBuilderArmyId = readyLossToNewHero
-                        ? null : builder?.Army.ArmyId,
-                    EconomyReadyDeliveryCost = readyLossToNewHero
-                        ? ReadyDeliveryCost(extraAp, opportunity) : (float?)null,
-                    EconomyReadyBuilderIsSupport = EconomyBuilderSelection.EconomyBuilderIsSupport(builder),
-                    EconomyBuilderRoutes = site.BuilderRoutes,
-                    WorldTaskScore = readyLossToNewHero ? siteOnlyScore : score,
-                    Value = readyLossToNewHero ? siteOnlyScore.Value : score.Value,
-                    Explain = $"{site.ResourceType} task={score.Value:0.##} priority={resourcePriority:0.##} "
-                        + $"marginalGain={gain:0.##} usefulGain={usefulGain:0.##} payback={payback:0.##} "
-                        + $"travel={travel:0.##} citadelRisk={citadelRisk:0.##} "
-                        + $"moverOpp={opportunity:0.##}"
-                        + (readyLossToNewHero
-                            ? $"; ready#{builder.Army.ArmyId} loses -> new_hero_only" : ""),
-                });
+                AxisDemand candidate = ExtractionCandidate(s, ctx, site, standings, intentState,
+                    activeIntents, commitments, rejected);
+                if (candidate != null)
+                    candidates.Add(candidate);
             }
 
             foreach (AxisDemand collectorDemand in CollectorCapabilityDemands(
@@ -281,72 +150,9 @@ namespace Game.Ai.V2
             foreach (AxisDemand sourceDemand in GlobalResourceSourceDemands(s))
                 yield return sourceDemand;
 
-            string baseSummary = AddBaseCandidates(
-                s, candidates, player, ctx, activeIntents, commitments,
-                out int baseNoBuilder, out int baseStrategicValue,
-                out int baseDeliveryValue, out int baseThreshold, out int baseNewHeroFallback);
-
-            IOrderedEnumerable<AxisDemand> extractionRanked = candidates
-                .Where(x => x.Capability == CapabilityKind.EconomicInfrastructure
-                    && x.EconomyResourceType.HasValue
-                    && !HasActiveEconomyIntentAtHexOfKind(
-                        activeIntents, x.TargetHex, EconomyTaskKind.FoundBase))
-                .OrderByDescending(x => HasActiveEconomyBuildIntent(activeIntents, x) ? 1 : 0)
-                .ThenByDescending(x => x.Value)
-                .ThenByDescending(x => x.EconomyExpectedIncomeGain)
-                .ThenBy(x => x.EconomyTravelCost)
-                .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
-                .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
-
-            IOrderedEnumerable<AxisDemand> baseRanked = candidates
-                .Where(x => x.Capability == CapabilityKind.EconomicExpansionBase
-                    && !HasActiveEconomyIntentAtHexOfKind(
-                        activeIntents, x.TargetHex, EconomyTaskKind.BuildExtraction))
-                .OrderByDescending(x => IsActiveBaseCommitment(
-                    activeIntents, x.TargetHex, x.EconomyBuildCard))
-                .ThenByDescending(x => x.Value)
-                .ThenByDescending(x => x.EconomySiteValue)
-                .ThenByDescending(x => x.EconomyExpectedIncomeGain)
-                .ThenBy(x => x.EconomyTravelCost)
-                .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
-                .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
-
-            // economyMaxExpansionBaseDemandsPerTurn is a plain on/off switch for Base origination,
-            // not a count — SelectBaseDemandsForCurrentCommitment already returns at most one demand
-            // per DISTINCT (card, builder) pair, each a genuinely independent project; the hex/actor/
-            // card dedup right below still allows only one of them to actually win a shared resource.
-            List<AxisDemand> selectedBases = AiConfigV2.economyMaxExpansionBaseDemandsPerTurn > 0
-                ? SelectBaseDemandsForCurrentCommitment(baseRanked.ToList(), activeIntents)
-                : new List<AxisDemand>();
-            // No local count cap: MissionAdmissionPolicy.Capacity(ExecutionLane.Economy) is already
-            // int.MaxValue downstream, and PhaseAApBudget/MaterializationReservation/ResourceAllocator
-            // are the real, single owners of how many of these candidates can actually execute this
-            // turn. A `.Take(N)` here duplicated that arbitration one layer too early and silently
-            // discarded candidates the real allocator would have happily funded (see rejected=1/2 on
-            // "selected=EconomicInfrastructure" in AiDebug.log even with no Base in hand yet).
-            List<AxisDemand> selected = extractionRanked.ToList()
-                .Concat(selectedBases)
-                .ToList();
-
-            var selectedHexes = new HashSet<HexCoord>();
-            var selectedBuilders = new HashSet<int>();
-            var selectedCards = new HashSet<CardData>();
-            selected = selected
-                .OrderByDescending(d => HasActiveEconomyBuildIntent(activeIntents, d))
-                .ThenByDescending(d => d.Value)
-                .Where(d =>
-                {
-                    if ((d.TargetHex.HasValue && selectedHexes.Contains(d.TargetHex.Value))
-                        || ((d.EconomyPreferredBuilderArmyId ?? d.EconomyEscortArmyId).HasValue
-                            && selectedBuilders.Contains((d.EconomyPreferredBuilderArmyId ?? d.EconomyEscortArmyId).Value))
-                        || (d.EconomyBuildCard != null && selectedCards.Contains(d.EconomyBuildCard)))
-                        return false;
-                    if (d.TargetHex.HasValue) selectedHexes.Add(d.TargetHex.Value);
-                    if ((d.EconomyPreferredBuilderArmyId ?? d.EconomyEscortArmyId).HasValue)
-                        selectedBuilders.Add((d.EconomyPreferredBuilderArmyId ?? d.EconomyEscortArmyId).Value);
-                    if (d.EconomyBuildCard != null) selectedCards.Add(d.EconomyBuildCard);
-                    return true;
-                }).ToList();
+            string baseSummary = AddBaseCandidates(s, candidates, player, ctx, activeIntents,
+                commitments, rejected);
+            List<AxisDemand> selected = SelectEconomyBuilds(candidates, activeIntents);
 
             foreach (AxisDemand demand in selected)
             {
@@ -385,7 +191,7 @@ namespace Game.Ai.V2
                 AxisDemand alternative = PairedNewHeroAlternative(demand, activeIntents);
                 if (alternative != null)
                 {
-                    newHeroPaired++;
+                    rejected.NewHeroPaired++;
                     AiDebugLog.WriteDeduped($"new-hero-alt|{alternative.TargetHex}",
                         $"[AI][V2][Economy][Demand] selected=Hero alternative=new_hero "
                         + $"target=({alternative.TargetHex?.Q},{alternative.TargetHex?.R}) "
@@ -396,20 +202,226 @@ namespace Game.Ai.V2
             }
 
             AiDebugLog.WriteDeduped("base-summary", $"[AI][V2][Economy][BaseCandidates] {baseSummary}");
-            int rejectionTotal = rejectedNoBuilder + baseNoBuilder + rejectedPayback + rejectedSurplus
-                + rejectedSuppressed
-                + rejectedStrategicValue + baseStrategicValue
-                + rejectedDeliveryValue + baseDeliveryValue + baseThreshold;
-            AiDebugLog.WriteDeduped("rejections", $"[AI][V2][Economy][Rejections] no_builder={rejectedNoBuilder + baseNoBuilder} "
-                + $"payback={rejectedPayback} surplus={rejectedSurplus} strategic_value={rejectedStrategicValue + baseStrategicValue} "
-                + $"delivery_value={rejectedDeliveryValue + baseDeliveryValue} "
-                + $"threshold={baseThreshold} suppressed={rejectedSuppressed} "
-                + $"new_hero_fallback={newHeroFallback + baseNewHeroFallback} "
-                + $"new_hero_paired={newHeroPaired}");
+            AiDebugLog.WriteDeduped("rejections", $"[AI][V2][Economy][Rejections] no_builder={rejected.NoBuilder} "
+                + $"payback={rejected.Payback} surplus={rejected.Surplus} strategic_value={rejected.StrategicValue} "
+                + $"delivery_value={rejected.DeliveryValue} "
+                + $"threshold={rejected.Threshold} suppressed={rejected.Suppressed} "
+                + $"new_hero_fallback={rejected.NewHeroFallback} "
+                + $"new_hero_paired={rejected.NewHeroPaired}");
             if (selected.Count == 0)
                 AiDebugLog.WriteDeduped("selected-none",
-                    $"[AI][V2][Economy][Demand] selected=none rejected={rejectionTotal} "
+                    $"[AI][V2][Economy][Demand] selected=none rejected={rejected.Total} "
                     + "reason=no_legal_valuable_site_or_base");
+        }
+
+        // One extraction site's demand, or null (counted in `rejected`). Continuity's own build of
+        // this site keeps its negative revaluation so Phase A can retire it.
+        private static AxisDemand ExtractionCandidate(WorldSnapshot s, AiTurnContext ctx,
+            EconomyExtractionOpportunity site, Dictionary<ResourceType, EconomyResourceStanding> standings,
+            IMissionIntentView intentState, IReadOnlyList<MissionIntent> activeIntents,
+            ActorCommitments commitments, EconomyRejections rejected)
+        {
+            if (!standings.TryGetValue(site.ResourceType, out EconomyResourceStanding rs))
+                return null;
+            if (intentState != null && intentState.Economy.IsExtractionDeliverySuppressed(
+                    s.TurnNumber, site.ResourceType, site.Hex))
+            {
+                rejected.Suppressed++;
+                return null;
+            }
+            CardDefinition def = ExtractionDefinition(ctx, site.ResourceType);
+            if (ctx?.GameConfig != null && def == null)
+                return null;
+
+            float resourcePriority = TaskScoreEvaluator.ResourcePriority(rs);
+            float gain = Mathf.Max(0f, site.MarginalIncomeGain);
+
+            // Continuity owns the actor for an existing objective. A later, cheaper builder
+            // must not supply a different delivery cost for that same durable operation.
+            MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i =>
+                EconomyContinuity.HoldsEconomyBuildSite(i, site.Hex)
+                && i.Economy.Kind == EconomyTaskKind.BuildExtraction
+                && i.Economy.ResourceType == site.ResourceType
+                && i.PreferredMoverArmyId.HasValue);
+            // Keep negative committed revaluations so Phase A can retire the build through
+            // Continuity, freeing its own reservations and recovering the pinned builder.
+            bool committed = pinnedExtraction != null;
+            if (gain <= AiConfigV2.allocatorSliceEpsilon && !committed)
+                return null;
+
+            // Keep raw income for execution; value and payback use only
+            // economically useful marginal income from the frozen snapshot.
+            float usefulGain = rs.UsefulMarginalIncomeGain(gain);
+            if (usefulGain <= AiConfigV2.allocatorSliceEpsilon && !committed)
+            {
+                rejected.Surplus++;
+                return null;
+            }
+
+            float resourceCost = StrategicCardEvaluator.ResourceCostSum(def?.resourceCost);
+            float resourcePrice = ActionPrice.Resources(def?.resourceCost, s);
+            float cardAp = def?.apCost ?? 0f;
+            float payback = EconomyPaybackTurns(usefulGain, resourceCost, cardAp);
+            if (payback > AiConfigV2.economyExtractionMaxPaybackTurns && !committed)
+            {
+                rejected.Payback++;
+                return null;
+            }
+
+            // Threat near the site/route is an escort requirement (builder ranking), not a
+            // score term. A threatened home defers every build through its own slots.
+            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
+            TaskScore siteOnlyScore = BuildExtractionScore(s, usefulGain, resourcePriority,
+                payback, homeDistance, cardAp, resourcePrice);
+            float citadelRisk = siteOnlyScore.CitadelThreatRisk;
+
+            EconomyBuilderSelection.EconomyBuilderChoice builder = EconomyBuilderSelection.SelectEconomyBuilder(
+                s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
+                siteOnlyScore.Value, cardAp, includeReturn: true,
+                pinnedBuilderArmyId: pinnedExtraction?.PreferredMoverArmyId);
+            float travel = builder?.Route.TravelCost
+                ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
+            float opportunity = EconomyBuilderSelection.EconomyMissionOpportunityCost(builder, activeIntents, site.Hex);
+            float assignmentAp = builder?.TotalAssignmentApCost ?? cardAp;
+            float extraAp = Mathf.Max(0f, assignmentAp - cardAp);
+
+            // extraAp is already the real re-activation AP for this multi-turn route
+            // (EstimateEconomyAssignmentAp: paid outbound/return activations x real
+            // ActivationApCost) — travel was a second, redundant raw-distance charge on
+            // top of that same real fact.
+            TaskScore score = BuildExtractionScore(s, usefulGain, resourcePriority, payback,
+                homeDistance, cardAp, resourcePrice, extraAp, opportunity);
+            float value = score.Value;
+
+            if (siteOnlyScore.Value <= AiConfigV2.allocatorSliceEpsilon && !committed)
+            {
+                rejected.StrategicValue++;
+                return null;
+            }
+            // The ready hero makes this site a loss. Unless Continuity already owns that hero
+            // for it, offer the site builder-less instead: Materialization may still deliver it
+            // with a NEW hero, but only when that is cheaper than the ready one and the new
+            // hero's own delivery stays under the site's value.
+            bool readyLossToNewHero = value <= AiConfigV2.allocatorSliceEpsilon
+                && builder != null && !committed;
+            // A rejected long existing route must not become an impossible Hero prerequisite
+            // whose deferred reservation freezes H/E/M/T before Materialization can reject it.
+            if (!committed && (builder == null || readyLossToNewHero)
+                && site.MinimumNewBuilderDeliveryTurns.HasValue
+                && site.MinimumNewBuilderDeliveryTurns.Value > AiConfigV2.economyExtractionMaxDeliveryTurns)
+            {
+                rejected.DeliveryValue++;
+                // D0 (match 2026-11-13): int.MaxValue is "no hero card to deliver at all",
+                // not a long delivery — name it so a log reader does not chase the horizon.
+                string horizonReason = site.MinimumNewBuilderDeliveryTurns.Value == int.MaxValue
+                    ? "no_ready_builder_and_no_hero_card" : "extraction_delivery_horizon";
+                AiDebugLog.WriteDeduped($"new-builder-horizon|{site.Hex}|{site.ResourceType}",
+                    $"[AI][V2][Economy][Demand] target=({site.Hex.Q},{site.Hex.R}) "
+                    + $"resource={site.ResourceType} decision=REJECT reason={horizonReason} "
+                    + $"minimumNewBuilderTurns={site.MinimumNewBuilderDeliveryTurns.Value}");
+                return null;
+            }
+            if (value <= AiConfigV2.allocatorSliceEpsilon && !readyLossToNewHero && !committed)
+            {
+                if (builder == null) rejected.NoBuilder++;
+                else rejected.DeliveryValue++;
+                return null;
+            }
+            if (readyLossToNewHero)
+                rejected.NewHeroFallback++;
+
+            return new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                DesiredAmount = 1f,
+                TargetHex = site.Hex,
+                EconomyResourceType = site.ResourceType,
+                EconomyBuildResourceCost = def?.resourceCost,
+                EconomyBuildApCost = def?.apCost ?? 0,
+                MinimumFollowupAp = def?.apCost ?? 0,
+                EconomyExpectedIncomeGain = gain,
+                EconomySiteValue = siteOnlyScore.Value,
+                EconomyTravelCost = travel,
+                EconomyHeroOpportunityCost = readyLossToNewHero ? 0f : opportunity,
+                EconomyAssignmentApCost = readyLossToNewHero ? cardAp : assignmentAp,
+                EconomyPaybackTurns = payback,
+                EconomyPreferredBuilderArmyId = readyLossToNewHero
+                    ? null : builder?.Army.ArmyId,
+                EconomyReadyDeliveryCost = readyLossToNewHero
+                    ? ReadyDeliveryCost(extraAp, opportunity) : (float?)null,
+                EconomyReadyBuilderIsSupport = EconomyBuilderSelection.EconomyBuilderIsSupport(builder),
+                EconomyBuilderRoutes = site.BuilderRoutes,
+                WorldTaskScore = readyLossToNewHero ? siteOnlyScore : score,
+                Value = readyLossToNewHero ? siteOnlyScore.Value : score.Value,
+                Explain = $"{site.ResourceType} task={score.Value:0.##} priority={resourcePriority:0.##} "
+                    + $"marginalGain={gain:0.##} usefulGain={usefulGain:0.##} payback={payback:0.##} "
+                    + $"travel={travel:0.##} citadelRisk={citadelRisk:0.##} "
+                    + $"moverOpp={opportunity:0.##}"
+                    + (readyLossToNewHero
+                        ? $"; ready#{builder.Army.ArmyId} loses -> new_hero_only" : ""),
+            };
+        }
+
+        // The build candidates that go on: extraction ranked first by its own committed build, a
+        // Base per current commitment (SelectBaseDemandsForCurrentCommitment); then one demand per
+        // hex, builder and card, the committed and more valuable first. No count cap: Phase A's
+        // budget, MaterializationReservation and the allocator are the owners of how many run.
+        private static List<AxisDemand> SelectEconomyBuilds(List<AxisDemand> candidates,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            IOrderedEnumerable<AxisDemand> extractionRanked = candidates
+                .Where(x => x.Capability == CapabilityKind.EconomicInfrastructure
+                    && x.EconomyResourceType.HasValue
+                    && !HasActiveEconomyIntentAtHexOfKind(
+                        activeIntents, x.TargetHex, EconomyTaskKind.FoundBase))
+                .OrderByDescending(x => HasActiveEconomyBuildIntent(activeIntents, x) ? 1 : 0)
+                .ThenByDescending(x => x.Value)
+                .ThenByDescending(x => x.EconomyExpectedIncomeGain)
+                .ThenBy(x => x.EconomyTravelCost)
+                .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
+                .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
+
+            IOrderedEnumerable<AxisDemand> baseRanked = candidates
+                .Where(x => x.Capability == CapabilityKind.EconomicExpansionBase
+                    && !HasActiveEconomyIntentAtHexOfKind(
+                        activeIntents, x.TargetHex, EconomyTaskKind.BuildExtraction))
+                .OrderByDescending(x => IsActiveBaseCommitment(
+                    activeIntents, x.TargetHex, x.EconomyBuildCard))
+                .ThenByDescending(x => x.Value)
+                .ThenByDescending(x => x.EconomySiteValue)
+                .ThenByDescending(x => x.EconomyExpectedIncomeGain)
+                .ThenBy(x => x.EconomyTravelCost)
+                .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
+                .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
+
+            // economyMaxExpansionBaseDemandsPerTurn is a plain on/off switch for Base origination,
+            // not a count — SelectBaseDemandsForCurrentCommitment already returns at most one demand
+            // per DISTINCT (card, builder) pair, each a genuinely independent project; the hex/actor/
+            // card dedup right below still allows only one of them to actually win a shared resource.
+            List<AxisDemand> selectedBases = AiConfigV2.economyMaxExpansionBaseDemandsPerTurn > 0
+                ? SelectBaseDemandsForCurrentCommitment(baseRanked.ToList(), activeIntents)
+                : new List<AxisDemand>();
+
+            var selectedHexes = new HashSet<HexCoord>();
+            var selectedBuilders = new HashSet<int>();
+            var selectedCards = new HashSet<CardData>();
+            return extractionRanked.ToList()
+                .Concat(selectedBases)
+                .OrderByDescending(d => HasActiveEconomyBuildIntent(activeIntents, d))
+                .ThenByDescending(d => d.Value)
+                .Where(d =>
+                {
+                    int? actor = d.EconomyPreferredBuilderArmyId ?? d.EconomyEscortArmyId;
+                    if ((d.TargetHex.HasValue && selectedHexes.Contains(d.TargetHex.Value))
+                        || (actor.HasValue && selectedBuilders.Contains(actor.Value))
+                        || (d.EconomyBuildCard != null && selectedCards.Contains(d.EconomyBuildCard)))
+                        return false;
+                    if (d.TargetHex.HasValue) selectedHexes.Add(d.TargetHex.Value);
+                    if (actor.HasValue) selectedBuilders.Add(actor.Value);
+                    if (d.EconomyBuildCard != null) selectedCards.Add(d.EconomyBuildCard);
+                    return true;
+                }).ToList();
         }
 
         // Economy creates the budget of opportunities: a card in hand whose effective abilities

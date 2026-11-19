@@ -154,7 +154,7 @@ namespace Game.Ai.V2
         internal static int ArmyEta(WorldSnapshot snap, ArmySnapshot army, HexCoord targetHex) =>
             army == null ? int.MaxValue
                 : ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, army.Hex, targetHex,
-                    army.CurrentMovement, army.MaxMovement, fastestByTurns: true);
+                    army.CurrentMovement, army.MaxMovement);
 
         // The counted wings in strike-series order, each with whether the operation holds it.
         private static List<(AirSupportOption Option, bool Bound)> CountedAir(WorldSnapshot snap,

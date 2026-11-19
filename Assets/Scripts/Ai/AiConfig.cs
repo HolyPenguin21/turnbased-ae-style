@@ -19,8 +19,6 @@ namespace Game.Ai
         public const float aggressionBaseWeight = 100f;
         public const int raidThreatRadius = 2;
 
-        // The minimum win chance an Economy escort must project before it is considered safe.
-        public const float economyEscortMinWinChance = 0.6f;
         // Minimum garrison bodies. (Renamed from the old defence* naming: a shared
         // Analysis/Economy fact, not a Defence lane.)
         public const int secureBaseMinNonHeroUnits = 2;

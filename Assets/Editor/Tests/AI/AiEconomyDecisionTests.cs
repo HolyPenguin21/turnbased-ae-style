@@ -1749,16 +1749,6 @@ namespace Game.EditorTests
                 snapshot, self, out HexCoord target, out HexCoord anchor), Is.True);
             Assert.That(anchor, Is.EqualTo(new HexCoord(3, 0)));
             Assert.That(target, Is.EqualTo(new HexCoord(9, 0)));
-            Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
-                anchor, target, new HexCoord(6, 0)), Is.True);
-            Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
-                anchor, target, new HexCoord(7, 0)), Is.True,
-                "Distance 4 from the front Base must not be cut off by the minimum-spacing rule.");
-            Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
-                anchor, target, new HexCoord(4, 0)), Is.True,
-                "a neighboring forward site is scored with crowding, not rejected");
-            Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
-                anchor, target, new HexCoord(3, 3)), Is.False);
         }
 
         [Test]

@@ -79,8 +79,14 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> standingIntents, StableMissionKey key,
             EconomyMissionTarget target, EconomyBuilderSelection.EconomyBuilderChoice builderChoice,
             ArmyData hero, int identityArmyId, float apEnvelope, float apPoolRemaining,
-            float alreadyCommittedApCost = 0f)
+            float alreadyCommittedApCost = 0f, ActorCommitments commitments = null,
+            Func<ResearchProductionMode, HexCoord?> preparationSite = null)
         {
+            // A caller that decides several candidates in one pass hands its own reads in (the same
+            // intents, the same live duty site); alone, this plan reads them itself.
+            commitments ??= ActorCommitments.FromIntents(standingIntents, snapshot, null);
+            preparationSite ??= DevelopmentOpportunityEvaluator.LivePreparationSite(
+                player, AiHandRegistry.Peek(player), ctx, snapshot?.Intents);
             apEnvelope -= alreadyCommittedApCost;
             apPoolRemaining -= alreadyCommittedApCost;
             float eps = AiConfigV2.allocatorSliceEpsilon;
@@ -90,14 +96,14 @@ namespace Game.Ai.V2
             if (!MaterializeEconomyRoster(player, hero, builderChoice,
                     out ArmyData garrison, out List<UnitData> lighteningPlan,
                     out List<UnitData> reinforcementPlan, snapshot?.Intents, ctx,
-                    ActorCommitments.FromIntents(standingIntents, snapshot, null)))
+                    commitments, preparationSite))
                 return EconomyCompletionPlan.No(ProvisionFailure.AssemblyInfeasible(
                     $"economy builder #{identityArmyId} preparation witness is stale"));
             // Operators the departure leaves in the local garrison (zero AP, same gate as Execution)
             // are not part of the walking roster.
-            IReadOnlyList<UnitData> staying = hero.Hex.Equals(target.TargetHex)
+            IReadOnlyList<UnitData> staying = hero.Hex.Equals(target.TargetHex) || hero.IsGarrison
                 ? System.Array.Empty<UnitData>()
-                : DevelopmentOpportunityEvaluator.OperatorsStayingHome(player, hero, AiHandRegistry.Peek(player), ctx, snapshot?.Intents);
+                : LocalOperatorRelease.OperatorsNeededHome(player, hero, preparationSite);
             List<UnitData> projectedMembers = hero.Members.Where(u => !lighteningPlan.Contains(u) && !staying.Contains(u))
                 .Concat(reinforcementPlan).ToList();
             int projectedMovement = ArmyData.ComputeCurrentMovement(projectedMembers);
@@ -158,7 +164,8 @@ namespace Game.Ai.V2
         internal static bool MaterializeEconomyRoster(PlayerSetupData player, ArmyData builder,
             EconomyBuilderSelection.EconomyBuilderChoice choice, out ArmyData garrison,
             out List<UnitData> unload, out List<UnitData> reinforcement, IMissionIntentView intents,
-            AiTurnContext ctx = null, ActorCommitments commitments = null)
+            AiTurnContext ctx = null, ActorCommitments commitments = null,
+            Func<ResearchProductionMode, HexCoord?> preparationSite = null)
         {
             garrison = null;
             unload = new List<UnitData>();
@@ -187,8 +194,9 @@ namespace Game.Ai.V2
                 return false;
             ArmyData departing = builder;
             ArmyData receiving = garrison;
-            var preparationSite = choice.Route.IsOnTarget ? null
-                : DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, intents);
+            preparationSite = choice.Route.IsOnTarget ? null
+                : preparationSite ?? DevelopmentOpportunityEvaluator.LivePreparationSite(
+                    player, AiHandRegistry.Peek(player), ctx, intents);
             if (!choice.Route.IsOnTarget
                 && LocalOperatorRelease.OperatorsNeededHome(player, builder, preparationSite).Count > 0)
             {

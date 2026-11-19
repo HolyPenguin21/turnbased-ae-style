@@ -88,10 +88,8 @@ namespace Game.Ai.V2
             MissionIntent intent, MissionStepResult o, int turn)
         {
             bool returnRecoveryOutcome = o.MissionKind == MissionKind.Economy
-                && (o.EconomyFacts().EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder
-                    || o.EconomyFacts().EconomyTarget.Kind == EconomyTaskKind.ReturnCollector
-                    || intent?.Economy?.Kind == EconomyTaskKind.ReturnBuilder
-                    || intent?.Economy?.Kind == EconomyTaskKind.ReturnCollector);
+                && (o.EconomyFacts().EconomyTarget.Kind.IsReturn()
+                    || intent?.Economy?.Kind.IsReturn() == true);
             if (returnRecoveryOutcome && intent != null)
             {
                 KeepEconomyReturn(state, intent, o, turn);
@@ -479,7 +477,7 @@ namespace Game.Ai.V2
                         && WorldAnalysis.KnownThreatsAffectingEconomyRoute(snap, new[] { h }).Count == 0
                         && actor.EconomyHomeRouteCosts?.ContainsKey(h) == true;
                     if (!home.HasValue || !ShelterSafe(home.Value))
-                        home = SelectEconomyHome(snap, actor.Hex,
+                        home = WorldAnalysis.SelectEconomyHome(snap, actor.Hex,
                             (actor.EconomyHomeRouteCosts ?? new Dictionary<HexCoord, int>())
                                 .Where(x => ShelterSafe(x.Key)).ToDictionary(x => x.Key, x => x.Value));
                     if (!home.HasValue)
@@ -513,7 +511,7 @@ namespace Game.Ai.V2
                 active.Add(intent);
                 return;
             }
-            if (ei?.Kind == EconomyTaskKind.ReturnBuilder || ei?.Kind == EconomyTaskKind.ReturnCollector)
+            if (ei?.Kind.IsReturn() == true)
             {
                 bool completed = actor != null && actor.Hex.Equals(ei.TargetHex);
                 bool targetValid = IsProtectedEconomyHex(snap, player, ei.TargetHex);
@@ -662,24 +660,7 @@ namespace Game.Ai.V2
             PlayerSetupData player, ArmySnapshot actor, bool avoidCurrentHex = false)
         {
             if (actor == null || player == null) return null;
-            return SelectEconomyHome(snap, actor.Hex, actor.EconomyHomeRouteCosts, avoidCurrentHex);
-        }
-
-        // Economy chooses the closest physically reachable shelter. Combat's "most active base"
-        // ranking intentionally has a different purpose and keeps its separate owner.
-        internal static HexCoord? SelectEconomyHome(WorldSnapshot snap, HexCoord from,
-            IReadOnlyDictionary<HexCoord, int> routeCosts, bool avoidCurrentHex = false)
-        {
-            if (snap?.Self?.BaseHexes == null || routeCosts == null) return null;
-            IEnumerable<HexCoord> candidates = snap.Self.BaseHexes.Where(h =>
-                routeCosts.TryGetValue(h, out int cost) && cost < int.MaxValue);
-            if (avoidCurrentHex && candidates.Any(h => !h.Equals(from)))
-                candidates = candidates.Where(h => !h.Equals(from));
-            return candidates.OrderBy(h => routeCosts[h])
-                .ThenBy(h => AiReturnBasePolicy.BaseThreatSeverityAt(snap, h))
-                .ThenByDescending(h => h.Equals(snap.Self.Citadel))
-                .ThenBy(h => h.Q).ThenBy(h => h.R)
-                .Select(h => (HexCoord?)h).FirstOrDefault();
+            return WorldAnalysis.SelectEconomyHome(snap, actor.Hex, actor.EconomyHomeRouteCosts, avoidCurrentHex);
         }
 
         // Exact obligation identity, distinct from the coarser site lease. The optional card is

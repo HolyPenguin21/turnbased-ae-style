@@ -77,6 +77,16 @@ namespace Game.Ai.V2
             MissionIntentKey currentIntentKey = MissionIntentKey.For(m);
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(
                 standingIntents, session.Snapshot, null);
+            // The live duty site, read once per mode for this whole call: Provisioning decides
+            // without mutating the world, so every candidate sees the same answer.
+            Func<ResearchProductionMode, HexCoord?> liveSite = DevelopmentOpportunityEvaluator.LivePreparationSite(
+                player, hand, ctx, session.Snapshot?.Intents);
+            var siteByMode = new Dictionary<ResearchProductionMode, HexCoord?>();
+            HexCoord? PreparationSite(ResearchProductionMode mode) =>
+                siteByMode.TryGetValue(mode, out HexCoord? hex) ? hex : siteByMode[mode] = liveSite(mode);
+            IReadOnlyList<UnitData> OperatorsStayingHome(ArmyData army) => army.IsGarrison
+                ? System.Array.Empty<UnitData>()
+                : LocalOperatorRelease.OperatorsNeededHome(player, army, PreparationSite);
             IReadOnlyList<EconomyBuilderSelection.EconomyBuilderChoice> rankedBuilders =
                 EconomyBuilderSelection.RankEconomyBuilders(session.Snapshot, target.TargetHex,
                     target.BuilderRoutes, standingIntents, actorCommitments,
@@ -92,7 +102,7 @@ namespace Game.Ai.V2
             // Why one ranked candidate cannot be this mission's builder right now, or null when it
             // can. The ONE eligibility gate of the selection loop below; the FoundBase diagnostic
             // traces print this same answer instead of re-deriving the clauses.
-            string CandidateRejection(EconomyBuilderSelection.EconomyBuilderChoice x)
+            string LiveCandidateRejection(EconomyBuilderSelection.EconomyBuilderChoice x)
             {
                 // Another mission holding this actor — a field army, or a garrison whose hero an
                 // Economy / Development intent has pinned through the garrison's id.
@@ -110,8 +120,7 @@ namespace Game.Ai.V2
                     // never trusting a hero identity carried across from an earlier phase.
                     ArmyData g = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                     if (g == null) return "garrison_not_resolved";
-                    var site = DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, session.Snapshot?.Intents);
-                    UnitData sparable = AiArmyRoles.EconomyHeroCandidates(player, g, site)
+                    UnitData sparable = AiArmyRoles.EconomyHeroCandidates(player, g, PreparationSite)
                         .FirstOrDefault(u => !x.Route.BuilderHeroRuntimeId.HasValue
                             || u.RuntimeId == x.Route.BuilderHeroRuntimeId.Value);
                     if (sparable == null) return "no_sparable_hero";
@@ -119,7 +128,7 @@ namespace Game.Ai.V2
                     // A garrison's facility operators are never sparable (CanSpareGarrisonMember); the
                     // selected preparation site's operator is protected by the same live duty rule.
                     if (AiArmyRoles.FacilityNeedsHero(player, g, sparable,
-                            site, new[] { sparable }))
+                            PreparationSite, new[] { sparable }))
                         return "operator_leaves_served_facility";
                     if (!g.Hex.Equals(target.TargetHex)
                         && SafeStepPathing.FindSafePathCost(ctx.Map, player, g.Hex,
@@ -129,21 +138,19 @@ namespace Game.Ai.V2
                 }
                 ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                 if (a == null) return "army_not_resolved";
-                if (!IsMobileEconomyHero(a, player, actorCommitments,
-                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, session.Snapshot?.Intents),
+                if (!IsMobileEconomyHero(a, player, actorCommitments, PreparationSite,
                         !a.Hex.Equals(target.TargetHex))) return "not_mobile_economy_hero";
                 // Live re-check of the duty Demand saw in the snapshot (roster outside `a`, selected
                 // preparation site, free garrison, no AP): before any binding or composition mutation.
                 if (!a.Hex.Equals(target.TargetHex) && DevelopmentOpportunityEvaluator
-                        .OperatorDutyBlocksDeparture(player, a, hand, ctx, actorCommitments, session.Snapshot?.Intents))
+                        .OperatorDutyBlocksDeparture(player, a, actorCommitments, PreparationSite))
                     return "operator_leaves_served_facility";
                 if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
                 if (!MaterializeEconomyRoster(player, a, x, out _,
                         out List<UnitData> unload, out List<UnitData> reinforcement, session.Snapshot?.Intents,
-                        ctx, actorCommitments))
+                        ctx, actorCommitments, PreparationSite))
                     return "stale_preparation_witness";
-                IReadOnlyList<UnitData> staying = DevelopmentOpportunityEvaluator
-                    .OperatorsStayingHome(player, a, hand, ctx, session.Snapshot?.Intents);
+                IReadOnlyList<UnitData> staying = OperatorsStayingHome(a);
                 List<UnitData> projected = a.Members.Where(u => !unload.Contains(u) && !staying.Contains(u))
                     .Concat(reinforcement).ToList();
                 if (!a.Hex.Equals(target.TargetHex)
@@ -166,7 +173,7 @@ namespace Game.Ai.V2
                     return (null, default, default, null, "garrison_not_resolved");
                 GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
                     player, g, actorCommitments, session, root, ecoApEnvelopeRemaining,
-                    preparationSite: DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, session.Snapshot?.Intents),
+                    preparationSite: PreparationSite,
                     exactEconomyHeroId: candidate.Route.BuilderHeroRuntimeId);
                 if (plan.Tier == GarrisonExtractionTier.None)
                     // plan.ApCost is 0f only for a true non-existence (no sparable hero); a
@@ -197,34 +204,20 @@ namespace Game.Ai.V2
                 ArmyData preview = BuildGarrisonExtractionPreview(player, g, plan);
                 EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
                     session.Snapshot, standingIntents, key, target, candidate, preview,
-                    plan.Container?.Id ?? -1, ecoApEnvelopeRemaining, rawApRemaining, plan.ApCost);
+                    plan.Container?.Id ?? -1, ecoApEnvelopeRemaining, rawApRemaining, plan.ApCost,
+                    actorCommitments, PreparationSite);
                 return (g, plan, prep, null, prep.Feasible
                     ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
                     : $"{prep.Failure.Kind} - {prep.Failure.Detail}");
             }
 
-            // DIAGNOSTIC (FoundBase only) — which gate rejects a durable intent's committed mover,
-            // since the selection loop normally folds all of them into one MoverContended result.
-            // Prints the real gates' answers (DemandLayer's candidate gate, CandidateRejection).
             if (target.Kind == EconomyTaskKind.FoundBase
                 && m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
             {
-                int preferredId = m.PreferredMoverArmyId.Value;
                 var eligibleList = eligibleBuilders.ToList();
                 eligibleBuilders = eligibleList;
-                bool inRankedAtAll = rankedBuilders.Any(x => x.Route.ArmyId == preferredId);
-                AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} durable mover #{preferredId} "
-                    + $"target=({target.TargetHex.Q},{target.TargetHex.R}) turn={session.Snapshot?.TurnNumber} - "
-                    + $"inRankedBuilders={inRankedAtAll} rankedBuildersTotal={rankedBuilders.Count} "
-                    + $"eligibleAfterMoverFilter={eligibleList.Count}");
-                if (!inRankedAtAll)
-                    AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream - "
-                        + EconomyBuilderSelection.EconomyBuilderCandidateRejection(session.Snapshot,
-                            target.TargetHex, target.BuilderRoutes, preferredId,
-                            standingIntents, actorCommitments));
-                foreach (EconomyBuilderSelection.EconomyBuilderChoice x in eligibleList)
-                    AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} "
-                        + $"rejection={CandidateRejection(x) ?? "none"}");
+                TraceDurableEconomyMover(player, session, target, m.PreferredMoverArmyId.Value,
+                    rankedBuilders, eligibleList, standingIntents, actorCommitments, LiveCandidateRejection);
             }
 
             // A garrison-extraction candidate can pass the eligibility gate (a sparable hero exists)
@@ -250,7 +243,7 @@ namespace Game.Ai.V2
             float? economyBuilderShortfallAp = null;
             foreach (EconomyBuilderSelection.EconomyBuilderChoice candidate in eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
-                .Where(x => CandidateRejection(x) == null))
+                .Where(x => LiveCandidateRejection(x) == null))
             {
                 if (candidate.Route.RequiresGarrisonExtraction)
                 {
@@ -277,109 +270,27 @@ namespace Game.Ai.V2
             }
 
             if (deferredGarrison != null)
-            {
-                // Preflight the canonical Continuity site lease before spending a builder
-                // extraction AP or reserving completion resources for an incompatible project.
-                int candidateBuilder = deferredPlan.Container?.Id ?? -1;
-                if (!EconomyContinuity.CanGrantEconomyBuildSite(player, target.TargetHex,
-                        currentIntentKey, candidateBuilder, target.BuildCard))
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        "economy build site already leased by another active project"));
-
-                // Reserve the physical build-stage resources NOW, when this mission commits to
-                // being deferred, not only after it materializes in Execution: otherwise a SECOND
-                // Economy mission provisioned later in the same batch pass sees the pool as still
-                // free and claims the same resources StrategicSpendability.FitsSpendableResources
-                // already approved for this one. A later stale/failure in Execution releases them
-                // through ReleaseEconomyReservation via ReservationOwner.
-                if (deferredPreparation.CompletionThisTurn)
-                    EconomyReservationLifecycle.ReserveEconomyCost(player, ctx.TurnNumber,
-                        deferredPreparation.OwnerKey, target.BuildResourceCost, target.BuildApCost);
-
-                // Nothing mutated — transferredMemberCount 0 is honest (ProvisioningResult.Ok's own
-                // "changed = transferredMemberCount > 0" rule). MoverArmyId is a synthetic negative
-                // id for an actor that does not exist yet; TaskExecutor.RunEconomyStep detects EconomyExtractionGarrisonArmyId
-                // >= 0 and materializes for real before doing anything else.
-                return ProvisioningResult.Ok(new ProvisionedMission
-                {
-                    Mission = m, Key = key, Kind = MissionKind.Economy,
-                    MoverArmyId = SyntheticGarrisonExtractionActorId(deferredGarrison.Id),
-                    EconomyExtractionGarrisonArmyId = deferredGarrison.Id,
-                    EconomyExtractionPlan = deferredPlan,
-                    EconomyExtractionPreparation = deferredPreparation,
-                    EconomyPreparationPending = true,
-                    FocusHex = target.TargetHex, ExecutionHex = deferredGarrison.Hex,
-                    EconomyTarget = target,
-                    // ClaimedAp is the TOTAL funded amount: deferredPlan.ApCost (CreateArmy, or the
-                    // hero's own late-join charge into an already-activated Shell/Host) plus the
-                    // preparation's RealAp, so the envelope Execution re-validates against includes
-                    // the extraction AP — see PlanEconomyCompletion's `alreadyCommittedApCost` for
-                    // why that AP is real and separate.
-                    ClaimedAp = deferredPlan.ApCost + deferredPreparation.RealAp,
-                    ClaimedPhysical = funded.PhysicalDraw,
-                    ReservationOwner = deferredPreparation.OwnerKey,
-                });
-            }
+                return GarrisonExtractionResult(player, ctx, funded, key, target, currentIntentKey,
+                    deferredGarrison, deferredPlan, deferredPreparation);
 
             if (hero == null)
             {
                 if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
-                {
-                    int preferredId = m.PreferredMoverArmyId.Value;
-                    ArmyData preferredArmy = AiV2Util.ResolveArmy(player, preferredId);
-
-                    if (preferredArmy == null)
-                        return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                            $"committed economy builder #{preferredId} no longer exists"));
-
-                    // Canonical, army-specific safe-route witness (same contract EconomyBuilderRoutes
-                    // uses at Analysis time — MaxMovement, not this turn's remaining CurrentMovement,
-                    // so a merely-spent-for-now mover is never misclassified as unreachable). When
-                    // this is int.MaxValue the committed mover has no safe path at all right now, as
-                    // distinct from "a path exists but this mover didn't clear the other eligibility
-                    // checks this turn" — the latter stays MoverContended below, unchanged.
-                    int routeCost = SafeStepPathing.FindSafePathCost(
-                        ctx.Map, preferredArmy, target.TargetHex);
-                    if (routeCost == int.MaxValue)
-                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                            $"committed economy builder #{preferredId} has no safe route to the site right now"));
-
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"committed economy builder #{preferredId} cannot advance this turn"));
-                }
-                // DIAGNOSTIC (FoundBase only) — a fresh mission's selection loop rejected every
-                // ranked candidate (or none was ranked). Print each candidate's real answer: the
-                // eligibility gate, then the same garrison evaluation / completion plan the loop ran
-                // (docs/ai-economy-mover-materialization-decision-tree.md, "Known trap").
+                    return CommittedBuilderUnavailable(player, ctx, target, m.PreferredMoverArmyId.Value);
                 if (target.Kind == EconomyTaskKind.FoundBase)
-                {
-                    AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} fresh economy mission "
-                        + $"kind={target.Kind} target=({target.TargetHex.Q},{target.TargetHex.R}) "
-                        + $"turn={session.Snapshot?.TurnNumber} - rankedBuildersTotal={rankedBuilders.Count}");
-                    foreach (EconomyBuilderSelection.EconomyBuilderChoice x in rankedBuilders)
-                    {
-                        string rejection = CandidateRejection(x);
-                        string plan = "n/a";
-                        if (rejection == null)
+                    TraceFreshEconomyCandidates(player, session, target, rankedBuilders,
+                        LiveCandidateRejection, x =>
                         {
                             if (x.Route.RequiresGarrisonExtraction)
-                                plan = EvaluateGarrisonCandidate(x).Detail;
-                            else
-                            {
-                                ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
-                                EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
-                                    session.Snapshot, standingIntents, key, target, x, a, a.Id,
-                                    ecoApEnvelopeRemaining, rawApRemaining);
-                                plan = prep.Feasible
-                                    ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
-                                    : $"{prep.Failure.Kind} - {prep.Failure.Detail}";
-                            }
-                        }
-                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId}"
-                            + (x.Route.RequiresGarrisonExtraction ? " (garrison-extraction)" : "")
-                            + $" rejection={rejection ?? "none"} plan=[{plan}]");
-                    }
-                }
+                                return EvaluateGarrisonCandidate(x).Detail;
+                            ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
+                            EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
+                                session.Snapshot, standingIntents, key, target, x, a, a.Id,
+                                ecoApEnvelopeRemaining, rawApRemaining, 0f, actorCommitments, PreparationSite);
+                            return prep.Feasible
+                                ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
+                                : $"{prep.Failure.Kind} - {prep.Failure.Detail}";
+                        });
                 // A structurally legal container existed (Shell/Host/Create) for at least one
                 // candidate this pass and was rejected only for exceeding the AP envelope/pool:
                 // that is a repriceable funding shortfall, not a genuine absence of any way to get
@@ -397,6 +308,96 @@ namespace Game.Ai.V2
                     "no free hero can advance toward economy site"));
             }
 
+            return DirectHeroResult(player, root, ctx, session, funded, key, target, currentIntentKey,
+                standingIntents, actorCommitments, PreparationSite, builderChoice, hero, OperatorsStayingHome);
+        }
+
+        // The builder is still a hero inside a garrison: the plan (container + pinned preparation)
+        // is funded now and materialized by Execution (TaskExecutor.ApplyEconomyPreparation).
+        private static ProvisioningResult GarrisonExtractionResult(PlayerSetupData player,
+            AiTurnContext ctx, FundedEntry funded, StableMissionKey key, EconomyMissionTarget target,
+            MissionIntentKey currentIntentKey, ArmyData deferredGarrison,
+            GarrisonExtractionCandidate deferredPlan, EconomyCompletionPlan deferredPreparation)
+        {
+            MissionProposal m = funded.Mission;
+            // Preflight the canonical Continuity site lease before spending a builder
+            // extraction AP or reserving completion resources for an incompatible project.
+            int candidateBuilder = deferredPlan.Container?.Id ?? -1;
+            if (!EconomyContinuity.CanGrantEconomyBuildSite(player, target.TargetHex,
+                    currentIntentKey, candidateBuilder, target.BuildCard))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "economy build site already leased by another active project"));
+
+            // Reserve the physical build-stage resources NOW, when this mission commits to
+            // being deferred, not only after it materializes in Execution: otherwise a SECOND
+            // Economy mission provisioned later in the same batch pass sees the pool as still
+            // free and claims the same resources StrategicSpendability.FitsSpendableResources
+            // already approved for this one. A later stale/failure in Execution releases them
+            // through ReleaseEconomyReservation via ReservationOwner.
+            if (deferredPreparation.CompletionThisTurn)
+                EconomyReservationLifecycle.ReserveEconomyCost(player, ctx.TurnNumber,
+                    deferredPreparation.OwnerKey, target.BuildResourceCost, target.BuildApCost);
+
+            // Nothing mutated — transferredMemberCount 0 is honest (ProvisioningResult.Ok's own
+            // "changed = transferredMemberCount > 0" rule). MoverArmyId is a synthetic negative
+            // id for an actor that does not exist yet; TaskExecutor.RunEconomyStep detects EconomyExtractionGarrisonArmyId
+            // >= 0 and materializes for real before doing anything else.
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = m, Key = key, Kind = MissionKind.Economy,
+                MoverArmyId = SyntheticGarrisonExtractionActorId(deferredGarrison.Id),
+                EconomyExtractionGarrisonArmyId = deferredGarrison.Id,
+                EconomyExtractionPlan = deferredPlan,
+                EconomyExtractionPreparation = deferredPreparation,
+                EconomyPreparationPending = true,
+                FocusHex = target.TargetHex, ExecutionHex = deferredGarrison.Hex,
+                EconomyTarget = target,
+                // ClaimedAp is the TOTAL funded amount: deferredPlan.ApCost (CreateArmy, or the
+                // hero's own late-join charge into an already-activated Shell/Host) plus the
+                // preparation's RealAp, so the envelope Execution re-validates against includes
+                // the extraction AP — see PlanEconomyCompletion's `alreadyCommittedApCost` for
+                // why that AP is real and separate.
+                ClaimedAp = deferredPlan.ApCost + deferredPreparation.RealAp,
+                ClaimedPhysical = funded.PhysicalDraw,
+                ReservationOwner = deferredPreparation.OwnerKey,
+            });
+        
+        }
+
+        // A durable build's committed builder passed no live gate this pass: gone, no safe route at
+        // all right now, or merely unable to advance this turn (kept).
+        private static ProvisioningResult CommittedBuilderUnavailable(PlayerSetupData player,
+            AiTurnContext ctx, EconomyMissionTarget target, int preferredId)
+        {
+            ArmyData preferredArmy = AiV2Util.ResolveArmy(player, preferredId);
+            if (preferredArmy == null)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"committed economy builder #{preferredId} no longer exists"));
+            // Canonical, army-specific safe-route witness (same contract EconomyBuilderRoutes
+            // uses at Analysis time — MaxMovement, not this turn's remaining CurrentMovement,
+            // so a merely-spent-for-now mover is never misclassified as unreachable). When
+            // this is int.MaxValue the committed mover has no safe path at all right now, as
+            // distinct from "a path exists but this mover didn't clear the other eligibility
+            // checks this turn" — the latter stays MoverContended below, unchanged.
+            int routeCost = SafeStepPathing.FindSafePathCost(ctx.Map, preferredArmy, target.TargetHex);
+            if (routeCost == int.MaxValue)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    $"committed economy builder #{preferredId} has no safe route to the site right now"));
+            return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                $"committed economy builder #{preferredId} cannot advance this turn"));
+        }
+
+        // The builder is a live hero-led field army: its pinned preparation, the site lease, the
+        // stage reservation (or the durable delivery identity of a multi-turn walk).
+        private static ProvisioningResult DirectHeroResult(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded, StableMissionKey key,
+            EconomyMissionTarget target, MissionIntentKey currentIntentKey,
+            IReadOnlyList<MissionIntent> standingIntents, ActorCommitments actorCommitments,
+            Func<ResearchProductionMode, HexCoord?> preparationSite,
+            EconomyBuilderSelection.EconomyBuilderChoice builderChoice, ArmyData hero,
+            Func<ArmyData, IReadOnlyList<UnitData>> operatorsStayingHome)
+        {
+            MissionProposal m = funded.Mission;
             // The direct-army path (hero already a real, live field army) applies no composition
             // change inside Provisioning either: PlanEconomyCompletion (pure) decides, and the SAME
             // Execution apply path the garrison-extraction candidate uses
@@ -405,7 +406,7 @@ namespace Game.Ai.V2
             // is already real.
             EconomyCompletionPlan directPrep = PlanEconomyCompletion(player, root, ctx,
                 session.Snapshot, standingIntents, key, target, builderChoice, hero, hero.Id,
-                funded.Tentative.Ap, session.TurnApLeft(root));
+                funded.Tentative.Ap, session.TurnApLeft(root), 0f, actorCommitments, preparationSite);
             if (!directPrep.Feasible)
                 return ProvisioningResult.Fail(directPrep.Failure);
 
@@ -461,8 +462,7 @@ namespace Game.Ai.V2
             // nothing.
             bool preparationPending = directPrep.Donor != null
                 || directPrep.Unload.Count > 0 || directPrep.Reinforcement.Count > 0
-                || (!hero.Hex.Equals(target.TargetHex) && DevelopmentOpportunityEvaluator
-                    .OperatorsStayingHome(player, hero, hand, ctx, session.Snapshot?.Intents).Count > 0);
+                || (!hero.Hex.Equals(target.TargetHex) && operatorsStayingHome(hero).Count > 0);
 
             return ProvisioningResult.Ok(new ProvisionedMission
             {
@@ -475,6 +475,53 @@ namespace Game.Ai.V2
                 ClaimedPhysical = funded.PhysicalDraw,
                 ReservationOwner = directPrep.OwnerKey,
             });
+        }
+
+        // DIAGNOSTIC (FoundBase only) — which gate rejects a durable intent's committed mover,
+        // since the selection loop normally folds all of them into one MoverContended result.
+        // Prints the real gates' answers (DemandLayer's candidate gate, the live candidate gate).
+        private static void TraceDurableEconomyMover(PlayerSetupData player, ProvisioningSession session,
+            EconomyMissionTarget target, int preferredId,
+            IReadOnlyList<EconomyBuilderSelection.EconomyBuilderChoice> rankedBuilders,
+            IReadOnlyList<EconomyBuilderSelection.EconomyBuilderChoice> eligible,
+            IReadOnlyList<MissionIntent> standingIntents, ActorCommitments actorCommitments,
+            Func<EconomyBuilderSelection.EconomyBuilderChoice, string> liveRejection)
+        {
+            bool inRankedAtAll = rankedBuilders.Any(x => x.Route.ArmyId == preferredId);
+            AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} durable mover #{preferredId} "
+                + $"target=({target.TargetHex.Q},{target.TargetHex.R}) turn={session.Snapshot?.TurnNumber} - "
+                + $"inRankedBuilders={inRankedAtAll} rankedBuildersTotal={rankedBuilders.Count} "
+                + $"eligibleAfterMoverFilter={eligible.Count}");
+            if (!inRankedAtAll)
+                AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream - "
+                    + EconomyBuilderSelection.EconomyBuilderCandidateRejection(session.Snapshot,
+                        target.TargetHex, target.BuilderRoutes, preferredId,
+                        standingIntents, actorCommitments));
+            foreach (EconomyBuilderSelection.EconomyBuilderChoice x in eligible)
+                AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} "
+                    + $"rejection={liveRejection(x) ?? "none"}");
+        }
+
+        // DIAGNOSTIC (FoundBase only) — a fresh mission's selection loop rejected every ranked
+        // candidate (or none was ranked). Prints each candidate's real answer: the eligibility
+        // gate, then the same garrison evaluation / completion plan the loop ran
+        // (docs/ai-economy-mover-materialization-decision-tree.md, "Known trap").
+        private static void TraceFreshEconomyCandidates(PlayerSetupData player, ProvisioningSession session,
+            EconomyMissionTarget target,
+            IReadOnlyList<EconomyBuilderSelection.EconomyBuilderChoice> rankedBuilders,
+            Func<EconomyBuilderSelection.EconomyBuilderChoice, string> liveRejection,
+            Func<EconomyBuilderSelection.EconomyBuilderChoice, string> plan)
+        {
+            AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} fresh economy mission "
+                + $"kind={target.Kind} target=({target.TargetHex.Q},{target.TargetHex.R}) "
+                + $"turn={session.Snapshot?.TurnNumber} - rankedBuildersTotal={rankedBuilders.Count}");
+            foreach (EconomyBuilderSelection.EconomyBuilderChoice x in rankedBuilders)
+            {
+                string rejection = liveRejection(x);
+                AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId}"
+                    + (x.Route.RequiresGarrisonExtraction ? " (garrison-extraction)" : "")
+                    + $" rejection={rejection ?? "none"} plan=[{(rejection == null ? plan(x) : "n/a")}]");
+            }
         }
 
         private static ProvisioningResult ProvisionEconomyRecovery(

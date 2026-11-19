@@ -41,6 +41,9 @@ namespace Game.Ai.V2
         // close to any route hex, or to the site itself, must be answered by an escort.
         public const int economyRouteThreatRadius = 1;
         public const int economySiteThreatRadius = 2;
+        // The win chance an Economy escort must project against every such threat
+        // (EconomyBuilderSelection.EconomyRosterSafe).
+        public const float economyEscortMinWinChance = 0.6f;
     }
 }
 

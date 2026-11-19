@@ -29,6 +29,14 @@ namespace Game.Ai.V2
         ReturnBuilder,
     }
 
+    internal static class EconomyTaskKinds
+    {
+        // THE Economy return leg (a builder or a collector walking home after its work) — the
+        // Economy half of MissionIntent.IsLifecycleLeg, readable where only a target exists.
+        internal static bool IsReturn(this EconomyTaskKind kind) =>
+            kind == EconomyTaskKind.ReturnBuilder || kind == EconomyTaskKind.ReturnCollector;
+    }
+
     public struct EconomyMissionTarget : IMissionTarget
     {
         MissionKind IMissionTarget.Kind => MissionKind.Economy;

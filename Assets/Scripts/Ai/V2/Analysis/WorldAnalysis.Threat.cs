@@ -109,11 +109,6 @@ namespace Game.Ai.V2
             model.Assets = assets;
 
             var threats = new List<AssetThreatSnapshot>();
-            List<ArmySnapshot> ownFieldForResponse = snap.Self.Armies
-                .Where(a => !a.IsPrison && !a.IsGarrison && !a.IsAirfield
-                    && !a.IsCarrierContainer && a.MemberCount > 0).ToList();
-            var responseCosts = ownFieldForResponse.ToDictionary(a => a.ArmyId,
-                a => TerrainCostField(ctx.Map, a.Hex, Mathf.Max(1, a.MaxMovement), a.IsAir));
 
             foreach (EnemyContactSnapshot c in contacts)
             {
@@ -148,17 +143,8 @@ namespace Game.Ai.V2
                     if (approachCost.HasValue)
                         enemyEta = AiV2Util.CeilDiv(approachCost.Value, Mathf.Max(1, c.Army.MaxMovement));
 
-                    int? responseEta = null;
-                    foreach (ArmySnapshot r in ownFieldForResponse)
-                    {
-                        if (!responseCosts[r.ArmyId].TryGetValue(asset.Hex, out int cost)) continue;
-                        int e = AiV2Util.CeilDiv(cost, Mathf.Max(1, r.MaxMovement));
-                        if (!responseEta.HasValue || e < responseEta.Value)
-                            responseEta = e;
-                    }
-
                     float potentialDamage = winChance * (canDamage ? 1f : 0f);
-                    float severity = Severity(winChance, potentialDamage, enemyEta, responseEta, canDamage, c.Confidence);
+                    float severity = Severity(winChance, potentialDamage, enemyEta, canDamage, c.Confidence);
                     if (severity < AiConfigV2.severityListingCutoff) continue;
 
                     threats.Add(new AssetThreatSnapshot
@@ -168,7 +154,6 @@ namespace Game.Ai.V2
                         CanDamage = canDamage,
                         EnemyEta = enemyEta,
                         EnemyApproachCost = approachCost,
-                        ResponseEta = responseEta,
                         AttackWinChance = winChance,
                         PotentialDamage = potentialDamage,
                         Confidence = c.Confidence,
@@ -348,7 +333,7 @@ namespace Game.Ai.V2
             }
         }
 
-        private static float Severity(float winChance, float potentialDamage, int? enemyEta, int? responseEta,
+        private static float Severity(float winChance, float potentialDamage, int? enemyEta,
             bool canDamage, float confidence)
         {
             float etaUrgency = enemyEta.HasValue ? 1f / (1f + enemyEta.Value) : 0f;

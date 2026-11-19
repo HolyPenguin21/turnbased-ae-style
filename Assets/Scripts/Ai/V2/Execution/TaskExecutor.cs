@@ -802,8 +802,7 @@ namespace Game.Ai.V2
             }
             if (army.Hex.Equals(target.TargetHex))
             {
-                result.ReachedGoal = target.Kind == EconomyTaskKind.ReturnBuilder
-                    || target.Kind == EconomyTaskKind.ReturnCollector;
+                result.ReachedGoal = target.Kind.IsReturn();
                 result.StopReason = result.ReachedGoal
                     ? ExecutionStopReason.ReachedGoal
                     : ExecutionStopReason.StepCompleted;
@@ -871,8 +870,7 @@ namespace Game.Ai.V2
                 target.TargetHex, $"economy - {target.Kind}");
             HexCoord after = result.FinalHex;
             bool recoveryArrived = result.StopReason != ExecutionStopReason.MoverLost
-                && (target.Kind == EconomyTaskKind.ReturnBuilder
-                    || target.Kind == EconomyTaskKind.ReturnCollector)
+                && target.Kind.IsReturn()
                 && after.Equals(target.TargetHex);
             result.ReachedGoal = recoveryArrived;
             if (recoveryArrived)

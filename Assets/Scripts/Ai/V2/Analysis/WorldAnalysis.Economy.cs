@@ -22,12 +22,27 @@ namespace Game.Ai.V2
     public static partial class WorldAnalysis
     {
 
+        // The Economy standing of this scan, one step after another: the rosters that can really
+        // depart, the per-resource standings, extraction / collector sites, mobile collection,
+        // Base sites, and whether any of it is actionable now.
         private static EconomyStanding BuildEconomy(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, WorldSnapshot snap)
         {
             var eco = new EconomyStanding();
-            var perType = new List<EconomyResourceStanding>();
+            ProjectEconomyDepartures(player, ctx, snap);
+            Dictionary<ResourceType, EconomyResourceStanding> standings =
+                BuildResourceStandings(player, root, ctx, snap, eco);
+            var scan = new EconomySiteScan(player, ctx, snap);
+            ScanExtractionSites(player, snap, scan, eco);
+            ScanMobileCollection(player, ctx, snap, standings, eco);
+            ScanBaseSites(player, ctx, snap, scan, eco);
+            eco.HasActionableOpportunity = HasActionableEconomyOpportunity(snap, eco, standings);
+            return eco;
+        }
 
+        private static void ProjectEconomyDepartures(PlayerSetupData player, AiTurnContext ctx,
+            WorldSnapshot snap)
+        {
             // Price only the roster that can actually depart. Preparation-site selection is
             // structural and does not depend on the Economy standings being built here.
             var preparationSite = DevelopmentOpportunityEvaluator.LivePreparationSite(
@@ -49,7 +64,14 @@ namespace Game.Ai.V2
                 projected.ActivationCoveredUnitRuntimeIds = actor.ActivationCoveredUnitRuntimeIds;
                 actor.EconomyDeparture = projected;
             }
+        }
 
+        // Hand / deck / forecast needs, the per-resource standings and the deficit summary.
+        private static Dictionary<ResourceType, EconomyResourceStanding> BuildResourceStandings(
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap,
+            EconomyStanding eco)
+        {
+            var perType = new List<EconomyResourceStanding>();
             List<PlayerSetupData> others = (GameSession.Players ?? new List<PlayerSetupData>())
                 .Where(p => p != null && p != player && !p.IsNeutral && !p.IsEliminated)
                 .ToList();
@@ -110,49 +132,77 @@ namespace Game.Ai.V2
                 AiConfigV2.economyDesireMaxWeight * eco.MaxDeficitScore
                 + AiConfigV2.economyDesireMeanWeight * eco.MeanDeficitScore));
 
-            var standings = perType.ToDictionary(x => x.Type, x => x);
-            var knownBuildings = (snap.Known?.Buildings
-                ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
-                .GroupBy(x => x.Hex).ToDictionary(g => g.Key, g => g.First());
-            // The same hex may yield several resource types AND qualify as a Base site. Its
-            // army routes/threat witnesses are identical within this immutable world scan;
-            // compute them only once without caching across snapshots or projected-army calls.
-            var builderRoutesByHex = new Dictionary<HexCoord, IReadOnlyList<EconomyBuilderRouteSnapshot>>();
-            EconomyBuilderPool builderPool = null;
-            IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutesFor(HexCoord hex)
+            return perType.ToDictionary(x => x.Type, x => x);
+        }
+
+        // Facts shared by the site scans of one Economy build: the known buildings by hex, each
+        // hex's builder routes (a hex may yield several resources AND be a Base site; its routes
+        // and threat witnesses are identical within this immutable world scan, so they are
+        // computed once, never cached across snapshots or projected-army calls) and the fastest
+        // prospective hero's delivery bound.
+        private sealed class EconomySiteScan
+        {
+            private readonly PlayerSetupData _player;
+            private readonly AiTurnContext _ctx;
+            private readonly WorldSnapshot _snap;
+            private readonly Dictionary<HexCoord, IReadOnlyList<EconomyBuilderRouteSnapshot>> _routes =
+                new Dictionary<HexCoord, IReadOnlyList<EconomyBuilderRouteSnapshot>>();
+            private readonly Dictionary<HexCoord, int> _newBuilderTurns = new Dictionary<HexCoord, int>();
+            private readonly int _prospectiveHeroMovement;
+            private EconomyBuilderPool _pool;
+            internal readonly Dictionary<HexCoord, AiMapMemory.KnownBuilding> KnownBuildings;
+
+            internal EconomySiteScan(PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snap)
             {
-                if (!builderRoutesByHex.TryGetValue(hex, out IReadOnlyList<EconomyBuilderRouteSnapshot> routes))
+                _player = player;
+                _ctx = ctx;
+                _snap = snap;
+                KnownBuildings = (snap.Known?.Buildings
+                    ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                    .GroupBy(x => x.Hex).ToDictionary(g => g.Key, g => g.First());
+                // A capability fact, never a card choice: even the fastest known prospective hero
+                // cannot beat this optimistic terrain-only preparation bound. Exact safety/escort
+                // and the chosen card's route remain Materialization's responsibility.
+                _prospectiveHeroMovement = (snap.Self.PoolCards
+                        ?? System.Array.Empty<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)>())
+                    .Where(c => c.Card?.cardType == CardType.Hero)
+                    .Select(c => AiPower.EffectiveLine(c.Card, c.Equipment?.equipment, c.Mutator?.equipment).MoveMax)
+                    .DefaultIfEmpty(0).Max();
+            }
+
+            internal IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutesFor(HexCoord hex)
+            {
+                if (!_routes.TryGetValue(hex, out IReadOnlyList<EconomyBuilderRouteSnapshot> routes))
                 {
                     using (new ProfileScope("AI/Economy.BuilderRoutes"))
                     {
-                        builderPool ??= new EconomyBuilderPool(snap, player, ctx);
-                        routes = EconomyBuilderRoutes(snap, player, ctx, hex, null, builderPool);
+                        _pool ??= new EconomyBuilderPool(_snap, _player, _ctx);
+                        routes = EconomyBuilderRoutes(_snap, _player, _ctx, hex, null, _pool);
                     }
-                    builderRoutesByHex[hex] = routes;
+                    _routes[hex] = routes;
                 }
                 return routes;
             }
-            var extraction = new List<EconomyExtractionOpportunity>();
-            // A capability fact, never a card choice: even the fastest known prospective hero
-            // cannot beat this optimistic terrain-only preparation bound. Exact safety/escort
-            // and the chosen card's route remain Materialization's responsibility.
-            int prospectiveHeroMovement = (snap.Self.PoolCards
-                    ?? System.Array.Empty<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)>())
-                .Where(c => c.Card?.cardType == CardType.Hero)
-                .Select(c => AiPower.EffectiveLine(c.Card, c.Equipment?.equipment, c.Mutator?.equipment).MoveMax)
-                .DefaultIfEmpty(0).Max();
-            var newBuilderDeliveryByHex = new Dictionary<HexCoord, int>();
-            int MinimumNewBuilderTurns(HexCoord hex)
+
+            internal int MinimumNewBuilderTurns(HexCoord hex)
             {
-                if (newBuilderDeliveryByHex.TryGetValue(hex, out int turns)) return turns;
-                int travel = prospectiveHeroMovement > 0 && snap.Self.BaseHexes?.Count > 0
-                    ? SafeStepPathing.FindSafeBasePreparationCost(ctx.Map, player, snap.Self.BaseHexes, hex)
+                if (_newBuilderTurns.TryGetValue(hex, out int turns)) return turns;
+                int travel = _prospectiveHeroMovement > 0 && _snap.Self.BaseHexes?.Count > 0
+                    ? SafeStepPathing.FindSafeBasePreparationCost(_ctx.Map, _player, _snap.Self.BaseHexes, hex)
                     : int.MaxValue;
                 turns = travel == int.MaxValue ? int.MaxValue
-                    : Mathf.CeilToInt(travel / (float)prospectiveHeroMovement);
-                newBuilderDeliveryByHex[hex] = turns;
+                    : Mathf.CeilToInt(travel / (float)_prospectiveHeroMovement);
+                _newBuilderTurns[hex] = turns;
                 return turns;
             }
+        }
+
+        // Extraction (a Facility) and collector (a field army) opportunities of every known
+        // resource hex, plus the neutral-guarded sites a Raid may clear.
+        private static void ScanExtractionSites(PlayerSetupData player, WorldSnapshot snap,
+            EconomySiteScan scan, EconomyStanding eco)
+        {
+            var extraction = new List<EconomyExtractionOpportunity>();
             var collectorSites = new List<EconomyExtractionOpportunity>();
             var guardedExtraction = new List<EconomyExtractionOpportunity>();
             using (new ProfileScope("AI/Economy.ExtractionSites"))
@@ -166,7 +216,7 @@ namespace Game.Ai.V2
                     // Only a neutral standing on it: not an Economy opportunity, but the price a
                     // Raid that clears it earns (the facility income, nothing else).
                     if (KnownNeutralOnlyAtHex(snap, site.Hex)
-                        && !knownBuildings.ContainsKey(site.Hex))
+                        && !scan.KnownBuildings.ContainsKey(site.Hex))
                     {
                         (int guardedFacilityGain, _) = MarginalSiteCollectionGains(
                             effectiveYield, 0, 0, true);
@@ -184,21 +234,16 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                bool hasBuilding = knownBuildings.TryGetValue(site.Hex,
+                bool hasBuilding = scan.KnownBuildings.TryGetValue(site.Hex,
                     out AiMapMemory.KnownBuilding building);
                 // Real income consumes the building's portion FIRST, even if its owner is
                 // another player. An extraction Facility can found a NEW resource site;
                 // only EXISTING hosts require our ownership/free slots. A field Collector is independent.
                 int currentCollection = hasBuilding ? building.CollectedAmount(resourceType) : 0;
-                int ownArmyCollectors = Mathf.RoundToInt((snap.Self.Armies
-                    ?? System.Array.Empty<ArmySnapshot>())
-                    .Where(a => a != null && a.Hex.Equals(site.Hex))
-                    .Sum(a => a.CollectionCapacity.Get(resourceType)));
-                bool armiesCanCollect = !(snap.Known?.EnemySightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                    .Any(enemy => enemy.Hex.Equals(site.Hex));
+                // A hex with a known enemy on it was skipped above, so own armies can collect here.
                 (int facilityGain, int collectorGain) = MarginalSiteCollectionGains(
-                    effectiveYield, currentCollection, ownArmyCollectors, armiesCanCollect);
+                    effectiveYield, currentCollection,
+                    OwnCollectionCapacityAt(snap, site.Hex, resourceType), true);
 
                 if (collectorGain > 0)
                     collectorSites.Add(new EconomyExtractionOpportunity
@@ -227,14 +272,22 @@ namespace Game.Ai.V2
                     CurrentBuildingCollection = currentCollection,
                     MarginalIncomeGain = facilityGain,
                     BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
-                    BuilderRoutes = BuilderRoutesFor(site.Hex),
-                    MinimumNewBuilderDeliveryTurns = MinimumNewBuilderTurns(site.Hex),
+                    BuilderRoutes = scan.BuilderRoutesFor(site.Hex),
+                    MinimumNewBuilderDeliveryTurns = scan.MinimumNewBuilderTurns(site.Hex),
                 });
             }
             eco.CollectorSites = collectorSites;
             eco.ExtractionOpportunities = extraction;
             eco.GuardedExtractionSites = guardedExtraction;
 
+        }
+
+        // Free collectors that can walk safely to a collector site with a safe way home, and the
+        // route witness of every bound collector.
+        private static void ScanMobileCollection(PlayerSetupData player, AiTurnContext ctx,
+            WorldSnapshot snap, Dictionary<ResourceType, EconomyResourceStanding> standings,
+            EconomyStanding eco)
+        {
             var mobileCollection = new List<MobileCollectionOpportunity>();
             var collectorRoutes = new Dictionary<(int, HexCoord), HexPath>();
             var committedCollectors = new HashSet<int>(WorldSnapshot.IntentsOf(snap)
@@ -242,16 +295,13 @@ namespace Game.Ai.V2
                     && i.PreferredMoverArmyId.HasValue)
                 .Select(i => i.PreferredMoverArmyId.Value));
             using (new ProfileScope("AI/Economy.Collectors"))
-            foreach (EconomyExtractionOpportunity site in collectorSites)
+            foreach (EconomyExtractionOpportunity site in eco.CollectorSites)
             {
                 // Demand admits a new collector for USEFUL income, not strictly for a
                 // rate below IncomeTarget. Apply that same UsefulMarginalIncomeGain test
                 // below to existing free actors, so a newly delivered collector gets work.
                 int buildingCollection = site.CurrentBuildingCollection;
-                int armiesAlreadyThere = Mathf.RoundToInt((snap.Self.Armies
-                        ?? System.Array.Empty<ArmySnapshot>())
-                    .Where(a => a != null && a.Hex.Equals(site.Hex))
-                    .Sum(a => a.CollectionCapacity.Get(site.ResourceType)));
+                int armiesAlreadyThere = OwnCollectionCapacityAt(snap, site.Hex, site.ResourceType);
 
                 EconomyResourceStanding standing = standings[site.ResourceType];
                 foreach (ArmySnapshot collector in (snap.Self.Armies
@@ -273,17 +323,13 @@ namespace Game.Ai.V2
 
                     IReadOnlyDictionary<HexCoord, int> homes = EconomyHomeRoutes(player,
                         ctx, site.Hex, collector.MaxMovement, snap.Self.BaseHexes);
-                    HexCoord? safeReturn = EconomyContinuity.SelectEconomyHome(snap,
-                        site.Hex, homes);
+                    HexCoord? safeReturn = SelectEconomyHome(snap, site.Hex, homes);
                     if (!safeReturn.HasValue)
                         continue;
 
-                    int capacity = Mathf.RoundToInt(collector.CollectionCapacity.Get(site.ResourceType));
-                    int marginal = Mathf.Max(0,
-                        IncomeProjection.OwnerCollectionAtHex(site.EffectiveYield,
-                            buildingCollection, armiesAlreadyThere + capacity, true)
-                        - IncomeProjection.OwnerCollectionAtHex(site.EffectiveYield,
-                            buildingCollection, armiesAlreadyThere, true));
+                    int marginal = IncomeProjection.MarginalArmyCollectionAtHex(site.EffectiveYield,
+                        buildingCollection, armiesAlreadyThere,
+                        Mathf.RoundToInt(collector.CollectionCapacity.Get(site.ResourceType)));
                     if (marginal < AiConfigV2.mobileCollectionMinMarginalYield)
                         continue;
                     float usefulGain = standing.UsefulMarginalIncomeGain(marginal);
@@ -319,6 +365,11 @@ namespace Game.Ai.V2
             }
             eco.CollectorRoutes = collectorRoutes;
 
+        }
+
+        private static void ScanBaseSites(PlayerSetupData player, AiTurnContext ctx,
+            WorldSnapshot snap, EconomySiteScan scan, EconomyStanding eco)
+        {
             // Base opportunities are structural site facts only. Card-specific value/cost remains
             // Strategy/Demand's responsibility, but Analysis owns the one legal candidate set so
             // the desire gate and demand emission cannot disagree. Built independently of whether a
@@ -329,11 +380,9 @@ namespace Game.Ai.V2
             // so storage and actionable-availability are checked separately here on purpose.
             var baseOpportunities = new List<EconomyBaseOpportunity>();
             var guardedBaseSites = new List<GuardedBaseSite>();
-            List<CardData> baseCards = (snap.Self.Hand ?? System.Array.Empty<CardData>())
-                .Where(c => c?.Definition?.cardType == CardType.Base).ToList();
             if (snap.Self.BaseHexes != null)
             {
-                var occupied = knownBuildings;
+                var occupied = scan.KnownBuildings;
                 var knownSites = new HashSet<HexCoord>((snap.Known?.ResourceHexes
                     ?? System.Array.Empty<AiMapMemory.KnownResourceHex>()).Select(x => x.Hex));
                 var knownMapHexes = new HashSet<HexCoord>(
@@ -349,15 +398,12 @@ namespace Game.Ai.V2
                 foreach (HexCoord hex in directionalSites.OrderBy(x => x.Q).ThenBy(x => x.R))
                     {
                         // Direction is a SCORE input (ForwardProgressValue/CorridorAlignmentValue
-                        // below), not an admission gate: IsForwardBaseCandidate's own "strictly
-                        // closer to the enemy citadel than our anchor" rule used to also veto
-                        // candidates here, before those same two score terms ever got to weigh a
-                        // resource-rich hex that happened to sit slightly off the direct line.
+                        // below), not an admission gate: a "strictly closer to the enemy citadel
+                        // than our anchor" rule used to also veto candidates here, before those
+                        // same two score terms ever got to weigh a resource-rich hex that happened
+                        // to sit slightly off the direct line.
                         // Own-network distance is priced by FoundBase TaskScore, never a veto.
                         // Building occupancy and the enemy perimeter remain physical gates.
-                        if (!knownMapHexes.Contains(hex)
-                            || !hasDirection)
-                            continue;
                         bool hasBuilding = occupied.TryGetValue(hex,
                             out AiMapMemory.KnownBuilding knownBuilding);
                         bool convertsOwnedExtraction = hasBuilding && knownSites.Contains(hex)
@@ -403,14 +449,9 @@ namespace Game.Ai.V2
                             defenseBonus = Mathf.Clamp01(terrain.defenseModifier
                                 / Mathf.Max(1f, AiConfigV2.economyBaseMaxDefenseModifier));
 
-                        float forwardProgress = 0f;
-                        float corridorAlignment = 0f;
-                        if (hasDirection)
-                        {
-                            forwardProgress = ForwardProgressToward(anchor, targetCitadel, hex);
-                            corridorAlignment = CorridorAlignmentToward(anchor, targetCitadel, hex,
-                                AiConfigV2.economyBaseFoundScanRadius);
-                        }
+                        float forwardProgress = ForwardProgressToward(anchor, targetCitadel, hex);
+                        float corridorAlignment = CorridorAlignmentToward(anchor, targetCitadel, hex,
+                            AiConfigV2.economyBaseFoundScanRadius);
 
                         baseOpportunities.Add(new EconomyBaseOpportunity
                         {
@@ -423,20 +464,27 @@ namespace Game.Ai.V2
                             NewResourceClusterHexes = CountNewResourceClusterHexes(
                                 hex, snap.Self.BaseHexes, knownSites),
                             ConvertsOwnedExtractionSite = convertsOwnedExtraction,
-                            BuilderRoutes = BuilderRoutesFor(hex),
+                            BuilderRoutes = scan.BuilderRoutesFor(hex),
                         });
                     }
             }
             eco.BaseOpportunities = baseOpportunities;
             eco.GuardedBaseSites = guardedBaseSites;
+        }
+
+        private static bool HasActionableEconomyOpportunity(WorldSnapshot snap, EconomyStanding eco,
+            Dictionary<ResourceType, EconomyResourceStanding> standings)
+        {
             // Unchanged semantics: a structural site with no playable Base carrier in hand must not
             // by itself raise Economy desire — actionable-availability still requires a real card.
-            bool baseActionable = baseOpportunities.Count > 0 && baseCards.Count > 0;
-            bool extractionActionable = extraction.Any(site =>
+            bool baseActionable = eco.BaseOpportunities.Count > 0
+                && (snap.Self.Hand ?? System.Array.Empty<CardData>())
+                    .Any(c => c?.Definition?.cardType == CardType.Base);
+            bool extractionActionable = eco.ExtractionOpportunities.Any(site =>
                 site.MarginalIncomeGain > AiConfigV2.allocatorSliceEpsilon);
             // This is the same structural-opportunity interpretation as extractionActionable:
             // Phase A/Materialization remain the sole owners of physical card and route admission.
-            bool collectorActionable = collectorSites.Any(site =>
+            bool collectorActionable = eco.CollectorSites.Any(site =>
                 standings[site.ResourceType].UsefulMarginalIncomeGain(site.MarginalIncomeGain)
                     > AiConfigV2.allocatorSliceEpsilon);
             // A held global income carrier is a structural Economy opportunity too. Exact
@@ -447,10 +495,9 @@ namespace Game.Ai.V2
                         || c.Definition.cardType == CardType.Facility)
                     && StrategicEffectRegistry.HasGlobalRecurringEffect(
                         MaterializationChainMatching.EffectiveAbilities(c.Definition, c.Equipment, c.Mutator)));
-            eco.HasActionableOpportunity = globalSourceActionable || extractionActionable || baseActionable
-                || collectorActionable || mobileCollection.Count > 0;
+            return globalSourceActionable || extractionActionable || baseActionable
+                || collectorActionable || eco.MobileCollectionOpportunities.Count > 0;
 
-            return eco;
         }
 
         // An observed building's collection is a lower bound on opponent income, not its
@@ -483,13 +530,10 @@ namespace Game.Ai.V2
             int effectiveYield, int buildingCollection, int ownArmyCollectors,
             bool armiesCanCollect)
         {
-            int before = IncomeProjection.OwnerCollectionAtHex(effectiveYield,
-                buildingCollection, ownArmyCollectors, armiesCanCollect);
             int facility = IncomeProjection.MarginalOwnerCollectionAtHex(effectiveYield,
                 buildingCollection, 1, ownArmyCollectors, armiesCanCollect);
-            int collector = Mathf.Max(0, IncomeProjection.OwnerCollectionAtHex(
-                effectiveYield, buildingCollection, ownArmyCollectors + 1,
-                armiesCanCollect) - before);
+            int collector = IncomeProjection.MarginalArmyCollectionAtHex(effectiveYield,
+                buildingCollection, ownArmyCollectors, 1, armiesCanCollect);
             return (facility, collector);
         }
 
@@ -501,14 +545,17 @@ namespace Game.Ai.V2
                 .Select(x => x.Yield).DefaultIfEmpty(0).Max();
             int building = (snap?.Known?.Buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .Where(b => b.Hex.Equals(target)).Select(b => b.CollectedAmount(type)).DefaultIfEmpty(0).Max();
-            int otherCollectors = Mathf.RoundToInt((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
-                .Where(a => a != null && a.ArmyId != actor.ArmyId && a.Hex.Equals(target))
-                .Sum(a => a.CollectionCapacity.Get(type)));
-            int capacity = Mathf.RoundToInt(actor.CollectionCapacity.Get(type));
-            return Mathf.Max(0, IncomeProjection.OwnerCollectionAtHex(yield, building,
-                    otherCollectors + capacity, true)
-                - IncomeProjection.OwnerCollectionAtHex(yield, building, otherCollectors, true));
+            return IncomeProjection.MarginalArmyCollectionAtHex(yield, building,
+                OwnCollectionCapacityAt(snap, target, type, exceptArmyId: actor.ArmyId),
+                Mathf.RoundToInt(actor.CollectionCapacity.Get(type)));
         }
+
+        // Own Collect capacity of `type` standing on `hex` (optionally without one army).
+        private static int OwnCollectionCapacityAt(WorldSnapshot snap, HexCoord hex,
+            ResourceType type, int? exceptArmyId = null) =>
+            Mathf.RoundToInt((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null && a.ArmyId != exceptArmyId && a.Hex.Equals(hex))
+                .Sum(a => a.CollectionCapacity.Get(type)));
 
         internal static bool CollectorRouteSafe(WorldSnapshot snap, ArmySnapshot actor, HexCoord target)
         {
@@ -532,10 +579,16 @@ namespace Game.Ai.V2
             if (!resourceType.HasValue || actor.IsGarrison || actor.IsPrison || actor.IsAirArmy || actor.IsAirfield
                 || !actor.Members.Any(u => u != null && u.HasAbility(UnitAbilities.CollectAbilityFor(resourceType.Value))))
                 return false;
+            AiMapMemory.GuardStrength? guard = AiMapMemory.KnownEventGuardStrengthAt(player, target);
             var knowledge = new WorldSnapshot { Known = new KnownSnapshot
             {
                 EnemySightings = AiMapMemory.AllKnownEnemySightings(player).ToList(),
                 NeutralSightings = AiMapMemory.AllKnownNeutralSightings(player).ToList(),
+                // The target's own event guard: the one fact KnownHostileAtHex reads here.
+                EventGuards = guard.HasValue
+                    ? new[] { new KnownEventGuardSnapshot(target, guard.Value, guard.Value.Name,
+                        guard.Value.Defenders?.Count ?? 0) }
+                    : System.Array.Empty<KnownEventGuardSnapshot>(),
             } };
             if (KnownHostileAtHex(knowledge, target)) return false;
             HexPath route = SafeStepPathing.FindSafePath(ctx.Map, player, actor.Hex, target, actor.MaxMovement);
@@ -647,39 +700,32 @@ namespace Game.Ai.V2
             return 1f - Mathf.Clamp01(detour / Mathf.Max(1f, detourScale));
         }
 
-        internal static bool IsForwardBaseCandidate(IReadOnlyList<HexCoord> ownBases,
-            HexCoord anchor, HexCoord targetCitadel, HexCoord candidate)
-        {
-            if (ownBases == null || ownBases.Count == 0)
-                return false;
-            return !ownBases.Contains(candidate)
-                && HexGridMath.Distance(candidate, targetCitadel)
-                    < HexGridMath.Distance(anchor, targetCitadel);
-        }
-
         // A build target with a live enemy or neutral sighting exactly ON it is not an escort
         // problem — SafeStepPathing always exempts the destination hex from its own blocking (see
         // that class's own comment), so nothing upstream stops a mover from walking straight onto
         // an occupied hex and building there. This is the one gate that actually prevents it.
         // Shared between the Base and Extraction candidate loops below so the rule (and its
         // fog-of-war honesty) lives in exactly one place.
+        // 2026-11-19 (audit E7) — an event guard blocks the hex like a neutral army: the two halves
+        // below are one rule (before, an event-guarded hex was "free" here but "neutral-held" in
+        // KnownNeutralOnlyAtHex).
         internal static bool KnownHostileAtHex(WorldSnapshot snap, HexCoord hex) =>
-            (snap?.Known?.EnemySightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snap?.Known?.NeutralSightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Any(contact => contact.Hex.Equals(hex));
+            KnownEnemyAtHex(snap, hex) || KnownNeutralOrGuardAtHex(snap, hex);
 
         // KnownHostileAtHex's neutral half: the hex is blocked by a neutral army or event guard and
         // by no enemy player's army.
         internal static bool KnownNeutralOnlyAtHex(WorldSnapshot snap, HexCoord hex) =>
-            !(snap?.Known?.EnemySightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+            !KnownEnemyAtHex(snap, hex) && KnownNeutralOrGuardAtHex(snap, hex);
+
+        private static bool KnownEnemyAtHex(WorldSnapshot snap, HexCoord hex) =>
+            (snap?.Known?.EnemySightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Any(contact => contact.Hex.Equals(hex));
+
+        private static bool KnownNeutralOrGuardAtHex(WorldSnapshot snap, HexCoord hex) =>
+            (snap?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                 .Any(contact => contact.Hex.Equals(hex))
-            && ((snap?.Known?.NeutralSightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Any(contact => contact.Hex.Equals(hex))
-                || (snap?.Known?.EventGuards
-                    ?? System.Array.Empty<KnownEventGuardSnapshot>())
-                .Any(g => g.Hex.Equals(hex)));
+            || (snap?.Known?.EventGuards ?? System.Array.Empty<KnownEventGuardSnapshot>())
+                .Any(g => g.Hex.Equals(hex));
 
         internal static float EconomyBaseNetworkSynergy(WorldSnapshot snap, HexCoord target)
         {

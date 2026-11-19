@@ -828,9 +828,12 @@ namespace Game.Ai.V2
                 // is the infrastructure value, with no completion bonus or predicted output EV.
                 // nonCombatFacilityValue is a CARD-scale anchor; this slot is TaskScore, so it is
                 // read through the one currency conversion (the prices below are already TaskScore).
-                var score = new TaskScore(strategicRelevance: ActionPrice.CardScoreToTaskScore(
-                        AiConfigV2.nonCombatFacilityValue)
-                        * (generated != null ? Mathf.Clamp01(generated.SuccessChance) : 1f),
+                // 2026-11-19 (owner, audit K1) — the slot keeps its shared ceiling
+                // (taskScoreStrategicRelevanceMax): the converted anchor (7.3) used to exceed it.
+                var score = new TaskScore(strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
+                        ActionPrice.CardScoreToTaskScore(AiConfigV2.nonCombatFacilityValue)
+                        * (generated != null ? Mathf.Clamp01(generated.SuccessChance) : 1f)
+                        / AiConfigV2.taskScoreStrategicRelevanceMax),
                     cardPrice: TaskScoreEvaluator.Price(delivery.ActionAp + delivery.ActivationNow),
                     delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
                         delivery.RecurringActivationAp, delivery.EtaTurns)),

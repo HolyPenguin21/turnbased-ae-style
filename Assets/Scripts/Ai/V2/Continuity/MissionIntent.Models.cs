@@ -507,8 +507,7 @@ namespace Game.Ai.V2
             get
             {
                 if (Economy != null)
-                    return Economy.Kind == EconomyTaskKind.ReturnBuilder
-                        || Economy.Kind == EconomyTaskKind.ReturnCollector;
+                    return Economy.Kind.IsReturn();
                 if (Raid != null)
                     return Raid.CompletedTargetAwaitingFreshDecision
                         || Raid.Phase == RaidMissionPhase.Return

@@ -64,6 +64,21 @@ namespace Game.Economy
             return Mathf.Max(0, after - before);
         }
 
+        // Owner income gained by adding `additionalArmyCollectors` own Collect capacity to a hex
+        // whose building collects first and where `ownerArmyCollectorCount` own capacity already
+        // stands: the army's share of the remainder only (the counterpart of
+        // MarginalOwnerCollectionAtHex for a Facility).
+        public static int MarginalArmyCollectionAtHex(int effectiveHexYield,
+            int buildingCollectionCapacity, int ownerArmyCollectorCount, int additionalArmyCollectors,
+            bool ownerArmiesCanCollect = true)
+        {
+            int before = OwnerCollectionAtHex(effectiveHexYield, buildingCollectionCapacity,
+                ownerArmyCollectorCount, ownerArmiesCanCollect);
+            int after = OwnerCollectionAtHex(effectiveHexYield, buildingCollectionCapacity,
+                ownerArmyCollectorCount + Mathf.Max(0, additionalArmyCollectors), ownerArmiesCanCollect);
+            return Mathf.Max(0, after - before);
+        }
+
         // The ONE allocator for real grants and read-only projection. Pass an optional resource
         // filter when querying one type, but never implement the allocation a second time.
         // `credit` gets the exact registered PlayerRoot that was checked while allocating;

@@ -371,7 +371,7 @@ namespace Game.EditorTests
             var s = Snapshot(a); s.Self.BaseHexes = new[] { nearHexButFarRoute, farHexButShortRoute };
             a.EconomyHomeRouteCosts = new Dictionary<HexCoord, int>
                 { [nearHexButFarRoute] = 12, [farHexButShortRoute] = 6 };
-            Assert.That(EconomyContinuity.SelectEconomyHome(s, Site, a.EconomyHomeRouteCosts),
+            Assert.That(WorldAnalysis.SelectEconomyHome(s, Site, a.EconomyHomeRouteCosts),
                 Is.EqualTo(farHexButShortRoute));
             Assert.That(EconomyContinuity.SelectEconomyRecoveryTarget(s, p, a),
                 Is.EqualTo(farHexButShortRoute));

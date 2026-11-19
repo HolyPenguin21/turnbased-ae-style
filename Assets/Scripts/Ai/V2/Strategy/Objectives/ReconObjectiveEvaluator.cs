@@ -862,8 +862,10 @@ namespace Game.Ai.V2
             bool eventVisit = ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, hex);
             return new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(relevance),
+                // 2026-11-19 (owner, audit K2) — a home threat amplifies the direction's pressure
+                // inside the slot's shared ceiling (taskScoreThreatDirectionMax), never past it.
                 threatDirection: TaskScoreEvaluator.ThreatDirection(
-                    DirectionalPressure(snap, hex, DirectionFor(snap))) * (1f + Mathf.Clamp01(HomeThreat(snap))),
+                    DirectionalPressure(snap, hex, DirectionFor(snap)) * (1f + Mathf.Clamp01(HomeThreat(snap)))),
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 eventReward: eventVisit ? TaskScoreEvaluator.EventReward(-1) : 0f,
                 citadelThreatRisk: eventVisit ? TaskScoreEvaluator.CitadelThreatRisk(snap) : 0f,

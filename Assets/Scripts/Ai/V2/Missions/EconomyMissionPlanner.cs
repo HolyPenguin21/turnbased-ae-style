@@ -112,8 +112,7 @@ namespace Game.Ai.V2
                 // is a legacy operational/site fact and must not replace it in global admission.
                 // A ReturnBuilder is lifecycle work, not a new world task: its priority belongs to
                 // its durable commitment rather than to the site it finished building.
-                float intrinsic = e.Kind == EconomyTaskKind.ReturnBuilder
-                    || e.Kind == EconomyTaskKind.ReturnCollector ? 0f
+                float intrinsic = intent.IsLifecycleLeg ? 0f
                     : refreshed?.Value ?? e.IntrinsicValue ?? 0f;
                 var mission = new MissionProposal
                 {
@@ -121,9 +120,7 @@ namespace Game.Ai.V2
                     BaseValue = intrinsic, LocalAdmissionScore = intrinsic,
                     // A return leg is valueless; a refreshed demand brings its breakdown; a value
                     // restored from the durable intent alone has none.
-                    Score = e.Kind == EconomyTaskKind.ReturnBuilder
-                        || e.Kind == EconomyTaskKind.ReturnCollector ? default(TaskScore)
-                        : refreshed?.WorldTaskScore,
+                    Score = intent.IsLifecycleLeg ? default(TaskScore) : refreshed?.WorldTaskScore,
                     Requirements = Requirements(target, intent, snapshot,
                         activeIntents, currentCommitments),
                     PreferredMoverArmyId = intent.PreferredMoverArmyId,
@@ -227,13 +224,11 @@ namespace Game.Ai.V2
                     BuilderArmyId = d.EconomyPreferredBuilderArmyId,
                     BuilderRoutes = d.EconomyBuilderRoutes,
                 };
-                MissionIntent incumbent = activeIntents?.FirstOrDefault(i =>
-                    EconomyContinuity.HoldsEconomyBuildSite(i, target.TargetHex)
-                    && i.Economy.Kind == kind);
                 // Active Economy work was materialized above from continuity itself. A fresh
                 // demand may describe the same site with a newly ranked builder, but it cannot
                 // replace or duplicate the committed operation.
-                if (incumbent != null)
+                if (activeIntents?.Any(i => EconomyContinuity.HoldsEconomyBuildSite(i, target.TargetHex)
+                        && i.Economy.Kind == kind) == true)
                     continue;
                 var m = new MissionProposal
                 {
@@ -245,12 +240,9 @@ namespace Game.Ai.V2
                     Score = d.WorldTaskScore,
                     // Newly admitted Economy missions use their canonical net TaskScore.
                     LocalAdmissionScore = d.Value,
-                    Requirements = Requirements(target, incumbent, snapshot,
+                    Requirements = Requirements(target, null, snapshot,
                         activeIntents, currentCommitments),
-                    PreferredMoverArmyId = incumbent?.PreferredMoverArmyId
-                        ?? d.EconomyPreferredBuilderArmyId,
-                    FromDurableIntent = incumbent != null,
-                    DurableFundingTier = incumbent?.Funding ?? CommitmentTier.None,
+                    PreferredMoverArmyId = d.EconomyPreferredBuilderArmyId,
                     Explain = $"economy {kind} @({target.TargetHex.Q},{target.TargetHex.R}) intrinsic={d.Value:0.##} site={target.BuildValue:0.##}",
                 };
                 m.Axes.Value[DesireAxis.Economy] = 1f;
