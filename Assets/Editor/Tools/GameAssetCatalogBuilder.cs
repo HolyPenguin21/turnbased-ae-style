@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Game.Core;
+using Game.UI;
 using UnityEditor;
 using UnityEngine;
 
@@ -35,9 +36,9 @@ public static class GameAssetCatalogBuilder
         ("Assets/Textures/Game/Effects/FogOfWar.mat", "Materials/FogOfWar"),
         ("Assets/Shaders/ScreenWear.shader", "Effects/ScreenWear"),
         // Reward prefabs live with the other UI prefabs; keys keep their old Prefabs/Rewards names.
-        ("Assets/Prefabs/UI/Cards/Card_Reward.prefab", "Prefabs/Rewards/CollectionRewardCard"),
-        ("Assets/Prefabs/UI/Panels/CollectionRewards.prefab", "Prefabs/Rewards/CollectionRewards"),
-        ("Assets/Prefabs/UI/Panels/RewardDialog.prefab", "Prefabs/Rewards/RewardDialog"),
+        ("Assets/Prefabs/UI/Cards/Card_Reward.prefab", CollectionRewardUI.RewardCardKey),
+        ("Assets/Prefabs/UI/Panels/CollectionRewards.prefab", CollectionRewardUI.RewardPanelKey),
+        ("Assets/Prefabs/UI/Panels/RewardDialog.prefab", CollectionMessageUI.RewardDialogKey),
     };
 
     [MenuItem("Tools/Rebuild Game Asset Catalog")]

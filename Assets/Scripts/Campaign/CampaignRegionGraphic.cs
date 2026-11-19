@@ -61,9 +61,10 @@ namespace Game.Campaign
         }
 
         // Area weighting is independent of how densely individual borders were subdivided.
-        public static Vector2 InteriorCenter(RegionState region)
+        public static Vector2 InteriorCenter(RegionState region) => InteriorCenter(region.PolygonVertices);
+
+        private static Vector2 InteriorCenter(IReadOnlyList<Vector2> p)
         {
-            var p = region.PolygonVertices;
             var center = AreaCenter(p);
             if (CampaignGeometry.Contains(p, center)) return center;
             var indices = CampaignGeometry.Triangulate(p);
@@ -78,15 +79,17 @@ namespace Game.Campaign
         }
 
         // Center the marker in the visible polygon; do not pull outer cells toward the map center.
-        public static Vector2 VisibleCenter(RegionState region)
+        public static Vector2 VisibleCenter(RegionState region) => VisibleCenter(region.PolygonVertices);
+
+        internal static Vector2 VisibleCenter(IReadOnlyList<Vector2> vertices)
         {
-            var displayedPolygon = region.PolygonVertices.ConvertAll(CampaignMapView.Project);
+            var displayedPolygon = new List<Vector2>(vertices.Count);
+            foreach (var vertex in vertices) displayedPolygon.Add(CampaignMapView.Project(vertex));
             var desired = AreaCenter(displayedPolygon);
             var center = CampaignMapView.Unproject(desired);
-            if (CampaignGeometry.Contains(region.PolygonVertices, center) && CampaignGeometry.Contains(displayedPolygon, desired)) return center;
-            center = InteriorCenter(region);
+            if (CampaignGeometry.Contains(vertices, center) && CampaignGeometry.Contains(displayedPolygon, desired)) return center;
+            center = InteriorCenter(vertices);
             if (CampaignGeometry.Contains(displayedPolygon, CampaignMapView.Project(center))) return center;
-            var vertices = region.PolygonVertices;
             var triangles = CampaignGeometry.Triangulate(vertices);
             var best = center; double bestScore = double.MaxValue;
             for (int t = 0; t < triangles.Count; t += 3)

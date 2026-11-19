@@ -48,7 +48,7 @@ public sealed class CampaignAttackDirectionFlowTests
             if (op.Manual) { manualSamples++; continue; }
             samples++;
             Assert.AreEqual(CampaignPhase.ShowingResult, immediate.Phase);
-            deferred.ResolveFast(CampaignDeck.Standard(op.AttackerFaction, rules), CampaignDeck.Standard(op.DefenderFaction, rules), resolver);
+            deferred.ResolvePendingAiBattle(rules, resolver);
             Assert.AreEqual(immediate.View.PendingOperation.Outcome, deferred.View.PendingOperation.Outcome);
             Assert.AreEqual(immediate.View.PendingOperation.Roll, deferred.View.PendingOperation.Roll);
             Assert.AreEqual(immediate.View.RandomSequence, deferred.View.RandomSequence);

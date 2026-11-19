@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Game.Cards;
 using Game.Players;
-using UnityEngine;
 
 namespace Game.Progression
 {
@@ -52,7 +51,19 @@ namespace Game.Progression
         public List<EventRewardReceipt> eventRewards = new List<EventRewardReceipt>();
 
         public int Owned(string key) => ownedCards.Find(e => e.cardKey == key)?.count ?? 0;
-        public CollectionProfile Copy() => JsonUtility.FromJson<CollectionProfile>(JsonUtility.ToJson(this));
+        public CollectionProfile Copy()
+        {
+            var copy = (CollectionProfile)MemberwiseClone();
+            copy.ownedCards = CopyDeckEntries(ownedCards);
+            copy.savedDecks = savedDecks?.ConvertAll(CopyDeck);
+            copy.selectedDeckByFaction = selectedDeckByFaction?.ConvertAll(selection => selection == null ? null :
+                new DeckSelection { faction = selection.faction, deckId = selection.deckId });
+            copy.pendingRewards = pendingRewards?.ConvertAll(CopyReward);
+            copy.claimedMatchIds = claimedMatchIds == null ? null : new List<string>(claimedMatchIds);
+            copy.eventRewards = eventRewards?.ConvertAll(receipt => receipt == null ? null :
+                new EventRewardReceipt { matchId = receipt.matchId, eventId = receipt.eventId, cardKey = receipt.cardKey });
+            return copy;
+        }
         // Shared by profile editing and immutable match loadouts. Plain value copies avoid
         // coupling a runtime snapshot to native JSON serialization or a mutable profile list.
         public static SavedDeck CopyDeck(SavedDeck deck) => deck == null ? null : new SavedDeck
@@ -60,6 +71,15 @@ namespace Game.Progression
             deckId = deck.deckId, isStarter = deck.isStarter, name = deck.name, faction = deck.faction,
             mainCards = CopyDeckEntries(deck.mainCards), equipment = CopyDeckEntries(deck.equipment),
             mutators = CopyDeckEntries(deck.mutators),
+        };
+        internal static PendingReward CopyReward(PendingReward reward) => reward == null ? null : new PendingReward
+        {
+            matchId = reward.matchId,
+            faction = reward.faction,
+            outcome = reward.outcome,
+            offeredKeys = reward.offeredKeys == null ? null : new List<string>(reward.offeredKeys),
+            acquiredKeys = reward.acquiredKeys == null ? null : new List<string>(reward.acquiredKeys),
+            claimed = reward.claimed,
         };
         private static List<DeckCardEntry> CopyDeckEntries(List<DeckCardEntry> entries) => entries?.ConvertAll(
             entry => entry == null ? null : new DeckCardEntry {cardKey=entry.cardKey,count=entry.count});

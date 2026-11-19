@@ -13,7 +13,7 @@ nunit = Path(os.environ.get('NUNIT_DLL', Path.home() / '.nuget/packages/nunit/3.
 if not nunit.is_file(): sys.exit('Set NUNIT_DLL to NUnit 3.14.0.')
 work.mkdir(parents=True, exist_ok=True)
 refs = list((refpack / 'ref/net8.0').glob('*.dll')) + [nunit]
-files = [repo / 'Assets/Scripts' / p for p in ['Core/AtomicJsonFile.cs', 'Cards/DeckRules.cs', 'Progression/CollectionProfile.cs', 'Progression/CollectionProfileStore.cs', 'Progression/CollectionService.cs', 'Progression/RewardService.cs']]
+files = [repo / 'Assets/Scripts' / p for p in ['Core/AtomicJsonFile.cs', 'Cards/DeckRules.cs', 'Cards/CardContentIndex.cs', 'Progression/CollectionProfile.cs', 'Progression/CollectionProfileStore.cs', 'Progression/CollectionService.cs', 'Progression/RewardService.cs', 'Progression/StarterDeckMigration.cs']]
 files += [here / 'Adapters.cs', here / 'Runner.cs', repo / 'Tools/campaign-verify/PortableJson.cs', repo / 'Assets/Editor/Tests/Cards/LibraryRewardReceiptTests.cs']
 args = ['-nologo', '-target:exe', '-out:' + str(work / 'CollectionTests.dll'), '-langversion:9', '-nostdlib+', '-define:UNITY_INCLUDE_TESTS']
 args += ['-r:' + str(p) for p in refs] + [str(p) for p in files]

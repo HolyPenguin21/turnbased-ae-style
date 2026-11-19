@@ -481,12 +481,12 @@ namespace Game.Map
             => TryBuildExtractionSiteOnMap(hexSelection?.Map, hexSelection?.ExtractionConfig,
                 facilityDefinition, hex, owner, hexSelection);
 
-        public static bool CanBuildExtractionSite(HexMap map, GameConfig config, CardDefinition definition,
+        public static bool CanBuildExtractionSite(HexMap map, IExtractionSiteRules config, CardDefinition definition,
             HexCoord hex, PlayerSetupData owner, out PaymentQuote quote, out string reason,
             bool requireCurrentBudget = true)
             => PrepareExtraction(map, config, definition, hex, owner, out _, out _, out _, out quote, out reason, requireCurrentBudget);
 
-        private static bool PrepareExtraction(HexMap map, GameConfig config, CardDefinition definition,
+        private static bool PrepareExtraction(HexMap map, IExtractionSiteRules config, CardDefinition definition,
             HexCoord hex, PlayerSetupData owner, out BuildingData building, out int slot,
             out ArmyData actor, out PaymentQuote quote, out string reason, bool requireCurrentBudget = true)
         {
@@ -500,8 +500,8 @@ namespace Game.Map
             building = building ?? new BuildingData(totalFacilitySlots: 4)
             {
                 Name = "Resource Site", Hex = hex, Owner = owner,
-                StructurePointsMax = config.resourceSiteStructurePoints, StructurePointsCurrent = config.resourceSiteStructurePoints,
-                Defense = config.resourceSiteDefense, Fate = config.resourceSiteFate, HasTieredUnlock = false,
+                StructurePointsMax = config.ResourceSiteStructurePoints, StructurePointsCurrent = config.ResourceSiteStructurePoints,
+                Defense = config.ResourceSiteDefense, Fate = config.ResourceSiteFate, HasTieredUnlock = false,
             };
             string ability = definition.grantedAbilities?.Find(a => Array.IndexOf(UnitAbilities.CollectAbilities, a) >= 0);
             int resourceIndex = Array.IndexOf(UnitAbilities.CollectAbilities, ability);
@@ -526,7 +526,7 @@ namespace Game.Map
             reason = null; return true;
         }
 
-        public static InfrastructureBuildOutcome TryBuildExtractionSiteOnMap(HexMap map, GameConfig config,
+        public static InfrastructureBuildOutcome TryBuildExtractionSiteOnMap(HexMap map, IExtractionSiteRules config,
             CardDefinition definition, HexCoord hex, PlayerSetupData owner, HexSelectionController presentation = null)
         {
             using var mutation = VisionSystem.BeginMutation();

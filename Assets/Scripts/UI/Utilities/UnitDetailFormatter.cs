@@ -18,11 +18,11 @@ namespace Game.UI
         // weather, BattleGrid.AttackRange); null outside a battle shows the unit's own Range.
         // `includeName`: false when the window shows the unit's name in its own title field
         // (army modal's DetailArt title) — the text then starts at the type-tag line.
-        internal static string Format(UnitData unit, GameConfig gameConfig, int defenseBonus, int? attackRange = null,
+        internal static string Format(UnitData unit, IUnitDetailStyle gameConfig, int defenseBonus, int? attackRange = null,
             bool includeName = true)
             => unit == null ? string.Empty : Format(unit, defenseBonus,
-                gameConfig != null ? gameConfig.statBonusColor : DefaultBonusColor,
-                gameConfig != null ? gameConfig.statPenaltyColor : DefaultPenaltyColor,
+                gameConfig != null ? gameConfig.StatBonusColor : DefaultBonusColor,
+                gameConfig != null ? gameConfig.StatPenaltyColor : DefaultPenaltyColor,
                 gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null, attackRange, includeName);
 
         internal static string Format(UnitData unit, int defenseBonus,
@@ -38,10 +38,10 @@ namespace Game.UI
 
         // Stats, then abilities: everything below the name / type-tag header lines. The collection
         // window shows name and tags in its own fields and reuses only this part.
-        internal static string FormatBody(UnitData unit, GameConfig gameConfig)
+        internal static string FormatBody(UnitData unit, IUnitDetailStyle gameConfig)
             => unit == null ? string.Empty : FormatBody(unit, 0,
-                gameConfig != null ? gameConfig.statBonusColor : DefaultBonusColor,
-                gameConfig != null ? gameConfig.statPenaltyColor : DefaultPenaltyColor,
+                gameConfig != null ? gameConfig.StatBonusColor : DefaultBonusColor,
+                gameConfig != null ? gameConfig.StatPenaltyColor : DefaultPenaltyColor,
                 gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null);
 
         private static string FormatBody(UnitData unit, int defenseBonus,

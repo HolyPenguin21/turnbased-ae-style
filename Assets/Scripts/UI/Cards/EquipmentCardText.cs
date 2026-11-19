@@ -34,7 +34,7 @@ namespace Game.UI
 
         // Abilities the grant ADDS — abbreviated via GameConfig, raw PrettyName fallback when
         // config is null (e.g. the battle grid, which has no catalog handy). Empty when none.
-        public static string AddedAbilities(EquipmentGrant grant, GameConfig config)
+        public static string AddedAbilities(EquipmentGrant grant, IAbilityText config)
         {
             List<string> tags = grant?.addAbilities;
             if (tags == null || tags.Count == 0)
@@ -68,7 +68,7 @@ namespace Game.UI
         // What an attached equipment DOES — added abilities then stat changes, no name (the
         // card's own name element is overridden separately, see EquipmentArtToggle). Empty when
         // the grant neither adds an ability nor changes a stat.
-        public static string EffectSummary(CardDefinition equip, GameConfig config)
+        public static string EffectSummary(CardDefinition equip, IAbilityText config)
         {
             if (equip == null)
                 return string.Empty;
@@ -79,10 +79,10 @@ namespace Game.UI
         // (the same compatibility line as Description), then the added abilities' abbreviations
         // (see GameConfig.FormatAbilities). Numeric changes are on the stat badges; the full
         // stat list stays in the detail panel (see Description).
-        public static string CardFace(CardDefinition equip, GameConfig config)
+        public static string CardFace(CardDefinition equip, IAbilityText config)
             => equip == null ? string.Empty : Join(AttachmentTargets(equip), ItemAbilities(equip, config));
 
-        private static string ItemAbilities(CardDefinition equip, GameConfig config)
+        private static string ItemAbilities(CardDefinition equip, IAbilityText config)
             => Join(AddedAbilities(equip.equipment, config),
                 EquipmentSystem.IsSingleUse(equip)
                     && equip.equipment?.addAbilities?.Contains(UnitAbilities.SingleUse) != true
@@ -95,13 +95,13 @@ namespace Game.UI
 
         // The result detail has no stat badges, so include the complete existing effect summary.
         // The first line is the production difficulty (CardDefinition.fate, see its comment).
-        public static string Description(CardDefinition equip, GameConfig config)
+        public static string Description(CardDefinition equip, IAbilityText config)
             => equip == null ? string.Empty
                 : Join($"Challenge: {equip.fate}", AttachmentTargets(equip), EffectSummary(equip, config));
 
         // The equipment's face once it is already attached to a host (shown over the host card
         // while its equipment button is held) — the same face as the free card (CardFace).
-        public static string AttachedCardFace(CardDefinition equip, GameConfig config)
+        public static string AttachedCardFace(CardDefinition equip, IAbilityText config)
             => CardFace(equip, config);
 
         // Resolves the five physical badge slots through the card type the Equipment targets.

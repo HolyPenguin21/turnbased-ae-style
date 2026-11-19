@@ -537,25 +537,21 @@ namespace Game.EditorTests
         {
             var config = UnityEditor.AssetDatabase.LoadAssetAtPath<Game.Core.GameConfig>("Assets/Config/GameConfig.asset");
             BuildingRegistry.Clear(); ArmyRegistry.Clear(); HexEventRegistry.Clear(); HexResourceBonusRegistry.Clear();
-            var generator = _object.AddComponent<HexMapGenerator>();
-            Type type = typeof(HexMapGenerator);
-            type.GetField("gameConfig", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, config);
-            type.GetField("_activeBiome", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, config.mapGeneration.ResolveBiome(Biome.Arid));
-            type.GetField("_activeRadius", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, (int)MapSize.Huge);
             int authored = config.mapGeneration.complexCount;
+            var rngState = UnityEngine.Random.state;
             try
             {
                 config.mapGeneration.complexCount = 0;
-                var coords = HexGridMath.HexesInRange(_origin, (int)MapSize.Huge).ToList();
-                var assignment = (Dictionary<HexCoord, int>)type.GetMethod("AssignTerrainTypes", BindingFlags.NonPublic | BindingFlags.Instance)
-                    .Invoke(generator, new object[] { coords });
-                var before = new Dictionary<HexCoord, int>(assignment);
-                var placed = (IList)type.GetMethod("PlaceComplexes", BindingFlags.NonPublic | BindingFlags.Instance)
-                    .Invoke(generator, new object[] { coords, assignment });
-                Assert.That(placed.Count, Is.Zero);
-                Assert.That(assignment, Is.EquivalentTo(before));
+                var layout = HexMapLayoutPlanner.Create(config.mapGeneration, (int)MapSize.Huge,
+                    Biome.Arid, UnityMapGenerationRandom.Shared);
+                Assert.That(layout.Complexes, Is.Empty);
+                Assert.That(layout.Cells.All(cell => cell.TextureKey != null), Is.True);
             }
-            finally { config.mapGeneration.complexCount = authored; }
+            finally
+            {
+                config.mapGeneration.complexCount = authored;
+                UnityEngine.Random.state = rngState;
+            }
         }
         private void VisitAllGroundExcept(PlayerSetupData owner, params HexCoord[] except)
         {
@@ -669,7 +665,6 @@ namespace Game.EditorTests
             Assert.That(cost.Distance, Is.EqualTo(int.MaxValue));
             Assert.That(cost.EtaTurns, Is.EqualTo(int.MaxValue));
         }
-#endif
         [Test] public void StaleMovementRouteDoesNotSpendMovementOrEnterObstacle()
         {
             var army = new ArmyData { Hex = _origin };
@@ -684,6 +679,7 @@ namespace Game.EditorTests
             Assert.That(army.Hex, Is.EqualTo(_origin));
             Assert.That(move.Result.Kind, Is.EqualTo(ArmyMovementEnd.Rejected));
         }
+#endif
     }
 }
 #endif

@@ -111,8 +111,8 @@ public sealed class CampaignWeatherTests
     [Test]
     public void CaptureAndAutoResolve_NeverChangeTheRegionsWeather()
     {
-        // An AI-vs-AI operation: the one kind the coarse auto-resolve model settles.
-        var s = Planet();
+        // Seed with a shared border between the two AI factions.
+        var s = Planet(851);
         (int Source, int Target) pair = default;
         foreach (Faction ai in s.TurnOrder.Where(f => f != s.HumanFaction))
         {
@@ -121,7 +121,7 @@ public sealed class CampaignWeatherTests
                 s.Regions.Find(r => r.RegionId == p.Target).OwnerFaction != s.HumanFaction);
             if (!pair.Equals(default((int, int)))) break;
         }
-        if (pair.Equals(default((int, int)))) Assert.Inconclusive("No AI-vs-AI border on this planet.");
+        Assert.That(pair, Is.Not.EqualTo(default((int, int))), "The fixture needs an AI-vs-AI border.");
         var before = Weathers(s);
         var c = Controller(s);
         c.BeginAttack(pair.Source, pair.Target, false);

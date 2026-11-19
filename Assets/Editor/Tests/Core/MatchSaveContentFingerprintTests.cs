@@ -38,6 +38,11 @@ namespace Game.Tests.Core
             Write("settings", "Assets/Prefabs/UI/Panels/AudioOptionsPanel.prefab", "new settings layout");
             Assert.That(Fingerprint(), Is.EqualTo(before));
         }
+        [Test] public void UiPrefabsAreDiscoveryInputsEvenWhenExcludedFromFingerprint()
+        {
+            Assert.That(Game.EditorTools.MatchSaveContentFingerprint.IsDiscoveryInput("Assets/Prefabs/UI/WorldMarker.prefab"), Is.True);
+            Assert.That(Game.EditorTools.MatchSaveContentFingerprint.IsDiscoveryInput("Assets/Scenes/Game.unity"), Is.False);
+        }
         [Test] public void GeneratedUiCatalogAndScreenWearEditsDoNotChangeMatchCompatibility()
         {
             Write("world", "Assets/Cards/Catalog.asset", "card rules");

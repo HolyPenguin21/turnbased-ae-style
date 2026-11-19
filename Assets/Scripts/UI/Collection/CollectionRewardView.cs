@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Authored presentation only. Reward transactions remain in CollectionRewardUI/RewardService.
+    // Authored presentation only. MatchResultOperation owns the reward workflow.
     public sealed class CollectionRewardView : MonoBehaviour
     {
         [SerializeField] private TMP_Text title, subtitle, status, body;

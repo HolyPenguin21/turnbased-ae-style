@@ -88,6 +88,29 @@ namespace Game.Tests.Core
             Assert.Throws<NotSupportedException>(() => store.Load(0, Read, out _));
             Assert.That(File.ReadAllText(Path.Combine(directory,"slot-0.json")), Is.EqualTo("future"));
         }
+#if !MATCH_SAVE_FILE_HARNESS
+        [TestCase(1)]
+        [TestCase(2)]
+        public void IncompatibleMatchHeaderDoesNotFallBackOrQuarantine(int version)
+        {
+            var store = new MatchSaveStore(directory);
+            byte[] backup = Encoding.UTF8.GetBytes("backup");
+            byte[] incompatible = Encoding.UTF8.GetBytes("{\"version\":" + version + ",\"schemaHash\":\"old-structure\"}");
+            store.Save(0, backup);
+            store.Save(0, incompatible);
+            int reads = 0;
+            Assert.Throws<NotSupportedException>(() => store.Load(0, bytes =>
+            {
+                reads++;
+                return MatchSaveCodec.Decode(bytes, null);
+            }, out _));
+            Assert.That(reads, Is.EqualTo(1));
+            Assert.That(File.ReadAllBytes(Path.Combine(directory, "slot-0.json")), Is.EqualTo(incompatible));
+            Assert.That(File.ReadAllBytes(Path.Combine(directory, "slot-0.json.bak")), Is.EqualTo(backup));
+            Assert.That(Directory.GetFiles(directory, "*.corrupt-*"), Is.Empty);
+        }
+
+#endif
         [Test] public void FailedWriteKeepsPreviouslyUsableSlot()
         {
             var store = new MatchSaveStore(directory);

@@ -22,7 +22,7 @@ namespace Game.Saves
         private readonly Dictionary<int, CardData> cards = new Dictionary<int, CardData>();
         private readonly MatchContentResolver content;
         private bool finished;
-        internal MatchWorldCapture(GameConfig config, IReadOnlyList<PlayerSetupData> matchPlayers)
+        internal MatchWorldCapture(IMatchCardContent config, IReadOnlyList<PlayerSetupData> matchPlayers)
         {
             content = new MatchContentResolver(config);
             if (matchPlayers == null) throw new ArgumentNullException(nameof(matchPlayers));
@@ -215,30 +215,32 @@ namespace Game.Saves
     }
     internal sealed class MatchContentResolver
     {
-        private readonly Dictionary<string, CardDefinition> cards = new Dictionary<string, CardDefinition>(StringComparer.Ordinal);
-        internal MatchContentResolver(GameConfig config)
+        private readonly CardContentIndex cards;
+
+        internal MatchContentResolver(IMatchCardContent config)
         {
-            if (config == null || config.collectionDeckCatalog == null) throw new InvalidOperationException("Match save requires the configured collection catalog.");
-            foreach (var catalog in config.collectionDeckCatalog.catalogs)
-                if (catalog != null) foreach (var card in catalog.cards) Add(card);
-            // Extractor definitions predate authored keys and are never runtime card instances.
-            // Their placed facilities persist the complete mutated stat/art block instead.
-            if (config.extractionFacilityCards != null) foreach (var card in config.extractionFacilityCards)
-                if (card != null && !string.IsNullOrWhiteSpace(card.authoredKey)) Add(card);
+            if (config?.CollectionDeckCatalog == null)
+                throw new InvalidOperationException("Match save requires the configured collection catalog.");
+            var definitions = MatchDefinitions(config).ToArray();
+            if (definitions.Any(card => string.IsNullOrWhiteSpace(card.authoredKey)))
+                throw new InvalidOperationException("Content has no authored card identity.");
+            cards = new CardContentIndex(definitions);
+            foreach (var card in definitions)
+            {
+                cards.Find(card.authoredKey, out bool ambiguous);
+                if (ambiguous) throw new InvalidOperationException("Duplicate authored card: " + card.authoredKey);
+            }
         }
-        private void Add(CardDefinition card)
-        {
-            if (card == null) return;
-            if (string.IsNullOrWhiteSpace(card.authoredKey)) throw new InvalidOperationException("Content has no authored card identity.");
-            if (cards.TryGetValue(card.authoredKey, out var previous))
-            { if (!ReferenceEquals(previous, card)) throw new InvalidOperationException("Duplicate authored card: " + card.authoredKey); return; }
-            cards.Add(card.authoredKey, card);
-        }
+
+        internal static IEnumerable<CardDefinition> MatchDefinitions(IMatchCardContent content)
+            => CardContentIndex.Definitions(content.CollectionDeckCatalog?.catalogs)
+                .Concat((content.ExtractionFacilityCards ?? Array.Empty<CardDefinition>())
+                    .Where(card => card != null && !string.IsNullOrWhiteSpace(card.authoredKey)))
+                .Where(card => card != null);
+
         internal CardDefinition Card(string key)
-        {
-            if (string.IsNullOrWhiteSpace(key) || !cards.TryGetValue(key, out var card)) throw new InvalidOperationException("The save uses a card that is no longer in the game: " + key);
-            return card;
-        }
+            => cards.Find(key, out _) ?? throw new InvalidOperationException("The save uses a card that is no longer in the game: " + key);
+
         internal CardDefinition OptionalCard(string key) => string.IsNullOrEmpty(key) ? null : Card(key);
         internal string Key(CardDefinition card)
         { if (card == null || !ReferenceEquals(Card(card.authoredKey), card)) throw new InvalidOperationException("Non-canonical authored card."); return card.authoredKey; }
@@ -246,6 +248,6 @@ namespace Game.Saves
         // Re-derivation source: only the canonical catalog instance qualifies. A runtime clone
         // (e.g. a mutated extractor definition) or an uncatalogued card keeps its saved snapshot.
         internal string CatalogKey(CardDefinition card) => card != null && !string.IsNullOrWhiteSpace(card.authoredKey)
-            && cards.TryGetValue(card.authoredKey, out var known) && ReferenceEquals(known, card) ? card.authoredKey : null;
+            && ReferenceEquals(cards.Find(card.authoredKey, out _), card) ? card.authoredKey : null;
     }
 }

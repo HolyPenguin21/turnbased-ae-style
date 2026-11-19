@@ -83,6 +83,7 @@ namespace Game.Turns
             ConfigureStealthTurnProviders();
             VisionSystem.CurrentViewer = human;
             _accountOutcome.Reset();
+            matchResult = null;
             // Round/AP/income/movement/AA are already restored by their owners. Do not call
             // BeginGame, BeginNewTurn, BeginPlayerTurn or CompleteTurnConfirmation here.
             InitializeMatchPresentation();
