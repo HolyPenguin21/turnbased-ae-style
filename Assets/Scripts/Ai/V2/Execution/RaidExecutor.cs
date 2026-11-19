@@ -86,7 +86,7 @@ namespace Game.Ai.V2
             }
             if (pm.RaidPhase == RaidMissionPhase.AirSupport)
             {
-                yield return RunRaidAirSupportStep(player, root, ctx, pm, result, army);
+                yield return RunRaidAirSupportStep(player, root, ctx, pm, result, army, snapshot);
                 yield break;
             }
             if (pm.RaidPhase == RaidMissionPhase.Reinforcement)
@@ -202,9 +202,10 @@ namespace Game.Ai.V2
         }
 
         private static IEnumerator RunRaidAirSupportStep(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData wing)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData wing,
+            WorldSnapshot snapshot)
         {
-            wing = GroundCombatLegStep.MaterializeSupportWing(player, ctx, pm, result, wing);
+            wing = GroundCombatLegStep.MaterializeSupportWing(player, ctx, pm, result, wing, snapshot);
             if (!AviationRules.IsValidAirArmy(wing)
                 || pm.RaidTarget.Kind != RaidTargetKind.NeutralArmy
                 || !pm.RaidAirSupportLandingHex.HasValue)

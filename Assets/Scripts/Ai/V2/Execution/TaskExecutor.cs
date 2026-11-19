@@ -364,9 +364,9 @@ namespace Game.Ai.V2
             if (pm.Kind == MissionKind.ActiveDefence)
             {
                 if (singleStepOnly)
-                    yield return ActiveDefenceExecutor.RunActiveDefenceStep(player, root, ctx, pm, result, apBefore);
+                    yield return ActiveDefenceExecutor.RunActiveDefenceStep(player, root, ctx, pm, result, apBefore, snapshot);
                 else
-                    yield return ActiveDefenceExecutor.RunActiveDefence(player, root, ctx, pm, result, apBefore);
+                    yield return ActiveDefenceExecutor.RunActiveDefence(player, root, ctx, pm, result, apBefore, snapshot);
                 FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }

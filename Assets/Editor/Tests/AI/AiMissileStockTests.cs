@@ -695,7 +695,7 @@ namespace Game.EditorTests
             Assert.That(ActiveDefenceProvisioner.Provision(owner, world.Root, world.Context, session, funded).Success, Is.False);
             Assert.That(Gaps(snap), Is.Empty, "physical inventory also covers production, once");
             var formed = new ExecutionResult();
-            var wing = GroundCombatLegStep.MaterializeSupportWing(owner, world.Context, provision.Provisioned, formed, field);
+            var wing = GroundCombatLegStep.MaterializeSupportWing(owner, world.Context, provision.Provisioned, formed, field, snap);
             Assert.That(wing.Members.Count, Is.EqualTo(1));
             Assert.That(field.Members, Is.Empty);
             Assert.That(formed.ActualActorArmyId, Is.EqualTo(wing.Id));
@@ -767,7 +767,7 @@ namespace Game.EditorTests
                 var execution = new ExecutionResult();
                 AviationCombatPresenter.HeadlessRng = new Random(7);
                 Drain(ActiveDefenceExecutor.RunActiveDefence(owner, world.Root, world.Context,
-                    provision.Provisioned, execution, ap));
+                    provision.Provisioned, execution, ap, null));
                 Assert.That(execution.AirSupportStrikeSucceeded, Is.True);
                 Assert.That(execution.ReachedGoal, Is.True, "a confirmed consumed missile completed its assignment");
                 Assert.That(execution.StopReason, Is.EqualTo(ExecutionStopReason.ReachedGoal));

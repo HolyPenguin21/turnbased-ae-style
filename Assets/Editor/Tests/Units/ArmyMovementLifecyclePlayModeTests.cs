@@ -585,7 +585,7 @@ namespace Game.EditorTests
             Assert.That(provision.Success, Is.True);
             allocator.RegisterProvisionSuccess(funded, provision.Provisioned.ClaimedAp, provision.Provisioned.ClaimedPhysical);
             var execution = new ExecutionResult();
-            yield return ActiveDefenceExecutor.RunActiveDefence(_owner, _root, Context(), provision.Provisioned, execution, 5);
+            yield return ActiveDefenceExecutor.RunActiveDefence(_owner, _root, Context(), provision.Provisioned, execution, 5, null);
             int spent = alreadyActivated ? 0 : army.ActivationApCost;
             Assert.That(execution.StepsMoved, Is.EqualTo(2));
             Assert.That(execution.ReachedGoal, Is.True);

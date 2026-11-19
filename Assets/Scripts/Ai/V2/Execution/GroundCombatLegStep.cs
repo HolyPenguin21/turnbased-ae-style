@@ -235,7 +235,7 @@ namespace Game.Ai.V2
         }
 
         internal static ArmyData MaterializeSupportWing(PlayerSetupData player, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, ArmyData mover)
+            ProvisionedMission pm, ExecutionResult result, ArmyData mover, WorldSnapshot snapshot)
         {
             if (mover == null || pm == null || !AviationRules.IsAirfield(mover))
                 return mover;
@@ -243,8 +243,11 @@ namespace Game.Ai.V2
                 return null;
             List<UnitData> aircraft = pm.AircraftRuntimeIds
                 .Select(id => mover.Members.First(u => u != null && u.RuntimeId == id)).ToList();
-            // No ownership view here: the formation never repurposes an existing army (new wing).
-            if (!AviationWingPreparation.TryForm(player, ctx, mover, aircraft, null,
+            // The ownership view lets the formation reuse a free empty shell on the airfield hex
+            // (e.g. the shell a previous sortie left on landing) instead of a new army each launch.
+            ActorCommitments commitments = snapshot == null ? null
+                : ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snapshot), snapshot, null);
+            if (!AviationWingPreparation.TryForm(player, ctx, mover, aircraft, commitments,
                     out ArmyData wing, out string how))
             {
                 AiDebugLog.Write($"[AI][V2][AirSupport] stored launch from airfield #{mover.Id} failed - {how}");
