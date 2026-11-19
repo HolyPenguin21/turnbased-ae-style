@@ -44,14 +44,14 @@ namespace Game.EditorTests
             var reserved = new HashSet<HexCoord> { otherFallback };
             var options = CitadelPlacementPlanner.PlacementOptions(_map, candidate, reserved).ToArray();
             Assert.That(options, Does.Contain(candidate));
-            Assert.That(options, Does.Not.Contain(otherFallback));
+            Assert.That(options, Has.No.Member(otherFallback));
             Assert.That(options, Does.Contain(otherActual));
 
             reserved.Clear();
             reserved.Add(otherActual);
             options = CitadelPlacementPlanner.PlacementOptions(_map, candidate, reserved).ToArray();
             Assert.That(options, Does.Contain(otherFallback));
-            Assert.That(options, Does.Not.Contain(otherActual));
+            Assert.That(options, Has.No.Member(otherActual));
         }
 
         private void Build(int radius, System.Func<HexCoord, int> cost = null,
