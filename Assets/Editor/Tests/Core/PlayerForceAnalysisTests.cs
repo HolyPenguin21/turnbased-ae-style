@@ -104,10 +104,11 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void MobilizationOpensAtThreeQuartersInclusiveWhileAssaultStaysStrict()
+        // 2026-11-19 (owner) — the deck-share start is three fifths (was three quarters).
+        public void MobilizationOpensAtThreeFifthsInclusiveWhileAssaultStaysStrict()
         {
-            Assert.That(AttackForceReadiness.MobilizationOpen(135f, 180f), Is.True);
-            Assert.That(AttackForceReadiness.MobilizationOpen(134.9f, 180f), Is.False);
+            Assert.That(AttackForceReadiness.MobilizationOpen(108f, 180f), Is.True);
+            Assert.That(AttackForceReadiness.MobilizationOpen(107.9f, 180f), Is.False);
             Assert.That(AttackForceReadiness.MobilizationOpen(0f, 0f), Is.False);
             Assert.That(AttackForceReadiness.ForceReady(56f, 70f), Is.False);
             Assert.That(AttackForceReadiness.ForceReady(56.1f, 70f), Is.True);
