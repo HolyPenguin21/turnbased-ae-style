@@ -165,6 +165,11 @@ namespace Game.Ai.V2
         public int Q;
         public int R;
         public float HexDefenseBonus;
+        // 2026-11-20 (owner, match Halden vs Brynn T25) - the structural part of HexDefenseBonus
+        // (the own Base / Citadel's Defense, weather-aware), which an attacker's Disruption carrier
+        // removes. The same split every other own-defence estimate passes (WorldAnalysis.Threat,
+        // ActiveDefence HoldChanceAtAsset): without it Housekeeping held a disrupted Citadel at 1.0.
+        public float BuildingDefenseBonus;
         // The public weather of the group's hex: a fight there is fought under it.
         public Game.Combat.BattleEnvironment Environment;
         public List<ReorgContainer> Containers = new List<ReorgContainer>();

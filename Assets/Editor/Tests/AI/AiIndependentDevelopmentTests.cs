@@ -43,6 +43,94 @@ namespace Game.EditorTests
             Assert.That(DevelopmentOpportunityEvaluator.StepResourceHeadroom(default, new ResourceCost()), Is.EqualTo(1f));
         }
 
+        // 2026-11-20 (owner, match Halden vs Orlan R2b) — Bolt Jax (Assembler, Support, move 2) led
+        // #40 [Crawler] at Base (-1,-3); the Citadel Factory's walk priced the whole army every turn
+        // and was refused T28-T35. A home hero leading bodies steps out alone; a combat commander
+        // still moves its army whole, and a lone hero has nothing to leave behind.
+        [Test]
+        public void AHomeHeroLeadingBodiesIsDetachedForDelivery_ACombatCommanderIsNot()
+        {
+            var player = new PlayerSetupData();
+            var assembler = new UnitData { Owner = player, IsHero = true, Name = "bolt", CommandRating = 3, MoveMax = 2 };
+            assembler.Abilities.Add(UnitAbilities.Assembler);
+            var body = new UnitData { Owner = player, Name = "crawler", MoveMax = 2 };
+            var army = new ArmyData { Owner = player };
+            army.Members.Add(assembler); army.Members.Add(body);
+            Assert.That(AiArmyRoles.IsDetachedFieldDelivery(army, assembler), Is.True,
+                "the Assembler leaves its Crawler and walks to the Factory alone");
+
+            var commander = new UnitData { Owner = player, IsHero = true, Name = "nadia", CommandRating = 6, MoveMax = 3 };
+            var led = new ArmyData { Owner = player };
+            led.Members.Add(commander); led.Members.Add(new UnitData { Owner = player, MoveMax = 2 });
+            Assert.That(AiArmyRoles.IsDetachedFieldDelivery(led, commander), Is.False,
+                "a combat commander still moves its army whole");
+
+            var lone = new ArmyData { Owner = player };
+            lone.Members.Add(assembler);
+            Assert.That(AiArmyRoles.IsDetachedFieldDelivery(lone, assembler), Is.False);
+        }
+
+        // 2026-11-20 (owner, match Halden vs Orlan T24-T27) — the Citadel garrison was full when
+        // Bolt Jax reached the hand, and the garrison-only rule left the Factory "no_operator". The
+        // game counts an operator in any own army on the hex: a full garrison yields a hero-only
+        // bench (a new army there); a garrison with room stays the first place.
+        [Test]
+        public void FullGarrison_TheOperatorStandsOnAHeroBenchOnTheFacilityHex()
+        {
+            var player = new PlayerSetupData();
+            var hex = new HexCoord(71, -9);
+            try
+            {
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+                var citadel = new BuildingData { Owner = player, Hex = hex };
+                citadel.Abilities.Add(UnitAbilities.Barracks);
+                BuildingRegistry.Register(hex, citadel);
+                var commander = new UnitData { Owner = player, IsHero = true, Name = "vector", CommandRating = 2 };
+                var garrison = new ArmyData { Owner = player, Hex = hex, IsGarrison = true };
+                garrison.Members.Add(commander);
+                garrison.Members.Add(new UnitData { Owner = player, Name = "body" });
+                ArmyRegistry.Register(garrison);
+                var operatorCard = new CardDefinition
+                {
+                    cardType = CardType.Hero, moveMax = 2, commandRating = 3,
+                    requiredBuildingAbility = UnitAbilities.Barracks,
+                    grantedAbilities = new List<string> { UnitAbilities.Assembler },
+                };
+
+                List<PlacementOption> full = PlacementSelector.FacilityOperatorPlacements(player, hex, operatorCard);
+                Assert.That(full.Select(o => o.Kind), Has.No.Member(DeploymentKind.Garrison), "the garrison is full");
+                Assert.That(full.Select(o => o.Kind), Has.Member(DeploymentKind.NewArmy),
+                    "a hero-only bench on the facility hex");
+
+                garrison.Members.RemoveAt(1);
+                List<PlacementOption> room = PlacementSelector.FacilityOperatorPlacements(player, hex, operatorCard);
+                Assert.That(room[0].Kind, Is.EqualTo(DeploymentKind.Garrison), "the garrison first while it has room");
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+            }
+        }
+
+        // 2026-11-20 (owner, P6) — a home hero is no combat body: Halden T28 played Bolt Jax for
+        // "AGG needs FieldCombatPower" as the commander of a heroless army at Base (-1,-3).
+        [Test]
+        public void AHomeHeroCardNeverMatchesFieldCombatPower()
+        {
+            var assembler = new CardDefinition { cardType = CardType.Hero, moveMax = 2,
+                grantedAbilities = new System.Collections.Generic.List<string> { UnitAbilities.Assembler } };
+            var tagged = new CardDefinition { cardType = CardType.Hero, moveMax = 3 };
+            tagged.unitTypeTags.Add(UnitTypeTag.Support);
+            var combat = new CardDefinition { cardType = CardType.Hero, moveMax = 3 };
+            Assert.That(MaterializationChainMatching.MatchesCapabilityDef(assembler, CapabilityKind.FieldCombatPower), Is.False);
+            Assert.That(MaterializationChainMatching.MatchesCapabilityDef(tagged, CapabilityKind.FieldCombatPower), Is.False);
+            Assert.That(MaterializationChainMatching.MatchesCapabilityDef(combat, CapabilityKind.FieldCombatPower), Is.True);
+            Assert.That(MaterializationChainMatching.MatchesCapabilityDef(assembler, CapabilityKind.Hero), Is.True,
+                "it stays a hero for Hero / operator demands");
+        }
+
         [Test]
         public void OnlyANonCommanderHeroOfALedFieldArmyIsDetachedForDelivery()
         {

@@ -636,7 +636,6 @@ namespace Game.Ai.V2
                     facility.EffectivePlayApCost,
                     facility.EffectivePlayResourceCost,
                     snap, inv, hand, spendable, player);
-            ArmyData garrison = OwnWorld.Of(player).GarrisonAt(hex);
             bool operatorInTransit = activeIntents?.Any(i => i?.Status == IntentStatus.Active
                 && i.Development != null && i.Development.Mode == mode
                 && i.Development.FacilityHex.Equals(hex) && i.Development.Hero?.Owner == player
@@ -648,32 +647,42 @@ namespace Game.Ai.V2
             CardData pendingOperator = lifecycle?.GeneratedOperatorFor(hex, mode, snap.TurnNumber);
             CardData operatorCard = null;
             float operatorScore = 0f;
-            if (actor == null && !operatorInTransit && garrison != null)
+            // The chosen card's facility-hex placement: its full AP (a bench as a new army adds
+            // CreateArmy) is the step's AP, as InfrastructureFulfillment executes it.
+            PlacementOption? operatorPlacement = null;
+            if (actor == null && !operatorInTransit)
             {
                 // Peer hand operators compete as the hero cards they are: the one card score of
-                // deploying each into this garrison, then the cheaper bill. A pending generated
+                // deploying each onto this facility hex, then the cheaper bill. A pending generated
                 // card keeps its claim first.
+                // 2026-11-20 (owner) — the garrison, or a hero-only bench on the hex when the
+                // garrison is full (PlacementSelector.FacilityOperatorPlacements, the one list).
                 var eligible = hand.Hand
                     .Select((c, ordinal) => (card: c, ordinal))
                     .Where(x => x.card?.Definition?.cardType == CardType.Hero
                         && MaterializationChainMatching.EffectiveAbilities(x.card.Definition, x.card.Equipment, x.card.Mutator)
                             .Contains(ResearchProductionSystem.RoleAbility(mode))
-                        && (lifecycle?.CanUseGeneratedOperatorAt(x.card, hex, mode, snap.TurnNumber) ?? true)
-                        && CardPlayExecutor.Preflight(player, root, hand, ctx,
-                            CardPlayPlan.Into(x.card, hex, DeploymentKind.Garrison, garrison), out _,
-                            resourceForecast: true))
-                    .Select(x => (x.card, score: describeOnly ? 0f
-                        : DevelopmentPreparationScorer.HandOperator(x.card, x.ordinal, hex, mode, garrison,
+                        && (lifecycle?.CanUseGeneratedOperatorAt(x.card, hex, mode, snap.TurnNumber) ?? true))
+                    .Select(x => (x.card, x.ordinal, placement: FirstOperatorPlacement(player, root, hand, ctx,
+                        hex, x.card, occupied)))
+                    .Where(x => x.placement.HasValue)
+                    .Select(x => (x.card, x.placement, score: describeOnly ? 0f
+                        : DevelopmentPreparationScorer.HandOperator(x.card, x.ordinal, mode, x.placement.Value,
                             snap, inv, spendable, player)))
                     .ToList();
                 var best = eligible
                     .OrderBy(x => ReferenceEquals(x.card, pendingOperator) ? 0 : 1)
                     .ThenByDescending(x => x.score)
-                    .ThenBy(x => ActionPrice.ToCardScore(x.card.EffectivePlayApCost)
+                    .ThenBy(x => ActionPrice.ToCardScore(x.placement.Value.Bind(x.card).TotalApCost)
                         + StrategicCardEvaluator.StrategicResourceCostValue(x.card.EffectivePlayResourceCost, snap))
-                    .Select(x => ((CardData card, float score)?)x)
+                    .Select(x => ((CardData card, PlacementOption? placement, float score)?)x)
                     .FirstOrDefault();
-                if (best.HasValue) { operatorCard = best.Value.card; operatorScore = best.Value.score; }
+                if (best.HasValue)
+                {
+                    operatorCard = best.Value.card;
+                    operatorPlacement = best.Value.placement;
+                    operatorScore = best.Value.score;
+                }
             }
             UnitData remote = null;
             ArmyData remoteArmy = null;
@@ -731,7 +740,8 @@ namespace Game.Ai.V2
                 }
                 if (operatorCard != null && remote != null)
                 {
-                    float handCost = ActionPrice.ToCardScore(operatorCard.EffectivePlayApCost)
+                    float handCost = ActionPrice.ToCardScore(operatorPlacement?.Bind(operatorCard).TotalApCost
+                            ?? operatorCard.EffectivePlayApCost)
                         + StrategicCardEvaluator.StrategicResourceCostValue(
                             operatorCard.EffectivePlayResourceCost, snap);
                     if (handCost <= remoteCost)
@@ -750,8 +760,7 @@ namespace Game.Ai.V2
             // currently eligible OTHER facility must already offer the exact qualified
             // Hero card. Source eligibility, authored identity and resources belong to
             // GenerationSource; this evaluator only picks the cheapest legal witness.
-            if (actor == null && !operatorInTransit && operatorCard == null && remote == null
-                && garrison != null && PlacementRules.CanDepositIntoGarrison(garrison))
+            if (actor == null && !operatorInTransit && operatorCard == null && remote == null)
             {
                 if (generatedOperatorSources == null)
                     generatedOperatorSources = GenerationSource.Enumerate(player, root, ctx, hand,
@@ -760,13 +769,14 @@ namespace Game.Ai.V2
                 // x success chance - the Challenge paid in full), then the cheaper bill.
                 var witnesses = generatedOperatorSources
                     .Where(g => IsGeneratedOperatorCandidate(g, mode)
-                        && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, g.CardDef)
-                        && CardPlayExecutor.CanFitAfterDeploy(garrison, g.CardDef)
                         && OwnWorld.Of(player).ArmiesAt(g.FacilityHex).Any(source => !source.IsPrison
                             && source.Members.Contains(g.Hero)
                             && !occupied.IsArmyClaimed(source.Id)))
-                    .Select(g => (step: g, score: describeOnly ? 0f
-                        : DevelopmentPreparationScorer.GeneratedOperator(g, hex, mode, garrison, snap, inv,
+                    .Select(g => (g, placements: PlacementSelector.FacilityOperatorPlacements(
+                        player, hex, g.CardDef, occupied)))
+                    .Where(x => x.placements.Count > 0)
+                    .Select(x => (step: x.g, score: describeOnly ? 0f
+                        : DevelopmentPreparationScorer.GeneratedOperator(x.g, mode, x.placements[0], snap, inv,
                             spendable, player)))
                     .OrderByDescending(x => x.score)
                     .ThenBy(x => ActionPrice.ToCardScore(ResearchProductionSystem.AttemptApCost(x.step.ChallengeCard))
@@ -825,15 +835,27 @@ namespace Game.Ai.V2
                     ? MissionIntent.DisplacementValueOf(activeIntents, sourceArmy.Id) : 0f;
                 // A card step is valued ONLY by the shared card scorer (cardScore). The TaskScore
                 // below is the world task of walking an existing hero: its compatibility baseline
-                // is the infrastructure value, with no completion bonus or predicted output EV.
+                // is the infrastructure value, plus (built facility only, 2026-11-20) the first
+                // output the staffed facility yields, valued exactly as its READY stage would.
                 // nonCombatFacilityValue is a CARD-scale anchor; this slot is TaskScore, so it is
                 // read through the one currency conversion (the prices below are already TaskScore).
                 // 2026-11-19 (owner, audit K1) — the slot keeps its shared ceiling
                 // (taskScoreStrategicRelevanceMax): the converted anchor (7.3) used to exceed it.
+                // 2026-11-20 (owner, match Halden vs Orlan R2b: "production must not idle") — a
+                // hero walking to an ALREADY BUILT facility completes it: the walk also carries
+                // what the staffed facility then produces first (StaffedFacilityOutput — the READY
+                // stage's own valuation of its best offering with THIS hero as operator), in the
+                // READY task's own slot (ForceAmplification). The capped infrastructure anchor
+                // alone (6) lost to any multi-turn walk: Halden's Citadel Factory idled T19-T35.
+                // A facility still to be built keeps the anchor only (its output is not yet real).
+                float staffedOutput = !describeOnly && hero != null && facilityReady
+                    && kind == DevelopmentPreparationKind.Operator
+                    ? StaffedFacilityOutput(mode, hex, hero, snap, inv, occupied, player, root, hand, ctx) : 0f;
                 var score = new TaskScore(strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
                         ActionPrice.CardScoreToTaskScore(AiConfigV2.nonCombatFacilityValue)
                         * (generated != null ? Mathf.Clamp01(generated.SuccessChance) : 1f)
                         / AiConfigV2.taskScoreStrategicRelevanceMax),
+                    forceAmplification: TaskScoreEvaluator.ForceAmplification(staffedOutput),
                     cardPrice: TaskScoreEvaluator.Price(delivery.ActionAp + delivery.ActivationNow),
                     delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
                         delivery.RecurringActivationAp, delivery.EtaTurns)),
@@ -859,6 +881,8 @@ namespace Game.Ai.V2
                 };
                 // CapacityUnlock pays only the tier; its witness card is not played by this step.
                 int stageAp = kind == DevelopmentPreparationKind.CapacityUnlock ? capacityTier?.apCost ?? 0
+                    : kind == DevelopmentPreparationKind.Operator && card != null && operatorPlacement.HasValue
+                        ? operatorPlacement.Value.Bind(card).TotalApCost
                     : card?.EffectivePlayApCost ?? (generated == null ? 0
                         : ResearchProductionSystem.AttemptApCost(generated.ChallengeCard));
                 if (cardScore.HasValue)
@@ -880,7 +904,8 @@ namespace Game.Ai.V2
                     op.PreparationRank = ActionPrice.ToCardScore(ActionPrice.FromTaskScore(taskNet));
                     string walkFacts = hero == null ? string.Empty
                         : $"hero={GenerationSource.StableHeroKey(hero)} from=#{sourceArmy?.Id} route={travel} "
-                          + $"benefit={score.StrategicRelevance:0.##} apNow={delivery.ActionAp + delivery.ActivationNow:0.##} "
+                          + $"benefit={score.StrategicRelevance:0.##} output={score.ForceAmplification:0.##} "
+                          + $"apNow={delivery.ActionAp + delivery.ActivationNow:0.##} "
                           + $"recurring={delivery.RecurringActivationAp:0.##}x{delivery.EtaTurns} "
                           + $"displaced={displaced:0.##} unlock={ActionPrice.CardScoreToTaskScore(prerequisite):0.##} "
                           + $"net={taskNet:0.##}";
@@ -1059,6 +1084,21 @@ namespace Game.Ai.V2
                 : Mathf.Max(0f, AiPower.EffectiveLine(card).BasePower)
                     / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
 
+        // 2026-11-20 — the first facility-hex placement (PlacementSelector.FacilityOperatorPlacements:
+        // garrison, else a hero-only bench) the authoritative preflight accepts for `card`; null
+        // when the card can stand nowhere on the hex now. Shared by the preparation facts and the
+        // operator fulfillment (InfrastructureFulfillment.BuildDevelopmentOperatorCandidate).
+        internal static PlacementOption? FirstOperatorPlacement(PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx, HexCoord hex, CardData card, ActorCommitments commitments)
+        {
+            foreach (PlacementOption option in PlacementSelector.FacilityOperatorPlacements(
+                         player, hex, card?.Definition, commitments))
+                if (CardPlayExecutor.Preflight(player, root, hand, ctx, option.Bind(card), out _,
+                        resourceForecast: true))
+                    return option;
+            return null;
+        }
+
         // A field operator moves with its whole army; a garrison hero (or a second hero of a led
         // field army) is extracted alone.
         // Null is the selected hand/local/generated operator, with no delivery investment.
@@ -1077,6 +1117,58 @@ namespace Game.Ai.V2
         private static string ResourceList(IEnumerable<ResourceType> types) =>
             string.Concat(ResourceBundle.All.Where(types.Contains)
                 .Select(DevelopmentInvestmentGate.Abbrev));
+
+        // 2026-11-20 (owner, R2b) — what staffing a BUILT facility with `hero` yields first: the
+        // best offering of the mode's catalog with this hero as the operator, valued exactly as
+        // AddReady values a staffed facility's offering (the argument it passes to
+        // BuildDevelopmentScore): a deployable by its success x justified force need x bodies when
+        // its investment EV clears the margin, an equipment by success x its best recipient's
+        // upgrade value. Preview steps only (never executable, no retry key); 0 when nothing
+        // would be produced. One cycle, not a horizon: later cycles are the READY stage's own.
+        private static float StaffedFacilityOutput(ResearchProductionMode mode, HexCoord hex, UnitData hero,
+            WorldSnapshot snap, CapabilityInventory inv, ActorCommitments occupied, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            if (hero == null || ctx?.ResearchProductionCatalog == null || snap == null)
+                return 0f;
+            using var __scope = new Game.Core.ProfileScope("AI/Dev.StaffedFacilityOutput");
+            float best = 0f;
+            foreach (CardDefinition blueprint in ResearchProductionSystem
+                         .OfferedCards(ctx.ResearchProductionCatalog, mode, player)
+                         .Where(c => c != null && !string.IsNullOrWhiteSpace(c.authoredKey)))
+            {
+                CardDefinition output = ctx.ResearchProductionCatalog.ResolveResult(blueprint);
+                if (output == null || string.IsNullOrWhiteSpace(output.authoredKey))
+                    continue;
+                float chance = ResearchProductionSystem.EstimateSuccessChance(hero, blueprint);
+                var preview = new GenerationStep
+                {
+                    Mode = mode, FacilityHex = hex, Hero = hero, CardDef = output, BlueprintDef = blueprint,
+                    SuccessChance = chance, ProducesEquipment = output.cardType == CardType.Equipment,
+                    UseKey = "staffing-preview", CardKey = "staffing-preview:" + blueprint.authoredKey,
+                };
+                float value;
+                if (!preview.ProducesEquipment)
+                {
+                    DevelopmentOpportunity future = PrepareDeployable(output, mode, hex, hero, 1f,
+                        snap, inv, occupied, player, root, hand, ctx, preview);
+                    if (future == null || future.Ev <= AiConfigV2.devEvMargin)
+                        continue;
+                    value = future.SuccessChance * ForceNeedModel.JustifiedForceNeed(snap).Total
+                        * ForceBodies(output);
+                }
+                else
+                {
+                    DevelopmentOpportunity equipment = BestEquipmentOpportunity(mode, hex, output, chance,
+                        preview, snap, inv, player, root, hand, out _);
+                    if (equipment == null)
+                        continue;
+                    value = equipment.SuccessChance * EquipmentUpgradeValuation.EquipmentUpgradeValue(equipment);
+                }
+                best = Mathf.Max(best, value);
+            }
+            return best;
+        }
 
         // Non-equipment outputs already have ONE canonical materialization/scoring path. Use a
         // projected plan to value the future investment; never an executable source.

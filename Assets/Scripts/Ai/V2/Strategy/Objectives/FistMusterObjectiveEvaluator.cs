@@ -89,8 +89,7 @@ namespace Game.Ai.V2
                     || (u.IsHero && AiArmyRoles.IsFacilityOperator(player, a.Hex, u)))))
                 return false;
             bool loneHero = a.Members.Count == 1 && a.Members[0] != null && a.Members[0].IsHero;
-            return loneHero ? !AiArmyRoles.IsGarrisonHero(a.Members[0])
-                    && !HeroRoleEvaluator.HasSupportVocation(a.Members[0])
+            return loneHero ? !HeroRoleEvaluator.IsHomeHero(a.Members[0])
                 : AiArmyRoles.IsStructuralGroundCombatActor(a);
         }
 

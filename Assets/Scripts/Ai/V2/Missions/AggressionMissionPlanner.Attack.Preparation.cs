@@ -276,13 +276,14 @@ namespace Game.Ai.V2
         }
 
         // 2026-09-30 — a free field army holding one hero and nothing else on the staging Base:
-        // the widest command first. A garrison hero or a facility operator is never a host.
+        // the widest command first. A home hero (HeroRoleEvaluator.IsHomeHero: Support tag or
+        // support vocation, 2026-11-20) or a facility operator is never a host.
         private static ArmyData LoneHeroHostAt(PlayerSetupData player, HexCoord hex, ISet<int> excluded) =>
             OwnWorld.Of(player).Armies
                 .Where(a => a != null && a.Hex.Equals(hex) && !a.IsGarrison && !a.IsPrison
                     && !a.IsAirfield && !a.IsAirArmy && a.Members.Count == 1
                     && a.Members[0] != null && a.Members[0].IsHero
-                    && !AiArmyRoles.IsGarrisonHero(a.Members[0])
+                    && !HeroRoleEvaluator.IsHomeHero(a.Members[0])
                     && !AiArmyRoles.IsFacilityOperator(player, hex, a.Members[0])
                     && (excluded == null || !excluded.Contains(a.Id)))
                 .OrderByDescending(a => a.Members[0].CommandRating)

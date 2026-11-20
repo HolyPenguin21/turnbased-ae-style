@@ -133,6 +133,9 @@ namespace Game.Ai.V2
                     Q = hexGroup.Key.Q,
                     R = hexGroup.Key.R,
                     HexDefenseBonus = WorthIt.HexDefenseBonus(groupHex, ctx?.Map, player),
+                    // The building part of that same total (its own source, weather-aware).
+                    BuildingDefenseBonus = Game.Combat.BattleEnvironment.At(groupHex, ctx?.Map).HexDefense(
+                        Game.Combat.DisruptionRules.KnownBuildingDefenseFor(groupHex, player, null)),
                     Environment = Game.Combat.BattleEnvironment.At(groupHex, ctx?.Map),
                     Containers = containers,
                     ThreatBenchmarks = BuildThreatBenchmarks(snapshot, groupHex, containers, unitByKey),

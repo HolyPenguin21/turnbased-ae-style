@@ -65,6 +65,20 @@ namespace Game.Ai.V2
             IsHeroCard(hero) && SupportVocation(
                 a => hero.grantedAbilities != null && hero.grantedAbilities.Contains(a), hero.moveMax);
 
+        // 2026-11-20 (owner, match Halden vs Orlan P6) — THE "home hero": a Support type-tagged hero
+        // (AiArmyRoles.IsGarrisonHero) or one with a support vocation. It stays at its Base /
+        // facility and never commands a strike fist or a combat formation (owner 2026-11-19, fist
+        // muster: "Support heroes never fist commanders"). One answer for the muster
+        // (FistMusterObjectiveEvaluator), the preparation's commander pick
+        // (GroundCombatDonorPolicy.PickAttachableHero, LoneHeroHostAt), the combat-body match
+        // (MaterializationChainMatching) and the Development walk (AiArmyRoles.IsDetachedFieldDelivery).
+        public static bool IsHomeHero(UnitData hero) =>
+            hero != null && hero.IsHero && (AiArmyRoles.IsGarrisonHero(hero) || HasSupportVocation(hero));
+
+        public static bool IsHomeHero(CardDefinition hero) =>
+            IsHeroCard(hero) && (hero.unitTypeTags?.Contains(UnitTypeTag.Support) == true
+                || HasSupportVocation(hero));
+
         internal static bool SupportVocation(Func<string, bool> hasAbility, int moveMax) =>
             hasAbility(UnitAbilities.Researcher) || hasAbility(UnitAbilities.Assembler)
             || hasAbility(UnitAbilities.ApBonus)

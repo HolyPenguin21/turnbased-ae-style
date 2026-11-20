@@ -97,9 +97,8 @@ namespace Game.Ai.V2
                         || ResearchProductionSystem.FindActor(player, site, mode) != null
                         || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, site, card.Definition))
                         return false;
-                    return OwnWorld.Of(player).ArmiesAt(site).Any(g => g.IsGarrison && !g.IsPrison
-                        && PlacementRules.CanDepositIntoGarrison(g)
-                        && CardPlayExecutor.CanFitAfterDeploy(g, card.Definition));
+                    // 2026-11-20 - the garrison or a hero-only bench on the hex (one list).
+                    return PlacementSelector.FacilityOperatorPlacements(player, site, card.Definition).Count > 0;
                 });
             reservation.ReconcileDevelopmentOperatorCards(cards);
         }
@@ -748,9 +747,6 @@ namespace Game.Ai.V2
                 if (fac.HasHero || fac.Contested) continue;
 
                 string role = ResearchProductionSystem.RoleAbility(fac.Mode);
-                ArmyData garrison = OwnWorld.Of(player).GarrisonAt(fac.Hex);
-                if (garrison == null || !PlacementRules.CanDepositIntoGarrison(garrison))
-                    continue;
 
                 foreach ((CardData card, int ordinal) in hand.Hand.Select((card, ordinal) => (card, ordinal)))
                 {
@@ -761,19 +757,22 @@ namespace Game.Ai.V2
                         || abilities == null || !abilities.Contains(role))
                         continue;
 
-                    var placement = new PlacementOption(fac.Hex, DeploymentKind.Garrison, garrison);
-                    CardPlayPlan preflight = placement.Bind(card);
-                    if (!CardPlayExecutor.Preflight(player, root, hand, ctx, preflight, out string why, resourceForecast: true))
+                    // 2026-11-20 (owner) - the garrison, or a hero-only bench on the hex when the
+                    // garrison cannot take it (the same first placement the preparation facts chose).
+                    PlacementOption? chosen = DevelopmentOpportunityEvaluator.FirstOperatorPlacement(
+                        player, root, hand, ctx, fac.Hex, card, null);
+                    if (!chosen.HasValue)
                     {
                         AiDebugLog.Write($"[AI][V2]   infra - DevelopmentOperator preflight fail "
-                            + $"@({fac.Hex.Q},{fac.Hex.R}) {card.Definition.displayName}: {why}");
+                            + $"@({fac.Hex.Q},{fac.Hex.R}) {card.Definition.displayName}: no facility-hex placement");
                         continue;
                     }
+                    PlacementOption placement = chosen.Value;
                     if (!TradeFunding.CanFund(player, root, ctx, card.EffectivePlayResourceCost))
                         continue;
 
-                    float score = DevelopmentPreparationScorer.HandOperator(card, ordinal, fac.Hex, fac.Mode,
-                        garrison, snap, inv,
+                    float score = DevelopmentPreparationScorer.HandOperator(card, ordinal, fac.Mode,
+                        placement, snap, inv,
                         t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player, witnessedUsefulApDemand);
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
                         continue;
@@ -783,13 +782,14 @@ namespace Game.Ai.V2
                     ResearchProductionMode mode = fac.Mode;
                     legal.Add(new InfraCandidate
                     {
-                        ApCost = selectedCard.EffectivePlayApCost,
+                        ApCost = placement.Bind(selectedCard).TotalApCost,
                         ResCost = selectedCard.EffectivePlayResourceCost,
                         DecisionScore = score,
                         HandOrdinal = ordinal,
                         TargetHex = at,
-                        Explain = $"operator {selectedCard.Definition.displayName} ({mode}) into preparation base garrison @({at.Q},{at.R})",
-                        Action = InfraBuildAction.OperatorIntoGarrison(selectedCard, at),
+                        Explain = $"operator {selectedCard.Definition.displayName} ({mode}) into preparation base "
+                            + $"{placement.Kind} @({at.Q},{at.R})",
+                        Action = InfraBuildAction.OperatorOnFacilityHex(selectedCard, placement),
                     });
                 }
             }
@@ -809,11 +809,11 @@ namespace Game.Ai.V2
                     .Contains(ResearchProductionSystem.RoleAbility(demand.DevelopmentOperatorMode.Value)))
                 return null;
             BuildingData destination = OwnWorld.Of(player).BuildingAt(demand.TargetHex.Value);
-            ArmyData destinationGarrison = OwnWorld.Of(player).GarrisonAt(demand.TargetHex.Value);
+            // 2026-11-20 - the minted card's first facility-hex place: garrison or hero-only bench.
+            List<PlacementOption> destinations = PlacementSelector.FacilityOperatorPlacements(
+                player, demand.TargetHex.Value, proposed.CardDef);
             if (destination == null || destination.Owner != player
-                || !destination.IsBase
-                || destinationGarrison == null || !PlacementRules.CanDepositIntoGarrison(destinationGarrison)
-                || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, demand.TargetHex.Value, proposed.CardDef))
+                || !destination.IsBase || destinations.Count == 0)
                 return null;
             GenerationStep live = GenerationSource.Enumerate(player, root, ctx, hand,
                 reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards)
@@ -824,7 +824,7 @@ namespace Game.Ai.V2
             // The same card score as the hand operator, for the card this Challenge would mint:
             // benefit contingent on success, the Challenge paid in full.
             float generatedScore = DevelopmentPreparationScorer.GeneratedOperator(live,
-                demand.TargetHex.Value, demand.DevelopmentOperatorMode.Value, destinationGarrison,
+                demand.DevelopmentOperatorMode.Value, destinations[0],
                 snap, inv, t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player, witnessedUsefulApDemand);
             if (generatedScore <= AiConfigV2.allocatorSliceEpsilon)
                 return null;

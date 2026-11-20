@@ -816,6 +816,8 @@ namespace Game.Ai.V2
                             $"[AI][V2][Attack][Gather] {intent.IntentKey} HOLD {departureWhy}; awaiting Recon before departure");
                         return true;
                     }
+                    if (HoldsTheHomeItStandsOn(snap, a, host, departureWhy, intent))
+                        return true;
                     AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} retired before departure: {departureWhy}");
                     return false; // free the host for Defence; do not invent a return from the same home
                 }
@@ -942,6 +944,8 @@ namespace Game.Ai.V2
                             $"[AI][V2][Attack][Gather] {intent.IntentKey} HOLD {departureWhy}; awaiting Recon before departure");
                         return true;
                     }
+                    if (HoldsTheHomeItStandsOn(snap, a, host, departureWhy, intent))
+                        return true;
                     AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} retired before departure: {departureWhy}");
                     return false; // free the host for Defence; do not invent a return from the same home
                 }
@@ -1238,6 +1242,76 @@ namespace Game.Ai.V2
                     + $"supports=[{string.Join(",", candidates)}] ceilingWin={ceilingWin:0.00} "
                     + "decision=NO_PROSPECT reason=existing_supports_cannot_reach_the_gate");
             return reaches;
+        }
+
+        // 2026-11-20 (owner, match Halden vs Orlan T22-T23) — a gathered fist that may not depart
+        // because its own stronghold needs it, while it STANDS on that very stronghold, already
+        // serves it there (AiArmyRoles.LeavesOnOperation: the gathering host is its Base's
+        // defence). Retiring the operation freed nothing for Defence — it only dropped the claim,
+        // and the turn-final Housekeeping then packed the bodies the preparation had just
+        // assembled back into the garrison (Halden #35: Assemble +Mantis/Claimjumper/Hammerback,
+        // retired in the same pass, three times). The operation HOLDs instead. The wait has no
+        // private timer and no stall protection: the ordinary stall clock (ShouldReap) bounds it,
+        // so a pin that never lifts still ends the operation. A host pinned to ANOTHER stronghold
+        // is still retired (it must walk there free).
+        internal static bool HoldsTheHomeItStandsOn(WorldSnapshot snap, AttackIntent a,
+            ArmySnapshot host, string departureWhy, MissionIntent intent)
+        {
+            if (host == null || departureWhy == null
+                || !departureWhy.StartsWith("home_needs_the_army", System.StringComparison.Ordinal))
+                return false;
+            AttackMarchAssessment home = AttackMarchPolicy.Assess(snap, a.Target, host);
+            if (home.Verdict != AttackMarchVerdict.DefendHome || !home.HomeHex.HasValue
+                || !home.HomeHex.Value.Equals(host.Hex))
+                return false;
+            AiDebugLog.WriteDeduped(intent.IntentKey + "#gather-home-hold",
+                $"[AI][V2][Attack][Gather] {intent.IntentKey} HOLD on the stronghold it defends "
+                + $"(host #{host.ArmyId} at ({host.Hex.Q},{host.Hex.R}), stall {intent.StallTurns}/"
+                + $"{AiConfigV2.commitmentStallTurns}): {departureWhy}");
+            return true;
+        }
+
+        // 2026-11-20 (owner, match Halden vs Orlan T24) — an operation walking home (RecoveryReturn)
+        // is over; a preparation the planner opens on the SAME target meanwhile is a new operation
+        // (AggressionMissionPlanner.LiveAttackOperation deliberately ignores RecoveryReturn). Both
+        // share the target's IntentKey, so ReconcileOutcome found the recovering intent and merely
+        // advanced it: Halden T24 Assemble #17 +Duelist/Mantis/Atlas (24.8 -> 73.6) stayed
+        // unclaimed (claims [35]) and Housekeeping packed the three back into the garrison.
+        // The preparation's first executed step supersedes the recovery: the recovering intent
+        // retires exactly as on reaching its recovery base (its army is free for a fresh decision)
+        // and the Gather intent of the new host is created. A step that did not start the new
+        // operation leaves the recovering intent untouched (it is no step of that operation).
+        internal static bool TrySupersedeRecoveryReturn(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionStepResult o, int turn)
+        {
+            if (intent?.Attack == null || intent.Attack.Phase != AttackMissionPhase.RecoveryReturn
+                || o.MissionKind != MissionKind.Attack || !o.AttackFacts().HasAttackPayload)
+                return false;
+            AttackMissionTarget t = o.AttackFacts().AttackTarget;
+            if (!t.Preparation || t.Phase != AttackMissionPhase.Gather)
+                return false;
+            int? host = t.PrimaryArmyId ?? o.MoverArmyId;
+            if (host.HasValue && host == intent.Attack.PrimaryArmyId)
+                return false;
+            string aid = AiV2Trace.FormatCorrelation(o.Proposal);
+            if (!o.GroundFacts().OperationStarted || o.IsFailed)
+            {
+                // A structurally failed preparation keeps the cooldown it always had (the generic
+                // PermanentFailure branch), so it is not re-proposed every pass of the walk home.
+                if (o.Disposition == MissionStepDisposition.PermanentFailure)
+                    StartPersistentCooldown(allocState, o.AttemptKey, o.MissionKind, turn,
+                        o.ProvisionFailureKindValue?.ToString() ?? "StructuralFailure");
+                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] continuity - [{aid}] {o.IntentKey} "
+                    + $"preparation step of host #{host?.ToString() ?? "-"} did not start "
+                    + $"({o.Disposition}); the recovering operation of #{intent.Attack.PrimaryArmyId} is untouched");
+                return true;
+            }
+            state.Remove(intent.IntentKey, turn);
+            AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - a new preparation on the "
+                + $"same target (host #{host?.ToString() ?? "-"}) supersedes the recovery walk of "
+                + $"#{intent.Attack.PrimaryArmyId}; that army is free for a fresh decision");
+            CreateAttackIntent(state, o, turn);
+            return true;
         }
 
         // §70 — a durable intent is created only once the operation has REALLY begun (a step taken

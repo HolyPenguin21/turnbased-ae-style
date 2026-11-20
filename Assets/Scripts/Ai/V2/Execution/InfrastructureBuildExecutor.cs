@@ -14,7 +14,9 @@ namespace Game.Ai.V2
         ExtractionFacility,   // an extraction facility on the built site
         FacilityCard,         // a Facility card into an own Base
         FacilityAfterUpgrade, // buy the Base's next level when a slot must be unlocked, then the Facility
-        OperatorIntoGarrison, // an operator card into the garrison on the hex
+        // An operator card onto its facility hex: the garrison, or a hero-only bench there
+        // (2026-11-20, PlacementSelector.FacilityOperatorPlacements).
+        OperatorOnFacilityHex,
     }
 
     internal sealed class InfraBuildAction
@@ -27,6 +29,7 @@ namespace Game.Ai.V2
         internal CardDefinition FacilityDef;
         internal BuildingData UpgradeBuilding;
         internal BaseUpgradeTier UpgradeTier;
+        internal PlacementOption Placement;
 
         internal static InfraBuildAction BaseCard(CardData card, HexCoord hex, int? builderArmyId, CardData defender) =>
             new InfraBuildAction { Kind = InfraBuildKind.BaseCard, Card = card, Hex = hex,
@@ -43,8 +46,9 @@ namespace Game.Ai.V2
             new InfraBuildAction { Kind = InfraBuildKind.FacilityAfterUpgrade, Card = card, Hex = hex,
                 UpgradeBuilding = building, UpgradeTier = tier };
 
-        internal static InfraBuildAction OperatorIntoGarrison(CardData card, HexCoord hex) =>
-            new InfraBuildAction { Kind = InfraBuildKind.OperatorIntoGarrison, Card = card, Hex = hex };
+        internal static InfraBuildAction OperatorOnFacilityHex(CardData card, PlacementOption placement) =>
+            new InfraBuildAction { Kind = InfraBuildKind.OperatorOnFacilityHex, Card = card,
+                Hex = placement.Hex, Placement = placement };
     }
 
     // ===========================================================================================
@@ -69,11 +73,9 @@ namespace Game.Ai.V2
                 case InfraBuildKind.FacilityAfterUpgrade:
                     return PlaceFacilityAfterOptionalUpgrade(player, root, hand, ctx, a.Card, a.Hex,
                         a.UpgradeBuilding, a.UpgradeTier);
-                case InfraBuildKind.OperatorIntoGarrison:
+                case InfraBuildKind.OperatorOnFacilityHex:
                 {
-                    ArmyData g = OwnWorld.Of(player).GarrisonAt(a.Hex);
-                    CardPlayResult r = CardPlayExecutor.Play(player, root, hand, ctx,
-                        CardPlayPlan.Into(a.Card, a.Hex, DeploymentKind.Garrison, g));
+                    CardPlayResult r = CardPlayExecutor.Play(player, root, hand, ctx, a.Placement.Bind(a.Card));
                     return new BuildingPlayResult
                     {
                         Built = r.Deployed,

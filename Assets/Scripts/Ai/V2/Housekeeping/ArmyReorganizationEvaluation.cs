@@ -193,6 +193,42 @@ namespace Game.Ai.V2
         // per-container max is used.
         private static LazyProfile.Data BuildThreatContactReadiness(VState state)
         {
+            var rows = new List<ThreatContactRow>(ThreatRowsOf(state));
+
+            // Lowest readiness is the most dangerous enemy contact. Stable army id is ordering
+            // only; it never becomes strategic utility.
+            rows.Sort((a, b) =>
+            {
+                if (a.HexReadiness < b.HexReadiness - FloatEps) return -1;
+                if (a.HexReadiness > b.HexReadiness + FloatEps) return 1;
+                if (a.FirstReadiness < b.FirstReadiness - FloatEps) return -1;
+                if (a.FirstReadiness > b.FirstReadiness + FloatEps) return 1;
+                if (a.SecondReadiness < b.SecondReadiness - FloatEps) return -1;
+                if (a.SecondReadiness > b.SecondReadiness + FloatEps) return 1;
+                return a.ThreatArmyId.CompareTo(b.ThreatArmyId);
+            });
+
+            var profile = new List<float>(rows.Count * 3);
+            var tolerances = new List<float>(rows.Count * 3);
+            foreach (ThreatContactRow row in rows)
+            {
+                profile.Add(row.HexReadiness);
+                profile.Add(row.FirstReadiness);
+                profile.Add(row.SecondReadiness);
+                tolerances.Add(row.HexTolerance);
+                tolerances.Add(0f);
+                tolerances.Add(0f);
+            }
+            return new LazyProfile.Data(profile, tolerances);
+        }
+
+        // The per-threat contact rows of one roster (whole-hex hold, first and second defender),
+        // built once per VState: the profile and the 0.1 packing gate (RaisesHexHold) read the
+        // same simulation. Candidate states are fresh clones never mutated after enumeration.
+        private static List<ThreatContactRow> ThreatRowsOf(VState state)
+        {
+            if (state.ThreatRows != null)
+                return state.ThreatRows;
             var rows = new List<ThreatContactRow>();
 
             foreach (ReorgThreatBenchmark threat in state.ThreatBenchmarks)
@@ -247,32 +283,32 @@ namespace Game.Ai.V2
                     AiConfigV2.housekeepingHexHoldMargin / (1f + Math.Max(0, threat.EtaToGroup)),
                     first, second));
             }
+            state.ThreatRows = rows;
+            return rows;
+        }
 
-            // Lowest readiness is the most dangerous enemy contact. Stable army id is ordering
-            // only; it never becomes strategic utility.
-            rows.Sort((a, b) =>
+        // 2026-11-20 (owner, match Halden vs Orlan T22-T24) — passive defence packing (candidate
+        // 0.1) moves field bodies into the garrison only when that raises the whole-hex hold
+        // against some threat beyond its Monte Carlo tolerance. The first/second-defender rows
+        // stay tie-breakers between plans of equal hold but never by themselves pull a body out
+        // of a field formation into the immobile container: Halden (-6,2) T24 hold 1.0 already,
+        // second line 0.83 -> 0.92 took Duelist/Mantis/Atlas out of the fist; (-1,-3) T22 moved
+        // three bodies for 0.75 -> 0.77. A threat the roster before could not contact at all is
+        // a raise (the hex had no contactable defender against it).
+        private static bool RaisesHexHold(VState before, VState after)
+        {
+            var held = new Dictionary<int, ThreatContactRow>();
+            foreach (ThreatContactRow r in ThreatRowsOf(before))
+                held[r.ThreatArmyId] = r;
+            foreach (ThreatContactRow r in ThreatRowsOf(after))
             {
-                if (a.HexReadiness < b.HexReadiness - FloatEps) return -1;
-                if (a.HexReadiness > b.HexReadiness + FloatEps) return 1;
-                if (a.FirstReadiness < b.FirstReadiness - FloatEps) return -1;
-                if (a.FirstReadiness > b.FirstReadiness + FloatEps) return 1;
-                if (a.SecondReadiness < b.SecondReadiness - FloatEps) return -1;
-                if (a.SecondReadiness > b.SecondReadiness + FloatEps) return 1;
-                return a.ThreatArmyId.CompareTo(b.ThreatArmyId);
-            });
-
-            var profile = new List<float>(rows.Count * 3);
-            var tolerances = new List<float>(rows.Count * 3);
-            foreach (ThreatContactRow row in rows)
-            {
-                profile.Add(row.HexReadiness);
-                profile.Add(row.FirstReadiness);
-                profile.Add(row.SecondReadiness);
-                tolerances.Add(row.HexTolerance);
-                tolerances.Add(0f);
-                tolerances.Add(0f);
+                if (!held.TryGetValue(r.ThreatArmyId, out ThreatContactRow b))
+                    return true;
+                float eps = Math.Max(FloatEps, Math.Max(r.HexTolerance, b.HexTolerance));
+                if (r.HexReadiness > b.HexReadiness + eps)
+                    return true;
             }
-            return new LazyProfile.Data(profile, tolerances);
+            return false;
         }
 
         // 2026-11-18 (owner, match Kryll vs Tessek T31) — the hex is held or lost as a whole: the
@@ -287,7 +323,10 @@ namespace Game.Ai.V2
         {
             var armies = new List<WorthIt.DefendingArmy>(ranked.Count);
             foreach (var r in ranked)
-                armies.Add(new WorthIt.DefendingArmy(r.defenders, r.commander, armyId: r.containerId));
+                // The building part rides with every army: the estimator removes it for an
+                // attacker carrying Disruption (DefendingArmy.DefenseBonus), as in the real battle.
+                armies.Add(new WorthIt.DefendingArmy(r.defenders, r.commander, armyId: r.containerId,
+                    buildingDefenseBonus: state.BuildingDefenseBonus));
             float attackerWins = WorthIt.EstimateHexControl(threat.Members, threat.Commander, armies,
                 state.HexDefenseBonus, environment: state.Environment,
                 monteCarloTrials: AiConfigV2.housekeepingHexHoldTrials).WinChance;
@@ -297,14 +336,23 @@ namespace Game.Ai.V2
         private static float ContactReadiness(VState state, ReorgThreatBenchmark threat,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander)
         {
+            float bonus = DefenceBonusAgainst(state, threat);
             WorthIt.BattleEstimate estimate = WorthIt.Estimate(threat.Members, defenders,
-                state.HexDefenseBonus, threat.Commander, commander, environment: state.Environment);
+                bonus, threat.Commander, commander, environment: state.Environment);
             float success = WorthIt.CanDamageAll(
-                    threat.Members, defenders, state.HexDefenseBonus)
+                    threat.Members, defenders, bonus)
                 ? estimate.WinChance
                 : 0f;
             return 1f - success / (1f + Math.Max(0, threat.EtaToGroup));
         }
+
+        // The hex bonus this attacker really meets: its Disruption carrier (or a support hero
+        // carrying it) removes the building part - DefendingArmy.DefenseBonus's own rule, for the
+        // single-formation rows that take a flat bonus.
+        private static float DefenceBonusAgainst(VState state, ReorgThreatBenchmark threat) =>
+            state.HexDefenseBonus - (DisruptionRules.HasCarrier(threat.Members)
+                || DisruptionRules.HasCarrier(threat.Commander.SupportHeroes)
+                ? Math.Max(0f, state.BuildingDefenseBonus) : 0f);
 
         private static float NoDefenderReadiness(int eta) =>
             1f - 1f / (1f + Math.Max(0, eta));

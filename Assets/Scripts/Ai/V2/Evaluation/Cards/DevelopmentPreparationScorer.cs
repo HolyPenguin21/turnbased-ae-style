@@ -53,16 +53,27 @@ namespace Game.Ai.V2
         internal static float HandOperator(CardData card, int ordinal, HexCoord hex,
             ResearchProductionMode mode, ArmyData garrison, WorldSnapshot snap, CapabilityInventory inv,
             System.Func<ResourceType, float> spendableResource, PlayerSetupData player,
+            float? witnessedUsefulApDemand = null) =>
+            garrison == null ? float.NegativeInfinity
+                : HandOperator(card, ordinal, mode, new PlacementOption(hex, DeploymentKind.Garrison, garrison),
+                    snap, inv, spendableResource, player, witnessedUsefulApDemand);
+
+        // 2026-11-20 — the same card score for any facility-hex placement
+        // (PlacementSelector.FacilityOperatorPlacements: garrison or a hero-only bench there).
+        internal static float HandOperator(CardData card, int ordinal, ResearchProductionMode mode,
+            PlacementOption placement, WorldSnapshot snap, CapabilityInventory inv,
+            System.Func<ResourceType, float> spendableResource, PlayerSetupData player,
             float? witnessedUsefulApDemand = null)
         {
-            if (card?.Definition == null || garrison == null)
+            HexCoord hex = placement.Hex;
+            if (card?.Definition == null || (placement.Kind != DeploymentKind.NewArmy && placement.Army == null))
                 return float.NegativeInfinity;
             IReadOnlyList<string> abilities = MaterializationChainMatching.EffectiveAbilities(
                 card.Definition, card.Equipment, card.Mutator);
             AxisDemand demand = OperatorDemand(hex, mode);
             MaterializationPlan plan = MaterializationPlanFactory.MakeExistingPlan(
                 MaterializationChainKind.Direct, demand, card, ordinal, null, -1,
-                new PlacementOption(hex, DeploymentKind.Garrison, garrison), abilities);
+                placement, abilities);
             TradeFunding.TryPlan(player, PlayerRootRegistry.FindFor(player),
                 new AiTurnContext { Map = snap?.Map, TurnNumber = snap?.TurnNumber ?? 0 }, plan.ResCost, out plan.TradeFunding);
             return StrategicCardEvaluator.ScoreForDemand(plan, demand, plan.ExpectedTraits, inv,
@@ -74,16 +85,26 @@ namespace Game.Ai.V2
         internal static float GeneratedOperator(GenerationStep source, HexCoord hex,
             ResearchProductionMode mode, ArmyData garrison, WorldSnapshot snap, CapabilityInventory inv,
             System.Func<ResourceType, float> spendableResource, PlayerSetupData player,
+            float? witnessedUsefulApDemand = null) =>
+            garrison == null ? float.NegativeInfinity
+                : GeneratedOperator(source, mode, new PlacementOption(hex, DeploymentKind.Garrison, garrison),
+                    snap, inv, spendableResource, player, witnessedUsefulApDemand);
+
+        // 2026-11-20 — the same Challenge score for any facility-hex placement of the minted card.
+        internal static float GeneratedOperator(GenerationStep source, ResearchProductionMode mode,
+            PlacementOption placement, WorldSnapshot snap, CapabilityInventory inv,
+            System.Func<ResourceType, float> spendableResource, PlayerSetupData player,
             float? witnessedUsefulApDemand = null)
         {
-            if (source?.CardDef == null || garrison == null)
+            HexCoord hex = placement.Hex;
+            if (source?.CardDef == null || (placement.Kind != DeploymentKind.NewArmy && placement.Army == null))
                 return float.NegativeInfinity;
             IReadOnlyList<string> abilities = MaterializationChainMatching.EffectiveAbilities(
                 source.CardDef, null);
             AxisDemand demand = OperatorDemand(hex, mode);
             MaterializationPlan plan = MaterializationPlanFactory.MakeGeneratedPlan(
                 MaterializationChainKind.GenerateDeploy, demand, source, null, -1, false,
-                new PlacementOption(hex, DeploymentKind.Garrison, garrison), abilities);
+                placement, abilities);
             TradeFunding.TryPlan(player, PlayerRootRegistry.FindFor(player),
                 new AiTurnContext { Map = snap?.Map, TurnNumber = snap?.TurnNumber ?? 0 }, plan.ResCost, out plan.TradeFunding);
             float chain = StrategicCardEvaluator.ScoreForDemand(plan, demand, plan.ExpectedTraits, inv,

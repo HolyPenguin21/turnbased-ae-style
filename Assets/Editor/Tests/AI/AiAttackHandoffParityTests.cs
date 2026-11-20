@@ -384,8 +384,11 @@ namespace Game.EditorTests
                 var fastHero = Hero("fast commander", 5);
                 var tank = Body("strong slow tank", 100, 16);
                 var escort = Body("fast escort", 14, 16);
-                original.MoveMax = original.MoveCurrent = 3;
-                fastHero.MoveMax = fastHero.MoveCurrent = escort.MoveMax = escort.MoveCurrent = 2;
+                // 2026-11-20 — a hero of move <= 2 is a home hero (HeroRoleEvaluator.IsHomeHero) and
+                // never commands a preparation; the commanders here are field heroes (move 3), the
+                // slow one strands the route exactly as before.
+                original.MoveMax = original.MoveCurrent = 4;
+                fastHero.MoveMax = fastHero.MoveCurrent = escort.MoveMax = escort.MoveCurrent = 3;
                 slowHero.MoveMax = slowHero.MoveCurrent = tank.MoveMax = tank.MoveCurrent = 1;
                 var host = Army(Host, original);
                 var slowCommand = Army(Host, slowHero);
@@ -401,7 +404,7 @@ namespace Game.EditorTests
                 Assert.That(plan.Feasible, Is.True, plan.Reason);
                 Assert.That(plan.Transfers.Select(t => t.Unit), Is.EquivalentTo(new[] { fastHero, escort }));
                 Assert.That(ArmyData.ComputeMaxMovement(host.Members.Concat(plan.Transfers.Select(t => t.Unit)).ToList()),
-                    Is.EqualTo(2), "a slower roster is legal while its target remains reachable");
+                    Is.EqualTo(3), "a slower roster is legal while its target remains reachable");
                 Assert.That(host.Members, Is.EquivalentTo(new[] { original }));
                 Assert.That(donor.Members, Does.Contain(escort), "planning remains read-only");
             }

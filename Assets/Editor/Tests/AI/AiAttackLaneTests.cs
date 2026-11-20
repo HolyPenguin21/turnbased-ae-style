@@ -150,8 +150,15 @@ namespace Game.EditorTests
             intent.Attack.Preparation = preparation;
             Assert.That(AttackMarchPolicy.Assess(snap, intent.Attack.Target, host).Verdict,
                 Is.EqualTo(AttackMarchVerdict.DefendHome));
-            Assert.That(AttackContinuity.ResolveAttackIntent(Us, snap, intent, intent.Attack, null, out _),
-                Is.False, "Release the force for Defence before starting a forbidden march");
+            bool kept = AttackContinuity.ResolveAttackIntent(Us, snap, intent, intent.Attack, null, out _);
+            // 2026-11-20 (owner, match Halden vs Orlan P5) — the host stands ON the Citadel that
+            // pins it: it already defends it, so a ready Gather HOLDs there (stall-bounded) instead
+            // of being retired "for Defence". The preparation fixture ends earlier: its host is a
+            // snapshot-only army (MissionActorPolicy.PreparationHostStillValid reads the live
+            // registry); the HOLD itself is covered by AiActiveDefenceTests
+            // .GatheredFistPinnedByTheBaseItStandsOn_Holds_PinnedElsewhere_IsRetired. No march either way.
+            Assert.That(kept, Is.EqualTo(!preparation),
+                "a host on the stronghold it defends holds; it never starts a forbidden march");
             Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Gather));
         }
 
@@ -1378,6 +1385,60 @@ namespace Game.EditorTests
             Assert.That(intent.Attack.SupportArmyId, Is.Null);
             Assert.That(intent.Attack.RendezvousHex, Is.Null);
             Assert.That(intent.Attack.GatherReturns.Select(r => r.ArmyId), Does.Contain(8));
+        }
+
+        // 2026-11-20 (owner, match Halden vs Orlan T24) — #35 walked home (RecoveryReturn) from the
+        // target a new preparation then opened on (same IntentKey): its first Assemble step (host
+        // #17) advanced the recovering intent, #17 stayed unclaimed and Housekeeping undid the
+        // step. The preparation now supersedes the finished operation with its own Gather intent.
+        [Test]
+        public void PreparationOnTheTargetOfARecoveryWalk_CreatesItsOwnGatherIntent()
+        {
+            MissionIntent recovering = AttackIntent(AttackMissionPhase.RecoveryReturn, 35, recoveryBase: OurBase);
+            MissionIntentRegistry.GetOrCreate(Us).Put(recovering);
+            MissionStepResult outcome = AttackOutcome(strikeSpent: false);
+            outcome.MoverArmyId = 17;
+            outcome.MadeProgress = true;
+            outcome.Disposition = MissionStepDisposition.Progress;
+            AttackMissionTarget step = outcome.AttackFacts().AttackTarget;
+            step.Phase = AttackMissionPhase.Gather;
+            step.Preparation = true;
+            step.PrimaryArmyId = 17;
+            step.DestinationHex = OurBase;
+            outcome.AttackFactsForWrite().AttackTarget = step;
+            Assert.That(outcome.IntentKey, Is.EqualTo(recovering.IntentKey), "the same target, the same key");
+
+            MissionContinuityLayer.ReconcileStep(Us, 24, outcome);
+
+            Assert.That(MissionIntentRegistry.GetOrCreate(Us).TryGet(outcome.IntentKey, out MissionIntent now), Is.True);
+            Assert.That(now.Attack.Phase, Is.EqualTo(AttackMissionPhase.Gather));
+            Assert.That(now.Attack.Preparation, Is.True);
+            Assert.That(now.Attack.PrimaryArmyId, Is.EqualTo(17), "the preparation host owns the operation");
+            Assert.That(now.Attack.StagingHex, Is.EqualTo(OurBase));
+        }
+
+        // A preparation step that did not start the new operation is no step of the recovering one.
+        [Test]
+        public void FailedPreparationStep_LeavesTheRecoveryWalkUntouched()
+        {
+            MissionIntent recovering = AttackIntent(AttackMissionPhase.RecoveryReturn, 35, recoveryBase: OurBase);
+            MissionIntentRegistry.GetOrCreate(Us).Put(recovering);
+            MissionStepResult outcome = AttackOutcome(strikeSpent: false);
+            outcome.MoverArmyId = 17;
+            outcome.Disposition = MissionStepDisposition.Invalidated;
+            outcome.GroundFactsForWrite().OperationStarted = false;
+            AttackMissionTarget step = outcome.AttackFacts().AttackTarget;
+            step.Phase = AttackMissionPhase.Gather;
+            step.Preparation = true;
+            step.PrimaryArmyId = 17;
+            outcome.AttackFactsForWrite().AttackTarget = step;
+
+            MissionContinuityLayer.ReconcileStep(Us, 24, outcome);
+
+            Assert.That(MissionIntentRegistry.GetOrCreate(Us).TryGet(outcome.IntentKey, out MissionIntent now), Is.True,
+                "a failed step of another operation does not retire the recovery walk");
+            Assert.That(now.Attack.Phase, Is.EqualTo(AttackMissionPhase.RecoveryReturn));
+            Assert.That(now.Attack.PrimaryArmyId, Is.EqualTo(35));
         }
 
         [Test]
