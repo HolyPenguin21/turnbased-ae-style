@@ -535,6 +535,15 @@ namespace Game.Ai.V2
                 TaskScore service = AirfieldServiceTaskScore(snap, player, ctx, projected, airfield,
                     objectives, strikeTargets, uncoveredAirJobs > 0 && !ExplosionAttack.IsSingleUseUnit(def),
                     out int coverage, out string witness, out string use, out HexCoord? strikeHex);
+                // 2026-11-19 (owner, match Sable T9/T11): a full hand with nothing to fly at must
+                // not freeze the turn (no draws, no plays). A hand aircraft may then simply be
+                // stored in the airfield; the common tempo arbiter prices it against the other
+                // plays (no operational task value, the full-hand pressure applies). Storage never
+                // takes a slot an airborne wing has reserved for its landing (FreeStorageSlots).
+                if (judgeUse && use == null && generation == null && !investmentPreview
+                    && hand != null && !hand.HasFreeSlot
+                    && AviationRules.FreeStorageSlots(airfield, player) > 0)
+                    use = "storage(full_hand)";
                 if (judgeUse && use == null)
                 {
                     AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "

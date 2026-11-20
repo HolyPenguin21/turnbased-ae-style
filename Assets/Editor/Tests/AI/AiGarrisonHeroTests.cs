@@ -884,6 +884,73 @@ namespace Game.EditorTests
                     Is.True, "no Support hero rides in a fighting formation");
         }
 
+        // 2026-11-20 (owner, match Halden vs Orlan T24) — Citadel (-6,2): garrison 5 bodies under a
+        // Support commander and the fist Cinderwolves (Nadia Thorne + 3 bodies) on the hex; a far
+        // enemy (eta 5) that the hex holds against with certainty. Packing the fist's strongest
+        // bodies only raised the second-line row (0.83 -> 0.92), never the whole-hex hold: the
+        // fist keeps its bodies. Before the fix the three were moved into the garrison.
+        [Test]
+        public void FarThreat_HexAlreadyHeld_TheFistIsNotEmptiedIntoTheGarrison()
+        {
+            ReorgUnit vector = RHero(8, support: true);
+            ReorgUnit nadia = RHero(6, support: false);
+            var garrisonBodies = new[] { RFighter(5f, 3f, 6f), RFighter(5f, 3f, 6f), RFighter(5f, 3f, 6f) };
+            var fistBodies = new[] { RFighter(6f, 4f, 8f), RFighter(6f, 4f, 8f), RFighter(6f, 4f, 8f) };
+            ReorgContainer garrison = RGarrison(1, new[] { vector }.Concat(garrisonBodies).ToArray());
+            ReorgContainer fist = RFree(2, new[] { nadia }.Concat(fistBodies).ToArray());
+            var group = new LocalForceGroup { Containers = new List<ReorgContainer> { garrison, fist } };
+            group.ThreatBenchmarks.Add(new ReorgThreatBenchmark
+            {
+                ArmyId = 22, EtaToGroup = 5, EtaToNearestBase = 2,
+                Members = Enumerable.Range(0, 2).Select(_ =>
+                    new Game.Combat.WorthIt.DefenderProfile(1f, false, attack: 3f, hitPoints: 4f)).ToArray(),
+                TargetableUnitKeys = new HashSet<int>(garrisonBodies.Concat(fistBodies).Select(u => u.Key)),
+            });
+
+            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
+
+            Assert.That(plan.ExpectedMembership[2], Is.EquivalentTo(new[] { nadia.Key }.Concat(fistBodies.Select(b => b.Key))),
+                "the hex holds anyway; the fist keeps its fighters: " + plan.DebugSummary());
+        }
+
+        // 2026-11-20 (owner, match Halden vs Brynn T25) — Talon Corps carried Disruption and the
+        // battle ran without the Citadel's +2 (baseDefense=2 disruptedBy=Talon Corps); Housekeeping
+        // read the hex as held (0.91 / 1.0) while ActiveDefence's own hold said 0.08-0.12. The
+        // building part is removed for a Disruption carrier exactly as the estimator does it.
+        [Test]
+        public void DisruptionCarrier_RemovesTheCitadelBonus_FromTheHexHold()
+        {
+            float Hold(bool carrier, float building)
+            {
+                ReorgUnit iri = RHero(8, support: true);
+                var bodies = new[] { RFighter(4f, 2f, 5f), RFighter(4f, 2f, 5f), RFighter(4f, 2f, 5f) };
+                var group = new LocalForceGroup
+                {
+                    HexDefenseBonus = 2f, BuildingDefenseBonus = building,
+                    // A free field body on the hex makes the group worth planning (WorthPlanning).
+                    Containers = new List<ReorgContainer> { RGarrison(1, new[] { iri }.Concat(bodies).ToArray()),
+                        RFree(2, RFighter(4f, 2f, 5f)) },
+                };
+                var abilities = carrier ? new[] { UnitAbilities.Disruption } : null;
+                group.ThreatBenchmarks.Add(new ReorgThreatBenchmark
+                {
+                    ArmyId = 19, EtaToGroup = 0, EtaToNearestBase = 0,
+                    Members = Enumerable.Range(0, 4).Select(_ => new Game.Combat.WorthIt.DefenderProfile(
+                        2f, false, attack: 5f, hitPoints: 5f, abilities: abilities)).ToArray(),
+                    TargetableUnitKeys = new HashSet<int>(bodies.Select(u => u.Key)),
+                });
+                ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
+                return plan.BeforeFormationStrengths[0];
+            }
+
+            float plain = Hold(carrier: false, building: 2f);
+            float disrupted = Hold(carrier: true, building: 2f);
+            Assert.That(disrupted, Is.LessThan(plain - 0.05f),
+                $"a Disruption carrier fights the garrison without the +2 ({plain:0.00} -> {disrupted:0.00})");
+            Assert.That(Hold(carrier: true, building: 0f), Is.EqualTo(Hold(carrier: false, building: 0f)).Within(0.06f),
+                "terrain alone is never removed");
+        }
+
         // 2026-11-18 (owner, match Kryll vs Tessek T31) — Kryll held Ashen Base (0,4) with a full
         // garrison, Ironclad (Dorian Kesh, 3/7) and two heroless 2-body armies; each lost to Dust
         // Dogs alone, so the first/second contact rows never moved and the folds were refused. The

@@ -155,11 +155,16 @@ namespace Game.Ai.V2
             public readonly HashSet<int> MovedUnitKeys = new HashSet<int>();
             public readonly List<ReorgThreatBenchmark> ThreatBenchmarks = new List<ReorgThreatBenchmark>();
             public float HexDefenseBonus;
+            public float BuildingDefenseBonus;
             public Game.Combat.BattleEnvironment Environment;
+            // The per-threat contact rows of THIS roster (ThreatRowsOf), filled on first read.
+            // Never copied by Clone: a clone is a different roster once it is changed.
+            public List<ThreatContactRow> ThreatRows;
 
             public VState Clone()
             {
-                var v = new VState { HexDefenseBonus = HexDefenseBonus, Environment = Environment };
+                var v = new VState { HexDefenseBonus = HexDefenseBonus,
+                    BuildingDefenseBonus = BuildingDefenseBonus, Environment = Environment };
                 v.ThreatBenchmarks.AddRange(ThreatBenchmarks);
                 foreach (var kv in Meta) v.Meta[kv.Key] = kv.Value;
                 foreach (var kv in Roster) v.Roster[kv.Key] = new List<ReorgUnit>(kv.Value);
@@ -195,7 +200,8 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            var state = new VState { HexDefenseBonus = group.HexDefenseBonus, Environment = group.Environment };
+            var state = new VState { HexDefenseBonus = group.HexDefenseBonus,
+                BuildingDefenseBonus = group.BuildingDefenseBonus, Environment = group.Environment };
             state.ThreatBenchmarks.AddRange(group.ThreatBenchmarks);
             foreach (ReorgContainer c in group.Containers)
             {

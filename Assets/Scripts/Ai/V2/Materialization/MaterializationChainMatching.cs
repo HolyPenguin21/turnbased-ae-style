@@ -23,8 +23,15 @@ namespace Game.Ai.V2
                 // A Unit/Hero may gain Recce through Equipment, or lose it when an attachment
                 // clears the Recce family. This host-kind prefilter is only a candidate gate:
                 // final effective abilities still decide whether a Scout/Combat chain qualifies.
-                case CapabilityKind.ScoutCapability:
+                // 2026-11-20 (owner, match Halden vs Orlan P6) - a home hero is no combat body:
+                // played for FieldCombatPower it only became the commander of a heroless formation
+                // (Halden T28 Bolt Jax -> #40 at Base (-1,-3) while the Citadel Factory waited for
+                // that Assembler). The strike roster already leaves Support heroes out
+                // (AttackForcePool); HeroRoleEvaluator.IsHomeHero is the one rule.
                 case CapabilityKind.FieldCombatPower:
+                    return d.cardType == CardType.Unit
+                        || d.cardType == CardType.Hero && !HeroRoleEvaluator.IsHomeHero(d);
+                case CapabilityKind.ScoutCapability:
                 case CapabilityKind.CollectorCapability:
                 case CapabilityKind.GlobalResourceCarrier:
                     return d.cardType == CardType.Unit || d.cardType == CardType.Hero;

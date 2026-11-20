@@ -42,6 +42,11 @@ namespace Game.Ai.V2
 
             bool isUnit = def.cardType == CardType.Unit;
             bool isHero = def.cardType == CardType.Hero;
+            // 2026-11-20 (owner, P6) - a hero card joining an existing field army becomes its
+            // commander (only heroless armies are offered to it below); a surplus home hero
+            // (HeroRoleEvaluator.IsHomeHero) is never offered that: its places are the garrison or
+            // a hero-only bench (shell / new army) on the Base.
+            bool heroMayCommandField = !isHero || !(phaseBSurplus && HeroRoleEvaluator.IsHomeHero(def));
             List<ArmyData> own = ArmyRegistry.AllForOwner(player).Where(a => a != null).OrderBy(a => a.Id).ToList();
 
             foreach (HexCoord hex in snap.Self.BaseHexes)
@@ -82,7 +87,8 @@ namespace Game.Ai.V2
                     // Projected capacity, not pre-join HasRoom: a first hero may legally turn a
                     // full 2/2 body formation into 3/N and is exactly the placement a live Hero
                     // strategic demand needs. CardPlayExecutor/ArmyActions enforce the same rule.
-                    if (a.Members.Count == 0 || !CardPlayExecutor.CanFitAfterDeploy(a, def))
+                    if (a.Members.Count == 0 || !CardPlayExecutor.CanFitAfterDeploy(a, def)
+                        || !heroMayCommandField)
                         continue;
                     // IsPlainReserveArmy intentionally means "heroless AND currently has room" for
                     // generic placement callers. A Hero card is the one exception here: it may lead
@@ -109,6 +115,35 @@ namespace Game.Ai.V2
                         opts.Add(new PlacementOption(hex, DeploymentKind.ExistingArmy, a));
                 }
             }
+            return opts;
+        }
+
+        // 2026-11-20 (owner, match Halden vs Orlan T24-T27) — THE places a Researcher / Assembler
+        // hero card may be deployed to staff the facility on `hex`, best first. The game counts an
+        // operator in ANY own army on the hex (ResearchProductionSystem.FindActors), and
+        // Housekeeping keeps an operator either in the garrison or on a hero-only bench on the hex
+        // (ReorgViability.IsHexBench, owner 2026-11-18). So: the garrison while it can take the
+        // card, else a bench — an empty reusable shell standing there, else a new army (its
+        // CreateArmy AP is priced by the plan like any NewArmy placement). Halden's Citadel
+        // garrison was 8/8 (three Support heroes + five bodies): the garrison-only rule left the
+        // Factory "no_operator" four turns with Bolt Jax in hand. Every operator path (Development
+        // preparation facts, the operator fulfillment, generated-operator gates and claims) reads
+        // this one list; the live play is still re-proved by CardPlayExecutor.
+        internal static List<PlacementOption> FacilityOperatorPlacements(PlayerSetupData player,
+            HexCoord hex, CardDefinition def, ActorCommitments commitments = null)
+        {
+            var opts = new List<PlacementOption>();
+            if (player == null || def == null || def.cardType != CardType.Hero
+                || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, def))
+                return opts;
+            ArmyData garrison = OwnWorld.Of(player).GarrisonAt(hex);
+            if (garrison != null && PlacementRules.CanDepositIntoGarrison(garrison)
+                && CardPlayExecutor.CanFitAfterDeploy(garrison, def))
+                opts.Add(new PlacementOption(hex, DeploymentKind.Garrison, garrison));
+            ArmyData shell = ReusableArmySelector.FindReusableAt(player, hex, commitments);
+            if (shell != null)
+                opts.Add(new PlacementOption(hex, DeploymentKind.ReusableShell, shell));
+            opts.Add(new PlacementOption(hex, DeploymentKind.NewArmy, null));
             return opts;
         }
 

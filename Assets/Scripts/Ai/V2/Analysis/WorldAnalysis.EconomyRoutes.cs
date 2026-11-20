@@ -158,8 +158,7 @@ namespace Game.Ai.V2
                             result.Add(new EconomyBuilderRouteSnapshot
                             {
                                 ArmyId = army.ArmyId, TravelCost = 0,
-                                ReturnTravelCost = AiArmyRoles.IsGarrisonHero(sparableHero)
-                                    || HeroRoleEvaluator.HasSupportVocation(sparableHero)
+                                ReturnTravelCost = HeroRoleEvaluator.IsHomeHero(sparableHero)
                                     ? SafeStepPathing.FindNearestBaseReturnCost(ctx.Map, player,
                                         target, snap.Self.BaseHexes, sparableHero.MoveMax) : 0,
                                 CurrentMovement = sparableHero.MoveMax, MaxMovement = sparableHero.MoveMax,
@@ -169,8 +168,7 @@ namespace Game.Ai.V2
                                 HasActiveEconomyCommitment = activeEconomyActors.Contains(army.ArmyId),
                                 IsOnTarget = true, RequiresGarrisonExtraction = true,
                                 BuilderHeroRuntimeId = sparableHero.RuntimeId,
-                                BuilderHasHomeVocation = AiArmyRoles.IsGarrisonHero(sparableHero)
-                                    || HeroRoleEvaluator.HasSupportVocation(sparableHero),
+                                BuilderHasHomeVocation = HeroRoleEvaluator.IsHomeHero(sparableHero),
                                 ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
                                 ExtractedHeroCommander = WorthIt.SideCommander.Of(sparableHero),
                                 ExtractedHeroCapacity = sparableHero.CommandRating,
@@ -192,8 +190,7 @@ namespace Game.Ai.V2
                             int garrisonReturnCost = SafeStepPathing.FindNearestBaseReturnCost(
                                 ctx.Map, player, target, snap.Self.BaseHexes, sparableHero.MoveMax);
                             garrisonReturnCost = EconomyBuilderReturnCost(garrisonReturnCost,
-                                AiArmyRoles.IsGarrisonHero(sparableHero)
-                                    || HeroRoleEvaluator.HasSupportVocation(sparableHero),
+                                HeroRoleEvaluator.IsHomeHero(sparableHero),
                                 () => SafeStepPathing.FindSafePathCost(ctx.Map, player,
                                     target, army.Hex, sparableHero.MoveMax));
 
@@ -212,8 +209,7 @@ namespace Game.Ai.V2
                                 IsOnTarget = false,
                                 RequiresGarrisonExtraction = true,
                                 BuilderHeroRuntimeId = sparableHero.RuntimeId,
-                                BuilderHasHomeVocation = AiArmyRoles.IsGarrisonHero(sparableHero)
-                                    || HeroRoleEvaluator.HasSupportVocation(sparableHero),
+                                BuilderHasHomeVocation = HeroRoleEvaluator.IsHomeHero(sparableHero),
                                 ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
                                 ExtractedHeroCommander = WorthIt.SideCommander.Of(sparableHero),
                                 ExtractedHeroCapacity = sparableHero.CommandRating,

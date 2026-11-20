@@ -574,6 +574,40 @@ namespace Game.EditorTests
                 "another free army destroys the force before it arrives: ActiveDefence answers it");
         }
 
+        // 2026-11-20 (owner, match Halden vs Orlan T22-T23) — the gathered fist #35 stood ON Base
+        // (-1,-3), the stronghold that "falls without this army"; the preparation was retired to
+        // "free the host for Defence" and Housekeeping undid its Assemble. A host standing on the
+        // stronghold that pins it HOLDs (bounded by the stall clock); one pinned elsewhere is
+        // still retired so it can walk there free.
+        [Test]
+        public void GatheredFistPinnedByTheBaseItStandsOn_Holds_PinnedElsewhere_IsRetired()
+        {
+            var owner = new PlayerSetupData();
+            var atHome = DefenceActor(owner, 35, Secondary, 20f, 10f, 30f);
+            WorldSnapshot snap = AssetWorld(atHome);
+            PlayerSetupData enemy = snap.Threat.Threats[0].Contact.Army.Owner;
+            AttackTargetRef target = AttackTargetRef.For(new HexCoord(3, -1), enemy, AttackTargetKind.Base);
+            var attack = new AttackIntent { Target = target, Phase = AttackMissionPhase.Gather,
+                Preparation = true, PrimaryArmyId = atHome.ArmyId, StagingHex = Secondary };
+            var intent = new MissionIntent { IntentKey = MissionIntentKey.ForAttack(target),
+                Kind = MissionKind.Attack, Status = IntentStatus.Active, Funding = CommitmentTier.Hard,
+                Objective = attack };
+            AttackMarchAssessment home = AttackMarchPolicy.Assess(snap, target, atHome);
+            Assert.That(home.Verdict, Is.EqualTo(AttackMarchVerdict.DefendHome), home.Reason);
+            Assert.That(home.HomeHex, Is.EqualTo(Secondary));
+            Assert.That(AttackContinuity.HoldsTheHomeItStandsOn(snap, attack, atHome,
+                "home_needs_the_army:" + home.Reason, intent), Is.True, "it already defends that Base");
+
+            var away = DefenceActor(owner, 26, new HexCoord(1, 0), 20f, 10f, 30f);
+            WorldSnapshot field = AssetWorld(away);
+            AttackMarchAssessment called = AttackMarchPolicy.Assess(field, target, away);
+            Assert.That(called.Verdict, Is.EqualTo(AttackMarchVerdict.DefendHome), called.Reason);
+            Assert.That(AttackContinuity.HoldsTheHomeItStandsOn(field, attack, away,
+                "home_needs_the_army:" + called.Reason, intent), Is.False, "it must walk home free");
+            Assert.That(AttackContinuity.HoldsTheHomeItStandsOn(snap, attack, atHome,
+                "hostile_contact_on_path:x", intent), Is.False, "only the home pin holds");
+        }
+
         // 2026-11-18 (owner, match Tessek vs Halden T19-T20) — an Attack army its home calls back
         // is handed to ActiveDefence when it destroys the observed threat before it arrives; a
         // remembered threat has no position to intercept, so the army walks home as before.

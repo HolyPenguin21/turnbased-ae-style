@@ -488,8 +488,8 @@ namespace Game.EditorTests
             Assert.That(raid.ApSpent, Is.Zero);
             mission.Kind = MissionKind.ActiveDefence;
             var defence = new ExecutionResult();
-            Drain(batch ? ActiveDefenceExecutor.RunActiveDefence(_us, null, null, mission, defence, 0)
-                : ActiveDefenceExecutor.RunActiveDefenceStep(_us, null, null, mission, defence, 0));
+            Drain(batch ? ActiveDefenceExecutor.RunActiveDefence(_us, null, null, mission, defence, 0, null)
+                : ActiveDefenceExecutor.RunActiveDefenceStep(_us, null, null, mission, defence, 0, null));
             Assert.That(defence.StopReason, Is.EqualTo(ExecutionStopReason.MoverLost));
             Assert.That(defence.NeedsReplan, Is.True);
             Assert.That(defence.ApSpent, Is.Zero);

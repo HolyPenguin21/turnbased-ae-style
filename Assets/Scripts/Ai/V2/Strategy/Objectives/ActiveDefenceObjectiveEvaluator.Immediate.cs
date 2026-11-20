@@ -239,6 +239,13 @@ namespace Game.Ai.V2
             // the chosen roster is re-proved and a failing host is excluded for the next try.
             // The same for a formation the fight would leave exposed (LeavesForceExposed).
             string exposed = null;
+            // 2026-11-20 (match Halden vs Orlan P4) - why the last try failed, for the trace: the
+            // single "not reachable or not capable" hid whether no roster cleared the fight or the
+            // roster that did could not reach (Orlan T23-T26 vs saboteur #28, root unprovable).
+            string lastWhy = null;
+            int unreachableNow = 0;
+            foreach (int id in planExcluded)
+                if (committed == null || !committed.Contains(id)) unreachableNow++;
             for (int attempt = 0; attempt <= snap.Self.Armies.Count; attempt++)
             {
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
@@ -252,7 +259,10 @@ namespace Game.Ai.V2
                         ExcludedArmyIds = planExcluded,
                     });
                 if (!plan.Feasible)
+                {
+                    lastWhy = "no_roster_clears:" + (plan.Reason ?? "-");
                     break;
+                }
                 ArmySnapshot host = snap.Self.Armies.FirstOrDefault(a => a != null
                     && a.ArmyId == plan.BaseArmyId);
                 if (host == null)
@@ -279,6 +289,7 @@ namespace Game.Ai.V2
                     return TraceImmediate(snap, objective, pinnedActor, response, ActiveDefenceResponseKind.Intercept,
                         "immediate_response", host.ArmyId, projectedNow, routeCost, plan.ProjectedWinChance);
                 }
+                lastWhy = $"host_#{host.ArmyId}_cannot_reach(mp {projectedNow}/{projectedMax})";
                 if (pinnedActor.HasValue && plan.BaseArmyId == pinnedActor.Value)
                     break;
                 planExcluded.Add(plan.BaseArmyId);
@@ -302,7 +313,8 @@ namespace Game.Ai.V2
             }
             return TraceImmediate(snap, objective, pinnedActor, response, ActiveDefenceResponseKind.Defer,
                 exposed != null ? "immediate_force_exposed_after_fight:" + exposed
-                    : "immediate_not_reachable_or_not_capable", -1, 0, 0);
+                    : "immediate_not_reachable_or_not_capable:" + (lastWhy ?? "no_candidate")
+                        + $" excludedPinnedOrOutOfReach={unreachableNow}", -1, 0, 0);
         }
 
         // 2026-11-07 (owner, playtest Mordak T19) — a voluntary one-turn fight must not leave the

@@ -219,6 +219,90 @@ namespace Game.EditorTests
                 "a Support hero stays home, it never commands the fist");
         }
 
+        // 2026-11-19 review: JoinFist built its ownership view without a snapshot, and
+        // MissionActorPolicy.Build claims nothing without one, so an army another operation owns
+        // could take the muster mover's bodies. The executor's snapshot now carries the claims.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void MusterMover_NeverJoinsAnArmyAnotherOperationOwns(bool claimed)
+        {
+            var us = new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
+            ArmyData host = Army(us, Staging, false, Body(us, "A", 6));
+            ArmyData mover = Army(us, Staging, false, Body(us, "B", 6));
+            var snap = new WorldSnapshot
+            {
+                Observer = us, TurnNumber = 10,
+                Self = new SelfSnapshot
+                {
+                    Citadel = Citadel, BaseHexes = new[] { Citadel, Staging },
+                    Armies = new List<ArmySnapshot>
+                    {
+                        Field(us, host.Id, Staging, 2, false, Profile(6, 2, 6)),
+                        Field(us, mover.Id, Staging, 2, false, Profile(6, 2, 6)),
+                    },
+                },
+                Known = new KnownSnapshot(),
+            };
+            var state = MissionIntentRegistry.GetOrCreate(us);
+            snap.Intents = state;
+            if (claimed)
+            {
+                var attack = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                    Objective = new AttackIntent { PrimaryArmyId = host.Id, Phase = AttackMissionPhase.Gather } };
+                attack.IntentKey = MissionIntentKey.For(attack);
+                state.Put(attack);
+                Assert.That(ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snap), snap, null)
+                    .IsArmyClaimed(host.Id), Is.True, "precondition: the Attack owns the host");
+            }
+
+            int moved = ActiveDefenceExecutor.JoinFist(us, null, mover, Staging, snap);
+
+            if (claimed)
+            {
+                Assert.That(moved, Is.Zero, "the claimed army is no fist");
+                Assert.That(host.Members.Count, Is.EqualTo(1));
+                Assert.That(mover.Members.Count, Is.EqualTo(1));
+            }
+            else
+                Assert.That(moved, Is.GreaterThan(0), "a free army on the Base is the fist the mover joins");
+        }
+
+        // Match 2026-11-19b (Sable T9/T11, owner): Scout cards and the Recce hero Lira Sable sat in
+        // a full hand at the scout cap. While the portfolio is full a Recce card is an ordinary
+        // body (garrison, ready or new army); Recon later pulls a scout out of the garrison.
+        [Test]
+        public void RecceCardAtTheScoutCap_IsAnOrdinaryBody()
+        {
+            var us = new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
+            Assert.That(ReconConcurrencyPolicy.SurplusScoutPortfolioFull(us, null, null), Is.False,
+                "no scouts yet");
+            for (int i = 0; i < ReconConcurrencyPolicy.HardCap; i++)
+            {
+                UnitData scout = Body(us, "S" + i, 1);
+                scout.Abilities.Add("r1s4");
+                Army(us, Citadel, false, scout);
+            }
+            Assert.That(ReconConcurrencyPolicy.SurplusScoutPortfolioFull(us, null, null), Is.True);
+
+            var recce = new Game.Cards.CardDefinition { cardType = Game.Cards.CardType.Unit,
+                grantedAbilities = new List<string> { "r1s4" } };
+            var fresh = new PlacementOption(Citadel, DeploymentKind.NewArmy, null);
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(recce, recce.grantedAbilities, fresh, false),
+                Is.EqualTo(CapabilityKind.ScoutCapability), "below the cap a solo Recce is a scout");
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(recce, recce.grantedAbilities, fresh, true),
+                Is.EqualTo(CapabilityKind.FieldCombatPower), "at the cap it is a body");
+            ArmyData emptyShell = Army(us, Citadel, false);
+            var shell = new PlacementOption(Citadel, DeploymentKind.ReusableShell, emptyShell);
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(recce, recce.grantedAbilities, shell, true),
+                Is.EqualTo(CapabilityKind.FieldCombatPower), "an empty shell at the cap is no scout either");
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(recce, recce.grantedAbilities, shell, false),
+                Is.EqualTo(CapabilityKind.ScoutCapability));
+            var heroDef = new Game.Cards.CardDefinition { cardType = Game.Cards.CardType.Hero,
+                grantedAbilities = new List<string> { "r1s6", "Stealth4" } };
+            Assert.That(MaterializationChainEnumerator.SurplusCapability(heroDef, heroDef.grantedAbilities, fresh, true),
+                Is.EqualTo(CapabilityKind.Hero));
+        }
+
         // ---- founding site --------------------------------------------------------------------
 
         [Test]

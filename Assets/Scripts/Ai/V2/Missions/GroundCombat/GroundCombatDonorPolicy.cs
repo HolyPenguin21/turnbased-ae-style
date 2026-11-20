@@ -58,6 +58,12 @@ namespace Game.Ai.V2
                 {
                     if (h == null || !h.IsHero || h.IsAviation)
                         continue;
+                    // 2026-11-20 (owner, match Halden vs Orlan P6) - a strike fist is never led by
+                    // a home hero (HeroRoleEvaluator.IsHomeHero): Orlan T26 took Rusty Miller
+                    // (Assembler, command 3) off a hex bench as its preparation commander, froze a
+                    // 3-slot roster (34.8 vs required 72) and waited until reaped.
+                    if (preparation && HeroRoleEvaluator.IsHomeHero(h))
+                        continue;
                     if (!donor.CanLeaveWithoutOvercrowding(h))
                         continue;
                     if (canSpare != null && !canSpare(new[] { h }))

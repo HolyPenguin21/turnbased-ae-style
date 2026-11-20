@@ -45,6 +45,8 @@ namespace Game.Ai.V2
             // (ReorgViability.IsHexBench) to make room. One candidate per (field source, bench): a
             // body-by-body climb would stall where moving one body first weakens the hardest
             // defender. The threat-first readiness profile judges the result.
+            // 2026-11-20 (owner) — only a pack that raises the whole-hex hold is a candidate
+            // (RaisesHexHold): a gathering fist is not emptied into the garrison for a tie-break.
             if (state.ThreatBenchmarks.Count > 0
                 && state.Meta.TryGetValue(operatorGarrisonId, out ReorgContainer defenceGarrison)
                 && defenceGarrison.IsGarrison && defenceGarrison.CanReceive)
@@ -57,7 +59,7 @@ namespace Game.Ai.V2
                         continue;
                     // No bench: the garrison's free slots only.
                     VState filled = PackGarrisonFromField(state, srcId, operatorGarrisonId, null);
-                    if (filled != null)
+                    if (filled != null && RaisesHexHold(state, filled))
                         yield return filled;
                     // A garrison some operation holds gives nobody away (the executor's
                     // mission-claim preflight): it is only filled.
@@ -69,7 +71,7 @@ namespace Game.Ai.V2
                             || !ReorgViability.IsHexBench(state.Meta[benchId], state.Roster[benchId]))
                             continue;
                         VState packed = PackGarrisonFromField(state, srcId, operatorGarrisonId, benchId);
-                        if (packed != null)
+                        if (packed != null && RaisesHexHold(state, packed))
                             yield return packed;
                     }
                 }

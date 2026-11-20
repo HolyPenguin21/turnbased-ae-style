@@ -46,7 +46,10 @@ namespace Game.Ai.V2
             if (commitments != null && !airfield.IsCarrierContainer)
             {
                 ArmyData shell = ReusableArmySelector.FindReusableAt(player, airfield.Hex, commitments);
+                // A shell still named by a sortie record would hand the new wing that stale
+                // sortie (AirStrikeSortie / recon continue the record they find by army).
                 if (shell != null && !commitments.IsPreparationHost(shell.Id)
+                    && AirSortieRegistry.ForArmy(player, shell) == null
                     && ArmyActions.TransferMembersAtomic(aircraft, airfield, shell, hexSelection, out _))
                 {
                     wing = shell;

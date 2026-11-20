@@ -123,14 +123,22 @@ namespace Game.Ai
 
         // A free field army with another commander lends one of its non-commander heroes to a
         // Development delivery: the hero is detached (CreateArmy/Transfer, like a garrison hero)
-        // and the army stays whole. The single-hero army keeps IsHeroLed (whole army moves).
+        // and the army stays whole. A single-hero army otherwise keeps IsHeroLed (whole army moves).
+        // 2026-11-20 (owner, match Halden vs Orlan R2b) — except a home-vocation hero (a Support
+        // garrison hero or a Researcher/Assembler/ApBonus/slow hero) leading bodies: its place is
+        // its facility, not the head of a field formation, so it steps out alone and the bodies
+        // stay (when the heroless remainder still fits). Halden Bolt Jax led #40 [Crawler] at Base
+        // (-1,-3) while the Citadel Factory waited; the whole-army walk (activation 2-3 every turn,
+        // move 2) was refused every turn T28-T35.
         public static bool IsDetachedFieldDelivery(ArmyData army, UnitData hero) =>
             army != null && hero != null && !army.IsGarrison && !army.IsPrison
             && !AviationRules.IsAirfield(army) && !AviationRules.IsAirArmy(army)
             && hero.IsHero && !hero.IsPrisoner && army.Members.Contains(hero)
-            && army.Members.Count(m => m != null && m.IsHero) >= 2
-            && army.Commander != null && !ReferenceEquals(army.Commander, hero)
-            && army.CanLeaveWithoutOvercrowding(hero);
+            && army.CanLeaveWithoutOvercrowding(hero)
+            && (army.Members.Count(m => m != null && m.IsHero) >= 2
+                    && army.Commander != null && !ReferenceEquals(army.Commander, hero)
+                || army.Members.Count(m => m != null && m.IsHero) == 1 && army.Members.Count > 1
+                    && HeroRoleEvaluator.IsHomeHero(hero));
 
         // Any hero-led army at all — bare, Recce-carrying, or already escorted, the only thing
         // that matters is "exactly one hero". Broader than IsHeroLedCombatArmy (excludes Recce)
@@ -739,14 +747,14 @@ namespace Game.Ai
         // has no support vocation (both stay home by rule), the widest command first.
         internal static UnitData BestSparableCommandHero(PlayerSetupData player, ArmyData garrison) =>
             SparableHeroes(player, garrison, null, null)
-                .Where(u => !IsGarrisonHero(u) && !Game.Ai.V2.HeroRoleEvaluator.HasSupportVocation(u))
+                .Where(u => !HeroRoleEvaluator.IsHomeHero(u))
                 .OrderByDescending(u => u.CommandRating).ThenBy(u => u.Name)
                 .FirstOrDefault();
 
         internal static IEnumerable<UnitData> EconomyHeroCandidates(PlayerSetupData player,
             ArmyData garrison, System.Func<ResearchProductionMode, HexCoord?> preparationSite = null) =>
             SparableHeroes(player, garrison, null, preparationSite)
-                .OrderBy(u => IsGarrisonHero(u) || HeroRoleEvaluator.HasSupportVocation(u))
+                .OrderBy(u => HeroRoleEvaluator.IsHomeHero(u))
                 .ThenByDescending(u => u.MoveMax).ThenByDescending(u => u.CommandRating).ThenBy(u => u.Name);
 
         // Development and Economy use the SAME garrison protection and extraction eligibility.

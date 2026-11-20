@@ -34,13 +34,14 @@ namespace Game.Ai.V2
         }
 
         internal static IEnumerator RunActiveDefence(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
+            WorldSnapshot snapshot)
         {
             ArmyData initial = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             int limit = GroundCombatLegStep.StepBudget(initial, pm) + 1;
             for (int i = 0; i < limit; ++i)
             {
-                yield return RunActiveDefenceStepCore(player, ctx, pm, result);
+                yield return RunActiveDefenceStepCore(player, ctx, pm, result, snapshot);
                 // A relief extraction is its own terminal step (one mutation per step).
                 if (result.StopReason != ExecutionStopReason.StepCompleted || result.ActorMaterialized) break;
                 // An air-support series that turned home has handed the wing to aviation recovery.
@@ -51,14 +52,15 @@ namespace Game.Ai.V2
         }
 
         internal static IEnumerator RunActiveDefenceStep(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
+            WorldSnapshot snapshot)
         {
-            yield return RunActiveDefenceStepCore(player, ctx, pm, result);
+            yield return RunActiveDefenceStepCore(player, ctx, pm, result, snapshot);
             FinishActiveDefence(player, root, pm, result, apBefore);
         }
 
         private static IEnumerator RunActiveDefenceStepCore(PlayerSetupData player,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, WorldSnapshot snapshot)
         {
             ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (army == null || army.Owner != player)
@@ -75,7 +77,7 @@ namespace Game.Ai.V2
 
             if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.AirSupport)
             {
-                yield return RunAirSupportStep(player, ctx, pm, result, army);
+                yield return RunAirSupportStep(player, ctx, pm, result, army, snapshot);
                 yield break;
             }
 
@@ -115,7 +117,7 @@ namespace Game.Ai.V2
                         // The muster mover joins the standing fist on the staging Base.
                         if (muster)
                             result.CombatChanged |= JoinFist(player, ctx,
-                                AiV2Util.ResolveArmy(player, pm.MoverArmyId), home) > 0;
+                                AiV2Util.ResolveArmy(player, pm.MoverArmyId), home, snapshot) > 0;
                     });
                 yield break;
             }
@@ -222,7 +224,7 @@ namespace Game.Ai.V2
         // global registry or a projection: only the real strike changes the world, and its
         // published observation is what the next pass learns from.
         private static IEnumerator RunAirSupportStep(PlayerSetupData player, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, ArmyData wing)
+            ProvisionedMission pm, ExecutionResult result, ArmyData wing, WorldSnapshot snapshot)
         {
             int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
             AiMapMemory.KnownEnemySighting? witness = AiMapMemory.KnownHostileSightingOf(player, enemyId);
@@ -239,7 +241,7 @@ namespace Game.Ai.V2
                 result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 yield break;
             }
-            wing = GroundCombatLegStep.MaterializeSupportWing(player, ctx, pm, result, wing);
+            wing = GroundCombatLegStep.MaterializeSupportWing(player, ctx, pm, result, wing, snapshot);
             if (!AviationRules.IsValidAirArmy(wing))
             {
                 result.StopForReplan(ExecutionStopReason.TargetInvalidated);
@@ -319,12 +321,16 @@ namespace Game.Ai.V2
         // of the giving army stays behind when the receiver already has a commander (it would only
         // take a slot). Nothing joins when no free fist stands there: the mover IS the fist then.
         // Returns the units moved.
-        internal static int JoinFist(PlayerSetupData player, AiTurnContext ctx, ArmyData mover, HexCoord home)
+        internal static int JoinFist(PlayerSetupData player, AiTurnContext ctx, ArmyData mover, HexCoord home,
+            WorldSnapshot snapshot)
         {
             if (player == null || mover == null || !mover.Hex.Equals(home) || mover.Members.Count == 0)
                 return 0;
-            HashSet<int> claimed = ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All
-                .Where(i => i != null && i.Status == IntentStatus.Active), null, null).ClaimedArmyIdSet;
+            // The ownership view needs the snapshot: MissionActorPolicy.Build claims nothing
+            // without one (2026-11-19: the null snapshot made this filter a no-op).
+            HashSet<int> claimed = ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snapshot)
+                    .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
+                snapshot, null).ClaimedArmyIdSet;
             ArmyData host = OwnWorld.Of(player).Armies
                 .Where(a => a != null && a != mover && a.Hex.Equals(home) && !claimed.Contains(a.Id)
                     && FistMusterObjectiveEvaluator.IsLiveFistContainer(player, a))

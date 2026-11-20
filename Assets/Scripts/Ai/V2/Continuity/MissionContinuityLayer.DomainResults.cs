@@ -104,7 +104,8 @@ namespace Game.Ai.V2
         private delegate bool OutcomeTransition(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult result, int turn);
         private static readonly OutcomeTransition[] SideLegTransitions =
-            { AttackContinuity.TryHandleAttackSideLeg, GroundCombatContinuity.TryHandleInvalidGroundSupport };
+            { AttackContinuity.TryHandleAttackSideLeg, AttackContinuity.TrySupersedeRecoveryReturn,
+                GroundCombatContinuity.TryHandleInvalidGroundSupport };
         private static readonly OutcomeTransition[] CompletionTransitions =
             { RaidContinuity.TryCompleteRaidTarget, AttackContinuity.TryCompleteAttackLeg, ReconContinuity.TryContinueScoutWaypoint };
         private static readonly OutcomeTransition[] RecoveryTransitions = { EconomyContinuity.TryKeepEconomyRecovery };

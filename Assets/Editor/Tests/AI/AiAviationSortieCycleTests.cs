@@ -1353,7 +1353,7 @@ namespace Game.EditorTests
                 var build = typeof(NonCombatCardPlayer).GetMethod("BuildAviationPlays",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
                 var arguments = new object[] { card, null, snap, _owner, _root, hand, ctx,
-                    new List<string>(), null, false };
+                    new List<string>(), null, false, default(SpendAuthority) };
                 var candidates = (List<NonCombatCardPlayer.NonCombatPlay>)build.Invoke(null, arguments);
                 Assert.That(candidates.Count, Is.EqualTo(1));
                 Assert.That(candidates[0].Explain, Does.Contain("serviceTask="));
@@ -1363,6 +1363,14 @@ namespace Game.EditorTests
                 snap.Intents = MissionIntentRegistry.GetOrCreate(_owner);
                 candidates = (List<NonCombatCardPlayer.NonCombatPlay>)build.Invoke(null, arguments);
                 Assert.That(candidates, Is.Empty, "a sighting alone must not invent a task for aviation");
+
+                // Match 2026-11-19b (Sable T9/T11): a full hand with nothing to fly at froze the
+                // turn. The aircraft may then be stored in the airfield, with no task value.
+                while (hand.HasFreeSlot)
+                    hand.Hand.Add(new CardData(new CardDefinition { displayName = "Filler" }));
+                candidates = (List<NonCombatCardPlayer.NonCombatPlay>)build.Invoke(null, arguments);
+                Assert.That(candidates.Count, Is.EqualTo(1), "a full hand stores the aircraft");
+                Assert.That(candidates[0].Explain, Does.Contain("serviceTask=0"));
             }
             finally { MissionIntentRegistry.Clear(); Object.DestroyImmediate(mapObject); }
         }
@@ -1693,6 +1701,58 @@ namespace Game.EditorTests
         // Playtest 2026-10-22 (Kryll T17-T21): Rusty Vulture stayed stored while an assault marched,
         // because only formed wings were support candidates. A stored aircraft is the same source:
         // the option names its airfield, and the leg forms the wing (the one formation path).
+        // Match 2026-11-19b (Sable airfield (-1,-1), T14-T18): every stored support launch formed a
+        // NEW army and the landed wing left its empty shell on the Base, eight by T18. The leg
+        // forms the wing in a free empty shell already standing on the airfield hex.
+        [Test, Category("UnityEngine")]
+        public void StoredSupportLaunch_ReusesTheFreeEmptyShellOnTheAirfieldHex()
+        {
+            HexMap map = Line(6, out GameObject mapObject);
+            var shellObject = new GameObject("empty-shell");
+            try
+            {
+                ArmyData airfield = Airfield(new HexCoord(0, 0), capacity: 4);
+                UnitData plane = Plane(1, 1);
+                airfield.AddMemberSorted(plane);
+                var shell = new ArmyData { Owner = _owner, Hex = airfield.Hex, Name = "Shell" };
+                shell.Controller = shellObject.AddComponent<ArmyController>(); shell.Controller.SetData(shell);
+                ArmyRegistry.Register(shell);
+                int armiesBefore = ArmyRegistry.AllForOwner(_owner).Count();
+                var snap = new WorldSnapshot
+                {
+                    Observer = _owner, TurnNumber = 1, Map = map,
+                    Self = new SelfSnapshot
+                    {
+                        BaseHexes = new[] { airfield.Hex },
+                        Armies = new[]
+                        {
+                            new ArmySnapshot { ArmyId = airfield.Id, Owner = _owner, Hex = airfield.Hex,
+                                IsAirfield = true, MemberCount = 1 },
+                            new ArmySnapshot { ArmyId = shell.Id, Owner = _owner, Hex = shell.Hex },
+                        },
+                    },
+                };
+                var pm = new ProvisionedMission { MoverArmyId = airfield.Id,
+                    AircraftRuntimeIds = new[] { plane.RuntimeId } };
+                var result = new ExecutionResult();
+
+                ArmyData wing = GroundCombatLegStep.MaterializeSupportWing(_owner,
+                    new AiTurnContext { Map = map, TurnNumber = 1 }, pm, result, airfield, snap);
+
+                Assert.That(wing, Is.SameAs(shell), "the free shell on the hex becomes the wing");
+                Assert.That(wing.Members, Is.EqualTo(new[] { plane }));
+                Assert.That(AviationRules.IsValidAirArmy(wing), Is.True);
+                Assert.That(ArmyRegistry.AllForOwner(_owner).Count(), Is.EqualTo(armiesBefore),
+                    "no new army is created");
+                Assert.That(pm.MoverArmyId, Is.EqualTo(shell.Id));
+            }
+            finally
+            {
+                Object.DestroyImmediate(shellObject);
+                Object.DestroyImmediate(mapObject);
+            }
+        }
+
         [Test, Category("UnityEngine")]
         public void StoredAircraft_AreASupportSource_AndTheLegFormsTheirWing()
         {
@@ -1734,7 +1794,7 @@ namespace Game.EditorTests
                     AircraftRuntimeIds = new[] { plane.RuntimeId } };
                 var result = new ExecutionResult();
                 ArmyData wing = GroundCombatLegStep.MaterializeSupportWing(_owner,
-                    new AiTurnContext { Map = map, TurnNumber = 1 }, pm, result, airfield);
+                    new AiTurnContext { Map = map, TurnNumber = 1 }, pm, result, airfield, snap);
 
                 Assert.That(AviationRules.IsValidAirArmy(wing), Is.True);
                 Assert.That(wing.Members, Is.EqualTo(new[] { plane }));
