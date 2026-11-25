@@ -782,11 +782,12 @@ namespace Game.Ai
         // 2026-11-19 (fist muster) — the hero the garrison may hand to a heroless fist on its hex
         // as its commander: a sparable hero (CanSpareGarrisonMember — never a facility operator,
         // never the last member, no facility it is needed for) that is no Support garrison hero and
-        // has no support vocation (both stay home by rule), the widest command first.
+        // has no support vocation (both stay home by rule), the widest command first; an equal
+        // command goes to the higher Fate (2026-11-25, owner: the commander's battle Fate).
         internal static UnitData BestSparableCommandHero(PlayerSetupData player, ArmyData garrison) =>
             SparableHeroes(player, garrison, null, null)
                 .Where(u => !HeroRoleEvaluator.IsHomeHero(u))
-                .OrderByDescending(u => u.CommandRating).ThenBy(u => u.Name)
+                .OrderByDescending(u => u.CommandRating).ThenByDescending(u => u.Fate).ThenBy(u => u.Name)
                 .FirstOrDefault();
 
         internal static IEnumerable<UnitData> EconomyHeroCandidates(PlayerSetupData player,

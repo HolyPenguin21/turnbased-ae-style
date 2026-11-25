@@ -32,6 +32,10 @@ public static class Mathf
     public static float Round(float f) => (float)System.Math.Round(f);
     public static int CeilToInt(float f) => (int)System.Math.Ceiling(f);
     public static int FloorToInt(float f) => (int)System.Math.Floor(f);
+    public static float Floor(float f) => (float)System.Math.Floor(f);
+    public static float Ceil(float f) => (float)System.Math.Ceiling(f);
+    public static float MoveTowards(float current, float target, float maxDelta) =>
+        Abs(target - current) <= maxDelta ? target : current + Sign(target - current) * maxDelta;
     public static float Abs(float f) => System.Math.Abs(f);
     public static int Abs(int f) => System.Math.Abs(f);
     public static float Lerp(float a, float b, float t) => a + (b - a) * Clamp01(t);
