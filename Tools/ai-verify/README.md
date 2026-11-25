@@ -45,11 +45,11 @@ Work files go to `$AI_VERIFY_WORK` (default `$TMPDIR/ai-verify`); baselines are 
 | Scope | Command | Runs | Time (unity mode, eaee2e98) |
 |---|---|---|---|
 | fast (default) | `test_regress.sh [base-rev]`, `run_tests.sh <out.xml> [rev]` | everything except `[Category("Extended")]` and `engine_bound.txt` | ~100 s of tests; `test_regress.sh` ~2 min (base + working tree in parallel), ~1.5 min with a cached base |
-| all | `test_regress.sh --all [base-rev]`, `run_tests.sh <out.xml> [rev] --all` | every test | ~19 min (1130 s of tests, 944 s of them `GridVsForecastCalibration.Probe`) |
+| all | `test_regress.sh --all [base-rev]`, `run_tests.sh <out.xml> [rev] --all` | every test | ~130 s of tests (before 2026-11-25 ~19 min: a calibration probe, since removed, took 944 s) |
 | scoped | `run_tests.sh <out.xml> "" --where "class =~ 'Carrier\|Air'"` | the fast set narrowed by the `--where` | seconds |
 
-- **fast** skips what the routine Unity run skips (`Extended`: calibration probes and generators —
-  `GridVsForecastCalibration.Probe` alone is ~15 min here) and the tests that cannot pass outside Unity.
+- **fast** skips what the routine Unity run skips (`Extended`: multi-seed generators, whole-campaign runs,
+  Play Mode fixtures) and the tests that cannot pass outside Unity.
   It is the gate after every change.
 - **all** is for rebuilding the list and for a final check of the tool itself; it reports the
   ~950 engine-bound failures again.
@@ -102,4 +102,6 @@ Unity.exe -batchmode -projectPath <checkout> -runTests -testPlatform EditMode \
 ```
 
 Run the full suite (no `-testCategory`) before merging into master or after engine/presentation
-changes. A batch run needs a checkout the open editor does not hold, e.g. a `git worktree`.
+changes. Measured 2026-11-25 (after removing the calibration probe and UI fixtures): full suite
+4498 tests, ~4.7 min of tests; without `Extended` ~3.7 min. Editor start-up and script compile
+come on top (minutes more after switching a worktree to another revision). A batch run needs a checkout the open editor does not hold, e.g. a `git worktree`.
