@@ -310,6 +310,42 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE {intent.IntentKey} "
                 + $"phase={payload.Phase} enemy={t.EnemyArmyId} actor={payload.PrimaryArmyId}");
         }
+        // 2026-11-25 (owner, variant 2) — an Attack army walking home (RecoveryReturn) whose intent a
+        // new preparation on the same target supersedes keeps walking as an ActiveDefence
+        // SafeWithdrawal Return to the same base (own key: mover + destination), instead of being
+        // freed mid-route (Brynn T23: Rust Bite never reached the Base it was called to). The
+        // ordinary SafeWithdrawal continuity then owns it: it ends once the army is no longer
+        // threatened or arrives.
+        internal static void ContinueRecoveryWalk(MissionIntentState state, int armyId, HexCoord home,
+            AssetKind homeKind, int turn)
+        {
+            if (state == null)
+                return;
+            var payload = new ActiveDefenceIntent
+            {
+                Phase = ActiveDefencePhase.Return,
+                ReturnPurpose = ActiveDefenceReturnPurpose.SafeWithdrawal,
+                EnemyArmyId = -1,
+                LastKnownHex = home, LastObservedTurn = turn, Confidence = 1f,
+                ProtectedAssetHex = home, ProtectedAssetKind = homeKind,
+                PrimaryArmyId = armyId,
+                ReturnHex = home,
+            };
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.ActiveDefence, Funding = CommitmentTier.Hard,
+                Status = IntentStatus.Active, Suspended = SuspendReason.None, Objective = payload,
+                CreatedTurn = turn, TurnsActive = 1, LastReconciledTurn = turn, LastProgressTurn = turn,
+                PreferredMoverArmyId = armyId,
+            };
+            intent.IntentKey = MissionIntentKey.For(intent);
+            if (state.All.Any(i => i != null && i.IntentKey.Equals(intent.IntentKey)))
+                return;
+            state.Put(intent);
+            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE {intent.IntentKey} "
+                + $"phase=Return purpose=SafeWithdrawal actor={armyId} reason=superseded_attack_recovery");
+        }
+
         internal static bool TryCreateActiveDefenceStep(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {

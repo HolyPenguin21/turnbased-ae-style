@@ -1326,8 +1326,12 @@ namespace Game.Ai.V2
             state.Remove(intent.IntentKey, turn);
             AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - a new preparation on the "
                 + $"same target (host #{host?.ToString() ?? "-"}) supersedes the recovery walk of "
-                + $"#{intent.Attack.PrimaryArmyId}; that army is free for a fresh decision");
+                + $"#{intent.Attack.PrimaryArmyId}; the walk home continues as an ActiveDefence Return");
             CreateAttackIntent(state, o, turn);
+            // 2026-11-25 (owner, variant 2) — the walk home is not dropped mid-route.
+            if (intent.Attack.PrimaryArmyId.HasValue && intent.Attack.RecoveryBaseHex.HasValue)
+                ActiveDefenceContinuity.ContinueRecoveryWalk(state, intent.Attack.PrimaryArmyId.Value,
+                    intent.Attack.RecoveryBaseHex.Value, AssetKind.Base, turn);
             return true;
         }
 

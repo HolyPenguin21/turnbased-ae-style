@@ -1450,6 +1450,14 @@ namespace Game.EditorTests
             Assert.That(now.Attack.Preparation, Is.True);
             Assert.That(now.Attack.PrimaryArmyId, Is.EqualTo(17), "the preparation host owns the operation");
             Assert.That(now.Attack.StagingHex, Is.EqualTo(OurBase));
+            // 2026-11-25 (owner, variant 2) — the superseded walk home continues as an ActiveDefence
+            // Return of #35 to its recovery base (its own key), not a free army mid-route.
+            MissionIntent walk = MissionIntentRegistry.GetOrCreate(Us).All.SingleOrDefault(i =>
+                i?.ActiveDefence != null && i.ActiveDefence.PrimaryArmyId == 35);
+            Assert.That(walk, Is.Not.Null);
+            Assert.That(walk.ActiveDefence.Phase, Is.EqualTo(ActiveDefencePhase.Return));
+            Assert.That(walk.ActiveDefence.ReturnPurpose, Is.EqualTo(ActiveDefenceReturnPurpose.SafeWithdrawal));
+            Assert.That(walk.ActiveDefence.ReturnHex, Is.EqualTo(OurBase));
         }
 
         // A preparation step that did not start the new operation is no step of the recovering one.
