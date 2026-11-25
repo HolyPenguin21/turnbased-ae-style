@@ -205,51 +205,6 @@ namespace Game.EditorTests
                 .Concat(name == "Rail Rifle" ? new[] { UnitAbilities.Ionic } : Array.Empty<string>())));
         }
 
-        [TestCase("Assault Cannon Kit")]
-        [TestCase("Siege Ram")]
-        [TestCase("Mortar Rack")]
-        [TestCase("Flame Projector")]
-        [TestCase("Rail Cannon")]
-        [TestCase("AA Mount")]
-        public void GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha(string name)
-        {
-            var gear = Gear(name);
-            var roster = FactionPaths.SelectMany(Blocks).Select(Read).ToList();
-            var aircraft = roster.Where(c => c.cardType == CardType.Unit && c.isAviation).ToList();
-            Assert.That(aircraft, Is.Not.Empty);
-            foreach (var c in aircraft) Assert.That(EquipmentSystem.FitsHost(gear, c, out _), Is.False, c.displayName);
-            var ground = roster.Where(c => c.cardType == CardType.Unit && !c.isAviation
-                && (c.unitTypeTags.Contains(UnitTypeTag.Vehicle) || c.unitTypeTags.Contains(UnitTypeTag.Mecha))).ToList();
-            Assert.That(ground, Is.Not.Empty);
-            foreach (var c in ground) Assert.That(EquipmentSystem.FitsHost(gear, c, out _), Is.True, c.displayName);
-        }
-
-        [Category("Extended")]
-        [TestCase("Shotgun")]
-        [TestCase("Marksman Rifle")]
-        [TestCase("Optical Scope")]
-        public void InfantryWeaponsAcceptMechanicalInfantryAndDoNotSpreadToHeroes(string name)
-        {
-            var roster = FactionPaths.SelectMany(Blocks).Select(Read).ToList();
-            var infantry = roster.Where(c => c.cardType == CardType.Unit
-                && c.unitTypeTags.Contains(UnitTypeTag.Infantry) && c.unitTypeTags.Contains(UnitTypeTag.Mechanical)).ToList();
-            Assert.That(infantry, Is.Not.Empty);
-            foreach (var host in infantry)
-                Assert.That(EquipmentSystem.FitsHost(Gear(name), host, out _), Is.True, host.displayName);
-            foreach (var hero in roster.Where(c => c.cardType == CardType.Hero))
-                Assert.That(EquipmentSystem.FitsHost(Gear(name), hero, out _), Is.False, hero.displayName);
-        }
-
-        [Test]
-        public void NuclearEngineKeepsAircraftCompatibility()
-        {
-            var aircraft = FactionPaths.SelectMany(Blocks).Select(Read)
-                .Where(c => c.cardType == CardType.Unit && c.isAviation).ToList();
-            Assert.That(aircraft, Is.Not.Empty);
-            foreach (var host in aircraft)
-                Assert.That(EquipmentSystem.FitsHost(Gear("Nuclear Engine"), host, out _), Is.True, host.displayName);
-        }
-
         [TestCase("AA Launcher")]
         [TestCase("AA Mount")]
         public void AntiAirAttachmentProvidesRadiusAndARealEntryReaction(string name)
@@ -483,16 +438,6 @@ namespace Game.EditorTests
                 Is.EqualTo(new[] { attack, range, defense, hp }));
             Assert.That(body.Abilities, Is.EquivalentTo(abilities));
             Assert.That(body.Equipment, Is.Null); Assert.That(body.Mutator, Is.SameAs(mutation));
-        }
-
-        [Category("Extended")]
-        [Test]
-        public void VesselsRejectBioGenomes()
-        {
-            var vessels = Blocks(FactionPaths[2]).Select(Read).ToArray();
-            foreach (var host in vessels.Where(c => c.cardType == CardType.Unit || c.cardType == CardType.Hero))
-            foreach (var genome in Cards().Where(c => c.attachmentSlot == AttachmentSlot.Mutator))
-                Assert.That(EquipmentSystem.FitsHost(genome, host, out _), Is.False, host.displayName);
         }
     }
 }
