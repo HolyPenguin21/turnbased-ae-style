@@ -300,6 +300,12 @@ namespace Game.Map
         // ring after it still gets the normal padding, giving a visible border along both sides
         // of the shaft.
         public Mesh BuildArrowMesh(List<Vector3> curve, float widthPad, bool skipTailRing)
+            => BuildArrowMesh(curve, widthPad, skipTailRing, null);
+
+        // Same geometry written into `target` (cleared first) instead of a new Mesh, so a
+        // preview redrawn on every hover keeps reusing one native mesh rather than leaking one
+        // per redraw. A null target creates a new Mesh, exactly like the overload above.
+        public Mesh BuildArrowMesh(List<Vector3> curve, float widthPad, bool skipTailRing, Mesh target)
         {
             float totalLength = 0f;
             var cumulative = new float[curve.Count];
@@ -526,7 +532,9 @@ namespace Game.Map
                 }
             }
 
-            var mesh = new Mesh { name = "MoveArrow" };
+            // Unity null check, not ??: a destroyed target compares equal to null.
+            Mesh mesh = target != null ? target : new Mesh { name = "MoveArrow" };
+            mesh.Clear();
             mesh.SetVertices(vertices);
             mesh.SetColors(colors);
             mesh.SetTriangles(triangles, 0);

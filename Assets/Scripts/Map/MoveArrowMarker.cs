@@ -61,6 +61,13 @@ namespace Game.Map
         private MeshFilter _energyBadgeBorderFilter;
         private MeshRenderer _energyBadgeBorderRenderer;
         private bool _initialized;
+        // The two route meshes are refilled on every Show instead of replaced: assigning a
+        // fresh Mesh per hovered hex left every previous one alive until the next scene load.
+        private Mesh _fillMesh;
+        private Mesh _outlineMesh;
+        // Every Mesh/Material this marker created at runtime — none of them is a scene object,
+        // so destroying the GameObject alone does not free them.
+        private readonly List<Object> _ownedObjects = new List<Object>();
 
         private void Awake()
         {
@@ -88,8 +95,11 @@ namespace Game.Map
             Shader shader = Shader.Find("Custom/MoveArrowGlow");
             if (shader == null)
                 Debug.LogWarning("MoveArrowMarker: shader 'Custom/MoveArrowGlow' not found.");
-            _material = new Material(shader);
+            _material = Own(new Material(shader));
             _renderer.sharedMaterial = _material;
+            _fillMesh = Own(new Mesh { name = "MoveArrow" });
+            _fillMesh.MarkDynamic();
+            _filter.sharedMesh = _fillMesh;
 
             // Outline and badge share the fill's own shader now (Custom/MoveArrowGlow, always
             // Transparent queue) instead of the built-in URP Unlit, which defaults to the
@@ -102,6 +112,9 @@ namespace Game.Map
             _outlineFilter = BuildChildMesh("Outline", shader, out _outlineRenderer);
             _outlineRenderer.sharedMaterial.color = _style.outlineColor;
             _outlineRenderer.sortingOrder = _style.outlineSortingOrder;
+            _outlineMesh = Own(new Mesh { name = "MoveArrowOutline" });
+            _outlineMesh.MarkDynamic();
+            _outlineFilter.sharedMesh = _outlineMesh;
 
             // Each badge's border is a hollow ring (badgeRadius -> badgeRadius+thickness), not a
             // solid larger disc — a solid disc relying only on sortingOrder to stay behind the
@@ -109,35 +122,35 @@ namespace Game.Map
             // number) entirely. A true ring can never cover the badge regardless of draw order,
             // same reasoning as the arrow's own hollow outline strips (see BuildArrowMesh).
             _badgeBorderFilter = BuildChildMesh("BadgeBorder", shader, out _badgeBorderRenderer);
-            _badgeBorderFilter.mesh = BuildRingMesh(_style.badgeRadius, _style.badgeRadius + _style.badgeBorderThickness);
+            _badgeBorderFilter.sharedMesh = Own(BuildRingMesh(_style.badgeRadius, _style.badgeRadius + _style.badgeBorderThickness));
             _badgeBorderRenderer.sharedMaterial.color = _style.badgeBorderColor;
             _badgeBorderRenderer.sortingOrder = _style.badgeBorderSortingOrder;
 
             _badgeFilter = BuildChildMesh("Badge", shader, out _badgeRenderer);
-            _badgeFilter.mesh = BuildCircleMesh(_style.badgeRadius);
+            _badgeFilter.sharedMesh = Own(BuildCircleMesh(_style.badgeRadius));
             _badgeRenderer.sharedMaterial.color = _style.badgeColor;
             _badgeRenderer.sortingOrder = _style.badgeSortingOrder;
             _badgeText = BuildBadgeText(_badgeFilter, _style.badgeTextColor);
 
             _apBadgeBorderFilter = BuildChildMesh("ApBadgeBorder", shader, out _apBadgeBorderRenderer);
-            _apBadgeBorderFilter.mesh = BuildRingMesh(_style.badgeRadius, _style.badgeRadius + _style.badgeBorderThickness);
+            _apBadgeBorderFilter.sharedMesh = Own(BuildRingMesh(_style.badgeRadius, _style.badgeRadius + _style.badgeBorderThickness));
             _apBadgeBorderRenderer.sharedMaterial.color = _style.badgeBorderColor;
             _apBadgeBorderRenderer.sortingOrder = _style.badgeBorderSortingOrder;
 
             // Same circle-plus-number badge, just AP-coloured — sits beside the move-cost
             // badge (see Show), not stacked on it.
             _apBadgeFilter = BuildChildMesh("ApBadge", shader, out _apBadgeRenderer);
-            _apBadgeFilter.mesh = BuildCircleMesh(_style.badgeRadius);
+            _apBadgeFilter.sharedMesh = Own(BuildCircleMesh(_style.badgeRadius));
             _apBadgeRenderer.sharedMaterial.color = _style.apBadgeColor;
             _apBadgeRenderer.sortingOrder = _style.badgeSortingOrder;
             _apBadgeText = BuildBadgeText(_apBadgeFilter, _style.badgeTextColor);
 
             _energyBadgeBorderFilter = BuildChildMesh("EnergyBadgeBorder", shader, out _energyBadgeBorderRenderer);
-            _energyBadgeBorderFilter.mesh = BuildRingMesh(_style.badgeRadius, _style.badgeRadius + _style.badgeBorderThickness);
+            _energyBadgeBorderFilter.sharedMesh = Own(BuildRingMesh(_style.badgeRadius, _style.badgeRadius + _style.badgeBorderThickness));
             _energyBadgeBorderRenderer.sharedMaterial.color = _style.badgeBorderColor;
             _energyBadgeBorderRenderer.sortingOrder = _style.badgeBorderSortingOrder;
             _energyBadgeFilter = BuildChildMesh("EnergyBadge", shader, out _energyBadgeRenderer);
-            _energyBadgeFilter.mesh = BuildCircleMesh(_style.badgeRadius);
+            _energyBadgeFilter.sharedMesh = Own(BuildCircleMesh(_style.badgeRadius));
             _energyBadgeRenderer.sharedMaterial.color = new Color(0.851f, 0.749f, 0.149f, 1f); // #D9BF26
             _energyBadgeRenderer.sortingOrder = _style.badgeSortingOrder;
             _energyBadgeText = BuildBadgeText(_energyBadgeFilter, _style.badgeTextColor);
@@ -159,9 +172,24 @@ namespace Game.Map
             renderer = go.AddComponent<MeshRenderer>();
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
-            var material = new Material(shader);
+            var material = Own(new Material(shader));
             renderer.sharedMaterial = material;
             return filter;
+        }
+
+        private T Own<T>(T value) where T : Object
+        {
+            _ownedObjects.Add(value);
+            return value;
+        }
+
+        private void OnDestroy()
+        {
+            foreach (Object owned in _ownedObjects)
+                UnityObjectLifetime.Destroy(owned);
+            _ownedObjects.Clear();
+            _fillMesh = null;
+            _outlineMesh = null;
         }
 
         // The number inside a cost badge — shared setup for both the move-cost and AP badges.
@@ -201,7 +229,7 @@ namespace Game.Map
 
             List<Vector3> curve = geometry.BuildCurve(hexCenters);
 
-            _filter.mesh = geometry.BuildArrowMesh(curve, 0f, skipTailRing: false);
+            geometry.BuildArrowMesh(curve, 0f, skipTailRing: false, _fillMesh);
             // Fully opaque — a partial alpha here let the terrain underneath show through,
             // and since the terrain's own colour varies along the arrow's length, the exact
             // same _Color value visibly read as different shades at the tip vs. the tail.
@@ -210,7 +238,7 @@ namespace Game.Map
 
             // Outline skips just its very first ring (see BuildArrowMesh's skipTailRing note) —
             // every other shaft ring, and the whole head, still get the normal outline padding.
-            _outlineFilter.mesh = geometry.BuildArrowMesh(curve, _style.outlineThickness, skipTailRing: true);
+            geometry.BuildArrowMesh(curve, _style.outlineThickness, skipTailRing: true, _outlineMesh);
             _outlineRenderer.enabled = true;
 
             // Always laid out along world X, regardless of which way the arrow itself points —

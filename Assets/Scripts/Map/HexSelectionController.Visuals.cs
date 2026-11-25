@@ -56,6 +56,12 @@ namespace Game.Map
             new Dictionary<PlayerSetupData, Dictionary<int, RememberedArmyVisual>>();
         private readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, List<RememberedArmyVisual>>> _rememberedArmyVisualsByHex =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, List<RememberedArmyVisual>>>();
+        // Hexes whose remembered markers were created, moved, re-cloned or removed since the last
+        // visibility pass. Every such change leaves its ghost hidden (or a same-owner sibling that
+        // should now take over unshown), and the per-hex pass after a content change
+        // (RefreshVisibilityAt) must reconcile these too — e.g. a departure capture puts the ghost
+        // on a fogged destination hex no content event of this viewer ever names.
+        private readonly HashSet<HexCoord> _rememberedVisualsChangedAt = new HashSet<HexCoord>();
 
         // Compatibility name for callers/tests; this is projection only. World observation
         // has already committed before public visibility/content notifications are delivered.
@@ -193,6 +199,7 @@ namespace Game.Map
 
         private void AddRememberedArmyToHexIndex(PlayerSetupData viewer, RememberedArmyVisual remembered)
         {
+            _rememberedVisualsChangedAt.Add(remembered.Hex);
             if (!_rememberedArmyVisualsByHex.TryGetValue(viewer,
                 out Dictionary<HexCoord, List<RememberedArmyVisual>> byHex))
             {
@@ -210,6 +217,7 @@ namespace Game.Map
 
         private void RemoveRememberedArmyFromHexIndex(PlayerSetupData viewer, RememberedArmyVisual remembered)
         {
+            _rememberedVisualsChangedAt.Add(remembered.Hex);
             if (!_rememberedArmyVisualsByHex.TryGetValue(viewer,
                 out Dictionary<HexCoord, List<RememberedArmyVisual>> byHex)
                 || !byHex.TryGetValue(remembered.Hex, out List<RememberedArmyVisual> atHex))
@@ -301,6 +309,7 @@ namespace Game.Map
 
         private void UpdateRememberedBuildingVisual(PlayerSetupData viewer, HexCoord hex, MapObjectVisual source)
         {
+            _rememberedVisualsChangedAt.Add(hex);
             if (!_rememberedBuildingVisuals.TryGetValue(viewer, out Dictionary<HexCoord, MapObjectVisual> visuals))
             {
                 visuals = new Dictionary<HexCoord, MapObjectVisual>();
@@ -341,6 +350,7 @@ namespace Game.Map
             if (!_rememberedBuildingVisuals.TryGetValue(viewer, out Dictionary<HexCoord, MapObjectVisual> visuals)
                 || !visuals.TryGetValue(hex, out MapObjectVisual snapshot))
                 return;
+            _rememberedVisualsChangedAt.Add(hex);
             visuals.Remove(hex);
             if (snapshot != null)
             {
@@ -712,9 +722,29 @@ namespace Game.Map
                     hexes.Add(hex);
             foreach (HexCoord hex in hexes)
                 ReconcileHexVisualState(hex, null);
+            // Every remembered hex was just reconciled. Cleared before the cleanup below, so the
+            // hexes of ghosts it destroys stay queued for the next per-hex pass.
+            _rememberedVisualsChangedAt.Clear();
             // Whole-map stale-entry cleanup only (see its own comment) — the actual show/hide
             // decision for every still-remembered army ghost already happened per-hex above.
             RemoveUnrememberedArmyVisualsForAllViewers();
+        }
+
+        // Per-hex counterpart of RefreshAllVisibility for a content change on one hex the current
+        // viewer already sees (see OnVisibleContentChanged): that hex, plus every hex whose
+        // remembered markers changed since the last pass. Each is reconciled by the same
+        // ReconcileHexVisualState, so a hex reached here ends exactly as a whole-map pass leaves it.
+        private void RefreshVisibilityAt(HexCoord hex)
+        {
+            if (map == null)
+                return;
+            var hexes = new List<HexCoord> { hex };
+            foreach (HexCoord changed in _rememberedVisualsChangedAt)
+                if (!changed.Equals(hex))
+                    hexes.Add(changed);
+            _rememberedVisualsChangedAt.Clear();
+            foreach (HexCoord target in hexes)
+                ReconcileHexVisualState(target, null);
         }
 
         // HexObjectLayout lays out one slot per distinct owner, not one per army — same-owner

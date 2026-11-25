@@ -181,6 +181,7 @@ namespace Game.Map
 
             AviationActions.ReturnedWingDeletionRequested += DeleteReturnedWing;
             ArmyRegistry.ArmyRemoved += OnArmyRemoved;
+            ArmyRegistry.ArmyRelocated += OnArmyRelocated;
             if (!ReferenceEquals(_selectedArmy, null) && !ArmyRegistry.IsRegistered(_selectedArmy.Data)) SetSelectedArmy(null);
             RefreshAllVisibility();
         }
@@ -217,6 +218,7 @@ namespace Game.Map
 
             AviationActions.ReturnedWingDeletionRequested -= DeleteReturnedWing;
             ArmyRegistry.ArmyRemoved -= OnArmyRemoved;
+            ArmyRegistry.ArmyRelocated -= OnArmyRelocated;
             SetRememberedBuildingVisualsVisible(false);
             SetRememberedArmyVisualsVisible(false);
         }
@@ -259,12 +261,28 @@ namespace Game.Map
         // A registry change on a hex which this player can already see must still update its
         // markers and remembered snapshot, but it must not make an unchanged FOW area look like
         // a full visibility rebuild to every subscriber.
+        // Per hex, not a whole-map pass: VisionSystem.NotifyContentChanged has already observed
+        // exactly this hex for this player (MapObservationSystem.ObserveHex -> Observed ->
+        // OnWorldObserved projected its remembered markers), so only the presentation is left —
+        // this hex plus every hex whose remembered markers that projection (or a departure
+        // capture just before it) created, moved or removed. A whole-map pass stays for viewer
+        // changes, vision changes, stealth and building transitions (see the other handlers).
         private void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
         {
-            if (HumanVisualMemory.Tracks(player))
-                RememberCurrentlyVisibleContent(player);
             if (player == VisionSystem.CurrentViewer)
-                RefreshAllVisibility();
+                RefreshVisibilityAt(hex);
+        }
+
+        // Both ends of a relocation, whatever the current viewer sees. A content event reaches
+        // only viewers who see that hex, so an enemy walking from a visible hex into fog names
+        // just its origin; the whole-map pass used to hide its live marker on the fogged
+        // destination as a side effect. Published after the move's content notifications.
+        private void OnArmyRelocated(ArmyData army, HexCoord from, HexCoord to)
+        {
+            if (VisionSystem.CurrentViewer == null)
+                return;
+            RefreshVisibilityAt(from);
+            ReconcileHexVisualState(to, null);
         }
 
         // A hidden unit toggling stealth (or a personal detection lapsing) changes what the

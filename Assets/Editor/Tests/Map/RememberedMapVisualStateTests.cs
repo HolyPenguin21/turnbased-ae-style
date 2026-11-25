@@ -2,9 +2,11 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Game.Core;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Terrain;
 using Game.Units;
 using NUnit.Framework;
 using UnityEngine;
@@ -159,6 +161,105 @@ namespace Game.EditorTests
                 Assert.That(ghost.transform.Find("flag").GetComponent<SpriteRenderer>().sprite, Is.SameAs(observedFlag));
             }
             finally { ArmyRegistry.Clear(); BuildingRegistry.Clear(); }
+        }
+
+        // Content changes refresh only the changed hex plus the hexes whose remembered markers
+        // changed (OnVisibleContentChanged), and both ends of a relocation (OnArmyRelocated) —
+        // never the whole map. These drive the real event chain and check the hexes no content
+        // event of the viewer names.
+        private void RunWithLiveSelection(Action body, params HexCoord[] hexes)
+        {
+            ArmyRegistry.Clear(); BuildingRegistry.Clear(); StealthSystem.Clear(); HexEventRegistry.Clear();
+            VisionSystem.Configure(null);
+            var terrain = new Dictionary<HexCoord, TerrainTypeEntry>();
+            foreach (HexCoord hex in hexes) terrain[hex] = new TerrainTypeEntry();
+            var map = root.AddComponent<HexMap>(); map.SetData(3, 1f, terrain);
+            var config = ScriptableObject.CreateInstance<GameConfig>();
+            Set(selection, "map", map); Set(selection, "gameConfig", config);
+            // Edit Mode never runs a runtime component's lifecycle: drive it as Play Mode would.
+            Call(selection, "Awake"); Call(selection, "OnEnable");
+            try { body(); }
+            finally
+            {
+                Call(selection, "OnDisable"); Call(selection, "OnDestroy");
+                ArmyRegistry.Clear(); BuildingRegistry.Clear(); StealthSystem.Clear(); HexEventRegistry.Clear();
+                Object.DestroyImmediate(config);
+            }
+        }
+        private void SetVisible(PlayerSetupData who, params HexCoord[] hexes) =>
+            VisionSystem.RestoreState(new VisionState { CurrentViewerId = VisionSystem.CurrentViewer?.PlayerId,
+                Players = new List<PlayerVisionState> { new PlayerVisionState { PlayerId = who.PlayerId, Visible = new List<HexCoord>(hexes) } } }, Player);
+        private ArmyData LiveEnemy(string name, HexCoord hex)
+        {
+            var marker = Marker(name, Color.yellow);
+            var controller = marker.gameObject.AddComponent<ArmyController>(); Call(controller, "Awake");
+            var army = new ArmyData { Owner = enemy, Hex = hex, Controller = controller };
+            army.Members.Add(new UnitData { Owner = enemy, Name = name, HitPointsCurrent = 3 });
+            controller.SetData(army); ArmyRegistry.Register(army);
+            return army;
+        }
+        private MapObjectVisual GhostOf(ArmyData army)
+        {
+            var byViewer = (System.Collections.IDictionary)selection.GetType().GetField("_rememberedArmyVisuals", Private).GetValue(selection);
+            var byId = (System.Collections.IDictionary)byViewer?[viewer];
+            object remembered = byId?[army.Id];
+            return (MapObjectVisual)remembered?.GetType().GetField("Visual").GetValue(remembered);
+        }
+
+        [Test]
+        public void EnemyWalkingIntoFogLeavesAVisibleGhostAndHidesItsLiveMarker()
+        {
+            HexCoord from = new HexCoord(0, 0), to = new HexCoord(1, 0);
+            RunWithLiveSelection(() =>
+            {
+                SetVisible(viewer, from);
+                ArmyData army = LiveEnemy("walker", from);
+                Assert.That(army.Controller.Visual.IsVisible, Is.True);
+                ArmyRegistry.MoveArmy(army, to);
+                Assert.That(army.Controller.Visual.IsVisible, Is.False, "The live marker must not show inside fog.");
+                Assert.That(GhostOf(army), Is.Not.Null);
+                Assert.That(GhostOf(army).IsVisible, Is.True, "The departure ghost on the fogged destination must show.");
+            }, from, to);
+        }
+
+        [Test]
+        public void UntrackedViewerStillHidesAnEnemyThatWalksIntoFog()
+        {
+            HexCoord from = new HexCoord(0, 0), to = new HexCoord(1, 0);
+            viewer.IsHuman = false; VisionSystem.CurrentViewer = viewer;
+            RunWithLiveSelection(() =>
+            {
+                Assert.That(HumanVisualMemory.Tracks(viewer), Is.False);
+                SetVisible(viewer, from);
+                ArmyData army = LiveEnemy("walker", from);
+                Assert.That(army.Controller.Visual.IsVisible, Is.True);
+                ArmyRegistry.MoveArmy(army, to);
+                Assert.That(GhostOf(army), Is.Null);
+                Assert.That(army.Controller.Visual.IsVisible, Is.False,
+                    "No ghost names the fogged destination; the relocation itself must reconcile it.");
+            }, from, to);
+        }
+
+        [Test]
+        public void GhostLeavingAFoggedHexHandsItsSlotToTheSameOwnersOtherGhost()
+        {
+            HexCoord seen = new HexCoord(0, 0), fogged = new HexCoord(1, 0), unseen = new HexCoord(2, 0);
+            RunWithLiveSelection(() =>
+            {
+                SetVisible(viewer, fogged);
+                ArmyData first = LiveEnemy("first", fogged), second = LiveEnemy("second", fogged);
+                SetVisible(viewer, seen);
+                Call(selection, "RefreshAllVisibility");
+                Assert.That(GhostOf(first).IsVisible, Is.True, "One ghost per owner: the first remembered one shows.");
+                Assert.That(GhostOf(second).IsVisible, Is.False);
+                // Leaves through fog, then appears in sight: the content event names only `seen`,
+                // the relocations only unseen/seen — `fogged` is reached through the changed ghost.
+                ArmyRegistry.MoveArmy(first, unseen);
+                ArmyRegistry.MoveArmy(first, seen);
+                Assert.That(first.Controller.Visual.IsVisible, Is.True);
+                Assert.That(GhostOf(first).IsVisible, Is.False);
+                Assert.That(GhostOf(second).IsVisible, Is.True, "The remaining ghost must take over the fogged hex.");
+            }, seen, fogged, unseen);
         }
 
         [Test]
