@@ -184,8 +184,7 @@ namespace Game.UI
         private void Relayout()
         {
             CancelDrags();
-            foreach (var card in _visible) card.gameObject.SetActive(false);
-            UIUtility.DestroyAndClear(_visible);
+            UIUtility.DestroyAndClear(_visible, deactivate: true);
             if (scrollUpButton != null)
                 scrollUpButton.interactable = _scrollOffset > 0;
             if (scrollDownButton != null)

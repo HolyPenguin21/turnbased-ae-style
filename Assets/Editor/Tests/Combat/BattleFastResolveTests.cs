@@ -12,8 +12,10 @@ using Game.UI;
 using Game.Units;
 using NUnit.Framework;
 #if UNITY_6000_3_OR_NEWER
+using TMPro;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 #endif
 
 namespace Game.EditorTests
@@ -168,6 +170,165 @@ namespace Game.EditorTests
             target.GetType().GetMethod(name, Private).Invoke(target, args);
 
 #if UNITY_6000_3_OR_NEWER
+        [UnityTest, Category("Extended"), Category("UnityNative")]
+        public IEnumerator LethalResultAcknowledgment_DetachesArtAndContinuesImmediately()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("The card dissolve requires a graphics device.");
+            yield return new EnterPlayMode();
+            var root = new GameObject("Battle effect test panel", typeof(RectTransform), typeof(Canvas));
+            var art = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f));
+            try
+            {
+                var screen = root.AddComponent<BattleScreenUI>();
+                Set(screen, "panelRoot", root);
+                var gridRoot = new GameObject("Grid", typeof(RectTransform)).transform;
+                gridRoot.SetParent(root.transform, false);
+                Set(screen, "gridContainer", gridRoot);
+                var grid = new BattleGrid();
+                Set(screen, "_battleState", new BattleState(default, null, null, grid, 1));
+
+                var victim = new UnitData { IsHero = true, Art = art, HitPointsMax = 2, HitPointsCurrent = 2 };
+                Set(screen, "gridCellPrefab", MakeGridCellPrefab(root.transform));
+                grid.Set(0, 0, victim);
+                Call(screen, "RefreshGrid");
+                var cells = (List<BattleGridCellUI>)Get(screen, "_cells");
+                var originalCells = cells.ToArray();
+                var cell = cells[0];
+                Assert.That(cells.Count, Is.EqualTo(BattleGrid.Rows * BattleGrid.Columns));
+                Assert.That(((TMP_Text)Get(cell, "hpStatText")).text, Is.EqualTo("2/2"));
+
+                victim.HitPointsCurrent = 1;
+                Call(screen, "RefreshGrid");
+                Assert.That(cells, Is.EqualTo(originalCells));
+                Assert.That(((TMP_Text)Get(cell, "hpStatText")).text, Is.EqualTo("1/2"));
+
+                var popupRoot = new GameObject("Attack result", typeof(RectTransform));
+                popupRoot.transform.SetParent(root.transform, false);
+                var popup = popupRoot.AddComponent<BattleAttackPopupUI>();
+                Set(popup, "panelRoot", popupRoot);
+                var attacker = new UnitData { Owner = new PlayerSetupData { IsHuman = true } };
+                Set(popup, "_attacker", attacker);
+
+                // A secondary hit has already been applied by the engine when its result opens.
+                victim.HitPointsCurrent = 0;
+                grid.Set(0, 0, null);
+                int continuations = 0;
+                popup.ShowSecondaryAttackResult(attacker, victim, "Destroyed", true, () =>
+                {
+                    Assert.That(popup.IsShowing, Is.False);
+                    Call(screen, "StartAttackPresentation", new BattleAttackApplication());
+                    Call(screen, "EndTurn");
+                    continuations++;
+                });
+                Assert.That(root.transform.Find("BattleCardDissolves"), Is.Null);
+
+                Call(popup, "OnOkClicked");
+                Assert.That(continuations, Is.EqualTo(1));
+                Assert.That(cells, Is.EqualTo(originalCells));
+                Assert.That(cell.gameObject.activeSelf, Is.True);
+                Assert.That(cell.Unit, Is.Null);
+                var layer = root.transform.Find("BattleCardDissolves");
+                Assert.That(layer, Is.Not.Null);
+                var ghost = layer.GetComponentInChildren<Image>();
+                Assert.That(ghost.sprite, Is.SameAs(art));
+                Assert.That(ghost.raycastTarget, Is.False);
+                Assert.That(ghost.GetComponent<BattleGridCellUI>(), Is.Null);
+
+                double deadline = Time.unscaledTimeAsDouble + 1.5;
+                while (layer != null && Time.unscaledTimeAsDouble < deadline)
+                    yield return null;
+                Assert.That(layer == null, Is.True, "the detached image must retire automatically");
+            }
+            finally
+            {
+                UnityEngine.Object.Destroy(root);
+                UnityEngine.Object.Destroy(art);
+            }
+            yield return new ExitPlayMode();
+        }
+
+        [UnityTest, Category("Extended"), Category("UnityNative")]
+        public IEnumerator BattleLayoutRestoresCancelledMoveAndReusesSurvivingQueueIcons()
+        {
+            yield return new EnterPlayMode();
+            var root = new GameObject("Battle layout test", typeof(RectTransform), typeof(Canvas));
+            try
+            {
+                var screen = root.AddComponent<BattleScreenUI>();
+                Set(screen, "panelRoot", root);
+                var gridRoot = new GameObject("Grid", typeof(RectTransform), typeof(GridLayoutGroup));
+                gridRoot.transform.SetParent(root.transform, false);
+                Set(screen, "gridContainer", gridRoot.transform);
+                Set(screen, "gridCellPrefab", MakeGridCellPrefab(root.transform));
+                Set(screen, "_localArmy", new ArmyData());
+                Set(screen, "moveAnimDuration", 10f);
+                var grid = new BattleGrid();
+                var first = new UnitData { HitPointsCurrent = 1 };
+                var second = new UnitData { HitPointsCurrent = 1 };
+                var third = new UnitData { HitPointsCurrent = 1 };
+                grid.Set(0, 0, first);
+                Set(screen, "_battleState", new BattleState(default, null, null, grid, 1));
+                Call(screen, "RefreshGrid");
+                var cells = (List<BattleGridCellUI>)Get(screen, "_cells");
+                LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)gridRoot.transform);
+                Vector3 slot = cells[0].RectTransform.anchoredPosition3D;
+
+                Call(screen, "PerformMove", 0, 0, 0, 1);
+                Assert.That(gridRoot.GetComponent<GridLayoutGroup>().enabled, Is.False);
+                yield return null;
+                Call(screen, "CancelMovePresentation");
+                Assert.That(gridRoot.GetComponent<GridLayoutGroup>().enabled, Is.True);
+                Assert.That(cells[0].RectTransform.GetSiblingIndex(), Is.Zero);
+                Assert.That(cells[0].RectTransform.anchoredPosition3D, Is.EqualTo(slot));
+                Assert.That(grid.Get(0, 0), Is.SameAs(first));
+                var originalCells = cells.ToArray();
+                grid.Swap(0, 0, 0, 1);
+                Call(screen, "RefreshGrid");
+                Assert.That(cells, Is.EqualTo(originalCells));
+                Assert.That(cells[0].Unit, Is.Null);
+                Assert.That(cells[1].Unit, Is.SameAs(first));
+
+                var queueRoot = new GameObject("Initiative", typeof(RectTransform)).transform;
+                queueRoot.SetParent(root.transform, false);
+                var iconPrefab = new GameObject("Icon template", typeof(RectTransform)).AddComponent<BattleTurnOrderIconUI>();
+                iconPrefab.transform.SetParent(root.transform, false);
+                Set(screen, "turnQueueContainer", queueRoot);
+                Set(screen, "turnQueueIconPrefab", iconPrefab);
+                var order = new[] { first, second, third };
+                Call(screen, "UpdateTurnOrderIcons", order, 0);
+                var icons = (List<BattleTurnOrderIconUI>)Get(screen, "_queueIcons");
+                var original = icons.ToArray();
+                Assert.That(Call(screen, "UpdateTurnOrderIcons", order, 1), Is.EqualTo(false));
+                Assert.That(icons, Is.EqualTo(original));
+                Call(screen, "UpdateTurnOrderIcons", new[] { second, third }, 0);
+                Call(screen, "UpdateTurnOrderIcons", new[] { third, second }, 0);
+                Assert.That(icons, Is.EqualTo(new[] { original[2], original[1] }));
+                Assert.That(original[0].gameObject.activeSelf, Is.False);
+                Assert.That(icons[0].transform.GetSiblingIndex(), Is.LessThan(icons[1].transform.GetSiblingIndex()));
+            }
+            finally
+            {
+                UnityEngine.Object.Destroy(root);
+            }
+            yield return new ExitPlayMode();
+        }
+
+        private static BattleGridCellUI MakeGridCellPrefab(Transform parent)
+        {
+            var template = new GameObject("Grid cell template", typeof(RectTransform));
+            template.transform.SetParent(parent, false);
+            var cell = template.AddComponent<BattleGridCellUI>();
+            var art = new GameObject("Card art", typeof(RectTransform), typeof(Image));
+            art.transform.SetParent(template.transform, false);
+            Set(cell, "artImage", art.GetComponent<Image>());
+            var hp = new GameObject("HP", typeof(RectTransform), typeof(TextMeshProUGUI));
+            hp.transform.SetParent(template.transform, false);
+            Set(cell, "statsRow", hp);
+            Set(cell, "hpStatText", hp.GetComponent<TMP_Text>());
+            return cell;
+        }
+
         [UnityTest]
         public IEnumerator DeploymentCompletion_DoesNotDestroyInteractiveArrangementCells()
         {
@@ -213,12 +374,16 @@ namespace Game.EditorTests
             var attackObject = new GameObject("Fast resolve test attack");
             var outcomeObject = new GameObject("Fast resolve test outcome");
             var arrangeObject = new GameObject("Fast resolve test arrangement");
+            var portrait = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f));
             try
             {
                 var screen = screenObject.AddComponent<BattleScreenUI>();
                 var attack = attackObject.AddComponent<BattleAttackPopupUI>();
                 var outcome = outcomeObject.AddComponent<BattleOutcomePopupUI>();
                 var arrangement = arrangeObject.AddComponent<BattleArrangePopupUI>();
+                var detail = new GameObject("Unit details", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+                detail.transform.SetParent(screenObject.transform, false);
+                Set(screen, "detailArt", detail);
                 Set(screen, "panelRoot", screenObject);
                 Set(screen, "attackPopup", attack);
                 Set(screen, "outcomePopup", outcome);
@@ -243,13 +408,23 @@ namespace Game.EditorTests
                 Assert.That(outcome.IsShowing, Is.True, "human outcome must not use the all-AI auto-close");
                 Assert.That(closed, Is.Zero);
                 Assert.That(screen.IsShowing, Is.True, "strategic input stays blocked before confirmation");
+                attacker.Members[0].DetailArt = portrait;
+                screen.ShowUnitDetail(attacker.Members[0]);
+                Assert.That(detail.sprite, Is.SameAs(portrait));
                 Call(outcome, "OnOkClicked");
                 Assert.That(closed, Is.EqualTo(1));
                 Assert.That(human.IsHuman, Is.True);
+                Assert.That(detail.sprite, Is.Null);
+                Assert.That(detail.gameObject.activeSelf, Is.False);
 
+                var nextAttacker = TestArmy(human, "Next human", 100);
+                nextAttacker.Members[0].DetailArt = portrait;
                 screen.Show(new HexCoord(0, 0), new List<ArmyData>
-                    { TestArmy(human, "Next human", 100), TestArmy(opponent, "Next opponent", 1) }, null);
+                    { nextAttacker, TestArmy(opponent, "Next opponent", 1) }, null);
                 Assert.That(arrangement.IsShowing, Is.True, "Fast Resolve must not leak into the next ordinary battle");
+                Assert.That(detail.sprite, Is.Null, "the new arrangement starts with a clear detail panel");
+                screen.ShowUnitDetail(nextAttacker.Members[0]);
+                Assert.That(detail.sprite, Is.SameAs(portrait));
                 Call(screen, "BeginArrangement");
                 Call(screen, "OnReadyClicked");
                 Assert.That(((BattleEngine)Get(screen, "_battleEngine")).Phase, Is.EqualTo(BattleCommandPhase.Deployment),
@@ -265,6 +440,7 @@ namespace Game.EditorTests
                 UnityEngine.Object.DestroyImmediate(attackObject);
                 UnityEngine.Object.DestroyImmediate(outcomeObject);
                 UnityEngine.Object.DestroyImmediate(arrangeObject);
+                UnityEngine.Object.DestroyImmediate(portrait);
                 ArmyRegistry.Clear();
                 BuildingRegistry.Clear();
                 DelayedBattleRegistry.Clear();

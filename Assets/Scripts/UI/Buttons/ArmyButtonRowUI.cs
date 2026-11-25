@@ -311,10 +311,7 @@ namespace Game.UI
 
         private void ClearButtons()
         {
-            // Deferred Destroy must not leave old entries participating in this frame's layout.
-            foreach (ArmyButtonUI button in _buttons)
-                if (button != null) button.gameObject.SetActive(false);
-            UIUtility.DestroyAndClear(_buttons);
+            UIUtility.DestroyAndClear(_buttons, deactivate: true);
             foreach (GameObject slot in _slots)
                 if (slot != null)
                 {

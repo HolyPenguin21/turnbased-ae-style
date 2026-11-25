@@ -32,6 +32,7 @@ public static class GameAssetCatalogBuilder
 
     private static readonly (string File, string Key)[] SingleFiles =
     {
+        ("Assets/Textures/Game/Effects/CardPlacementDissolve.shader", CardDissolveEffect.ShaderKey),
         ("Assets/Textures/Game/Effects/Overlay.png", "Effects/Overlay"),
         ("Assets/Textures/Game/Effects/FogOfWar.mat", "Materials/FogOfWar"),
         ("Assets/Shaders/ScreenWear.shader", "Effects/ScreenWear"),

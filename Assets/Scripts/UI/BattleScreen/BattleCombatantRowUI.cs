@@ -338,9 +338,7 @@ namespace Game.UI
 
         private void ClearFatePreview()
         {
-            foreach (TokenSlotUI slot in _fatePreviewSlots)
-                if (slot != null) slot.gameObject.SetActive(false);
-            UIUtility.DestroyAndClear(_fatePreviewSlots);
+            UIUtility.DestroyAndClear(_fatePreviewSlots, deactivate: true);
         }
 
         public void SetSuccessModifier(int modifier)

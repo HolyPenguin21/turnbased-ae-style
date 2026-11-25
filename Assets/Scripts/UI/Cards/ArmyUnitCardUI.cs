@@ -31,6 +31,7 @@ namespace Game.UI
     {
         [SerializeField] private RectTransform rectTransform;
         [SerializeField] private Image artImage;
+        [SerializeField] private GameObject selectionFrame;
         // Sprite shown in an empty capacity slot (Unit == null) in place of a real unit's art.
         // Tinted by emptySlotAlpha below. Leave unset for a plain tinted box.
         [SerializeField] private Sprite emptySlotSprite;
@@ -151,6 +152,7 @@ namespace Game.UI
             _previewMode = false;
             _modal = modal;
             Unit = unit;
+            SetSelected(false);
 
             if (artImage != null)
             {
@@ -235,6 +237,7 @@ namespace Game.UI
             _previewHover = onHover;
             _modal = null;
             Unit = null;
+            SetSelected(false);
 
             if (artImage != null)
             {
@@ -265,6 +268,11 @@ namespace Game.UI
             ShowCardCostPreview(card);
             RefreshSkillsText(card, config);
         }
+
+        internal void SetSelected(bool selected) => selectionFrame?.SetActive(selected);
+
+        internal void RefreshPreviewSelection(CardDefinition selected)
+            => SetSelected(_previewMode && selected != null && selected == _previewCard);
 
         // Preview mode: the card's own attach/deploy cost shown permanently on the shared badge
         // strip — AP first, then Human/Energy/Materials/Tech, same slot order as

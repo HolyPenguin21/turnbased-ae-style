@@ -55,9 +55,8 @@ namespace Game.UI
 
             if (_battleEngine == null || !_battleEngine.TryBeginAttack(attacker, defender, out var request, isCounterattack)) return;
             BattleEngine engine = _battleEngine;
-            if (ExplosionAttack.TargetLimit(attacker.Abilities) > 0)
+            if (request.IsExplosion)
             {
-                if (!isCounterattack) _battleEngine?.CommitGroundAttack(attacker);
                 _explosionAttackRoutine = StartBattleRoutine(RunExplosionAttack(attacker));
                 return;
             }
@@ -67,19 +66,15 @@ namespace Game.UI
             // can advance into the opposing side's own rows to reach melee range, at which point
             // "row group" and "owning army" disagree. See OwningArmy's own comment and
             // project_battle_ai_bugs_open memory.
-            ArmyData attackerArmy = OwningArmy(attacker);
-            ArmyData defenderArmy = OwningArmy(defender);
-            UnitData attackerHero = OwningHero(attackerArmy);
-            UnitData defenderHero = OwningHero(defenderArmy);
+            ArmyData attackerArmy = engine.State.OwningArmy(attacker);
+            ArmyData defenderArmy = engine.State.OwningArmy(defender);
+            UnitData attackerHero = attackerArmy?.Commander;
+            UnitData defenderHero = defenderArmy?.Commander;
             bool defenderIsRetreating = _retreatingArmy != null && defenderArmy == _retreatingArmy;
 
             BattleDefenseBreakdown defense = _battleEngine != null
                 ? _battleEngine.GetDefenseBreakdown(defender, map)
                 : default;
-
-            // Strategic movement commitment is a battle-state mutation, not UI work.
-            if (!isCounterattack)
-                _battleEngine?.CommitGroundAttack(attacker);
 
             // The Bodyguard that would take this hit — the same engine query the resolution
             // makes, asked before the roll so the Result screen shows the real victim.
@@ -134,11 +129,11 @@ namespace Game.UI
 
         private IEnumerator RunExplosionAttack(UnitData attacker)
         {
+            var explosion = _battleEngine?.CreateExplosionAttack(attacker);
+            if (explosion == null) yield break;
             int generation = _attackPresentationGeneration;
             _isPresentingAttack = true;
             if (passButton != null) passButton.interactable = false;
-            var explosion = _battleEngine.CreateExplosionAttack(attacker);
-            if (explosion == null) yield break;
             try
             {
                 yield return ExplosionAttackPresenter.Run(explosion,
@@ -154,7 +149,8 @@ namespace Game.UI
                 { _isPresentingAttack = false; _explosionAttackRoutine = null; }
             }
             if (generation != _attackPresentationGeneration) yield break;
-            RefreshGrid();
+            // Complete() can remove the spent single-use launcher after the last hit.
+            PlayDestroyedCardEffects();
             if (!CheckBattleEnd()) EndTurn();
         }
 
@@ -179,17 +175,16 @@ namespace Game.UI
             {
                 bool major = victim.HitPointsMax > 0
                     && victim.HitPointsCurrent <= victim.HitPointsMax / 3f;
-                ShowArmyThought(OwningArmy(victim),
+                ShowArmyThought(_battleState?.OwningArmy(victim),
                     major ? AiThoughtCategory.DamageTakenMajor : AiThoughtCategory.DamageTakenMinor,
                     attacker?.Name);
             }
 
-            var secondary = new List<BattleSecondaryHit>();
-            foreach (BattleSecondaryHit hit in application.SecondaryHits)
+            var secondary = application.SecondaryHits;
+            foreach (BattleSecondaryHit hit in secondary)
             {
                 BattleDebugLog.Write($"[SplashDiag] {hit.Skill}: {attacker?.Name} -> {hit.Victim?.Name} " +
                     $"dealt={hit.Damage} hpAfter={hit.Victim?.HitPointsCurrent}/{hit.Victim?.HitPointsMax} died={hit.Died}");
-                secondary.Add(hit);
             }
 
             // A surviving Counterattack carrier answers before the acting unit's turn ends; the
@@ -203,6 +198,7 @@ namespace Game.UI
                     return;
                 if (application.Counterattacker != null)
                 {
+                    RefreshGrid();
                     BattleDebugLog.Write($"[Counterattack] {application.Counterattacker.Name} -> {attacker?.Name}");
                     BeginAttack(application.Counterattacker, attacker, isCounterattack: true);
                     return;
@@ -217,7 +213,8 @@ namespace Game.UI
             {
                 if (generation != _attackPresentationGeneration) return;
                 _isPresentingAttack = false;
-                StartAttackPresentation(application, Continue);
+                StartAttackPresentation(application);
+                Continue();
             }
             // Acknowledge every result first, then start effects and advance synchronously.
             // Keep the original cells until their effect rectangles have been captured.
@@ -236,7 +233,7 @@ namespace Game.UI
         // Re-opens the attack popup's full Result screen once per Splash/Scorcher side-hit, in
         // order, each advancing to the next on Ok (or auto-closing in an all-AI fight — see
         // BattleAttackPopupUI.ShowSecondaryAttackResult). onDone runs after the last one.
-        private void ShowSecondaryResultsThen(UnitData attacker, List<BattleSecondaryHit> hits, Action onDone)
+        private void ShowSecondaryResultsThen(UnitData attacker, IReadOnlyList<BattleSecondaryHit> hits, Action onDone)
         {
             int index = 0;
             int generation = _attackPresentationGeneration;
@@ -308,6 +305,7 @@ namespace Game.UI
             if (!resolution.Ended)
                 return false;
 
+            RefreshGrid();
             BattleEndStatus status = resolution.EndStatus;
             BattleCaptureKillSequence sequence = resolution.CaptureKillSequence;
             if (sequence != null && sequence.HasPending && attackPopup != null)
@@ -462,6 +460,8 @@ namespace Game.UI
             {
                 if (_battleState != expectedState || generation != _attackPresentationGeneration) return;
                 if (!sequence.TryResolveCurrent(next, roll, map, hexSelectionController, out var step)) return;
+                if (step.Application.EffectiveOutcome == CaptureKillOutcome.Killed)
+                    PlayDestroyedCardEffects(next.Hero);
                 RefreshGrid();
 
                 if (step.Retreat.ContactParticipants != null)
