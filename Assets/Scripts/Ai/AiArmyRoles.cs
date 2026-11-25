@@ -400,7 +400,14 @@ namespace Game.Ai
         // floor gives the enemy). Each army
         // lends only what its own Base does not need: its power minus that Base's unmet threat
         // (threat floor without any credit, less the garrison there). 0 without a timed threat.
-        public static float MobileReserveCredit(PlayerSetupData player, HexCoord garrisonHex, int enemyEta)
+        public static float MobileReserveCredit(PlayerSetupData player, HexCoord garrisonHex, int enemyEta) =>
+            MobileReserveCredit(player, garrisonHex, enemyEta, null);
+
+        // `floorOf` (2026-11-25) — the garrison floor of an own Base (hex, isCitadel); a caller that
+        // prices many sites in one frozen pass (DemandLayer base candidates) memoises it, since the
+        // floor of an own Base does not depend on the site. Null computes it here.
+        public static float MobileReserveCredit(PlayerSetupData player, HexCoord garrisonHex, int enemyEta,
+            Func<HexCoord, bool, float> floorOf)
         {
             if (player == null || enemyEta == int.MaxValue)
                 return 0f;
@@ -427,7 +434,9 @@ namespace Game.Ai
                     ArmyData homeGarrison = own.FirstOrDefault(g => g.IsGarrison && g.Hex.Equals(a.Hex));
                     float held = homeGarrison == null ? 0f : AiPower.EffectiveArmyPower(homeGarrison.Members
                         .Where(u => u != null && u.IsGroundCombatant).ToList());
-                    unmet = Math.Max(0f, GarrisonThreatFloor(player, a.Hex, a.Hex.Equals(citadel), out _) - held);
+                    float floor = floorOf != null ? floorOf(a.Hex, a.Hex.Equals(citadel))
+                        : GarrisonThreatFloor(player, a.Hex, a.Hex.Equals(citadel), out _);
+                    unmet = Math.Max(0f, floor - held);
                     unmetByBase[a.Hex] = unmet;
                 }
                 float power = AiPower.EffectiveArmyPower(bodies);
@@ -544,13 +553,38 @@ namespace Game.Ai
         // activeDefenceWithdrawMaxEnemyEta turns, x aggDefenceConfidenceMargin, ENEMY GARRISONS
         // INCLUDED (a garrison next door sorties against a fresh Base). Not "nearest garrison
         // only": nothing stands there yet to share the threat with. `enemyEta` as above.
-        public static float FoundingSiteThreat(PlayerSetupData player, HexCoord site, out int enemyEta)
+        public static float FoundingSiteThreat(PlayerSetupData player, HexCoord site, out int enemyEta) =>
+            FoundingSiteThreat(player, null, site, out enemyEta);
+
+        // `contacts` (2026-11-25) — ThreatContactsOf(player) built once by a caller that prices many
+        // sites in one frozen pass; null reads them here.
+        public static float FoundingSiteThreat(PlayerSetupData player,
+            IReadOnlyList<(AiMapMemory.KnownEnemySighting Sighting, int UnseenTurns)> contacts, HexCoord site,
+            out int enemyEta)
         {
             enemyEta = int.MaxValue;
             if (player == null)
                 return 0f;
-            return GarrisonThreatFloor(KnownThreatContacts(player), new[] { site }, site, true,
+            return GarrisonThreatFloor(contacts ?? KnownThreatContacts(player), new[] { site }, site, true,
                 out enemyEta, player, includeGarrisons: true);
+        }
+
+        // The known hostile contacts of the floors, materialised once (2026-11-25, base candidates).
+        public static List<(AiMapMemory.KnownEnemySighting Sighting, int UnseenTurns)> ThreatContactsOf(
+            PlayerSetupData player) =>
+            player == null ? new List<(AiMapMemory.KnownEnemySighting, int)>() : KnownThreatContacts(player).ToList();
+
+        // The own-garrison floor on explicit contacts (same rule as GarrisonThreatFloor(player, ...)).
+        public static float GarrisonThreatFloor(PlayerSetupData player,
+            IReadOnlyList<(AiMapMemory.KnownEnemySighting Sighting, int UnseenTurns)> contacts,
+            HexCoord garrisonHex, bool isCitadel)
+        {
+            if (player == null)
+                return 0f;
+            List<HexCoord> garrisons = ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && a.IsGarrison).Select(a => a.Hex).Distinct().ToList();
+            return GarrisonThreatFloor(contacts ?? KnownThreatContacts(player), garrisons,
+                garrisonHex, isCitadel, out _, player);
         }
 
         // Every known hostile contact with the turns it has gone unobserved (0 = seen now): the live

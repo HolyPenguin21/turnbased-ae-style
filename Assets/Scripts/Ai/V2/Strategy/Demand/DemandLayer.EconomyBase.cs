@@ -37,13 +37,15 @@ namespace Game.Ai.V2
                 float Global, float Expansion)? bestRejected = null;
             IMissionIntentView intentState = s.Intents;
             var meaningfulDemands = new List<AxisDemand>();
+            // The site-independent facts of this pass, built lazily by the first site that needs them.
+            FoundingSiteDefence.PassFacts siteFacts = null;
 
             foreach (EconomyBaseOpportunity site in s.Economy.BaseOpportunities)
                 foreach (CardData card in baseCards)
                 {
                     considered++;
                     AxisDemand candidate = BaseCandidate(s, site, card, intentState, activeIntents,
-                        commitments, rejected, ref bestRejected);
+                        commitments, rejected, ref bestRejected, ref siteFacts, player);
                     if (candidate != null)
                         meaningfulDemands.Add(candidate);
                 }
@@ -104,7 +106,8 @@ namespace Game.Ai.V2
             CardData card, IMissionIntentView intentState, IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, EconomyRejections rejected,
             ref (float Value, HexCoord Hex, string Card, float Economic, float Payback,
-                float Global, float Expansion)? bestRejected)
+                float Global, float Expansion)? bestRejected,
+            ref FoundingSiteDefence.PassFacts siteFacts, PlayerSetupData player)
         {
             if (intentState != null
                 && intentState.Economy.IsBaseExpansionDeliverySuppressed(s.TurnNumber, card, site.Hex))
@@ -117,8 +120,9 @@ namespace Game.Ai.V2
                 return null;
 
             bool committed = IsActiveBaseCommitment(activeIntents, site.Hex, card);
-            BaseSiteValuation.BaseSiteValue facts =
-                BaseSiteValuation.ScoreBaseSite(s, site, card);
+            BaseSiteValuation.BaseSiteValue facts;
+            using (new Game.Core.ProfileScope("AI/Demand.Base.Valuation"))
+                facts = BaseSiteValuation.ScoreBaseSite(s, site, card);
 
             // Only real card-semantic facts come from Evaluation; TaskScore is the
             // sole numeric evaluator of this Base's economic and strategic value.
@@ -196,10 +200,12 @@ namespace Game.Ai.V2
                 && i.Economy.Kind == EconomyTaskKind.FoundBase
                 && (i.Economy.BuildCard == null || i.Economy.BuildCard == card)
                 && i.PreferredMoverArmyId.HasValue) : null;
-            EconomyBuilderSelection.EconomyBuilderChoice builder = EconomyBuilderSelection.SelectEconomyBuilder(
-                s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
-                siteOnlyScore.Value, card.EffectivePlayApCost, includeReturn: false,
-                pinnedBuilderArmyId: pinnedBase?.PreferredMoverArmyId);
+            EconomyBuilderSelection.EconomyBuilderChoice builder;
+            using (new Game.Core.ProfileScope("AI/Demand.Base.Builder"))
+                builder = EconomyBuilderSelection.SelectEconomyBuilder(
+                    s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
+                    siteOnlyScore.Value, card.EffectivePlayApCost, includeReturn: false,
+                    pinnedBuilderArmyId: pinnedBase?.PreferredMoverArmyId);
             bool structuralRoute = site.PreparationTravelCost < int.MaxValue
                 || HasStructuralEconomyBuilderRoute(s, site.Hex, site.BuilderRoutes);
             if (!structuralRoute)
@@ -219,8 +225,12 @@ namespace Game.Ai.V2
             // the standing fist can hold it pays the shortfall share as HexThreatRisk
             // (FoundingSiteDefence). A site held in time pays nothing.
             (float escortPower, int escortBodies) = FoundingSiteDefence.EscortOf(builder);
-            FoundingSiteDefence.Assessment siteDefence = FoundingSiteDefence.Assess(s, site.Hex,
-                escortPower, escortBodies);
+            FoundingSiteDefence.Assessment siteDefence;
+            using (new Game.Core.ProfileScope("AI/Demand.Base.SiteDefence"))
+            {
+                siteFacts ??= new FoundingSiteDefence.PassFacts(player ?? s.Observer);
+                siteDefence = FoundingSiteDefence.Assess(s, site.Hex, escortPower, escortBodies, siteFacts);
+            }
             float siteRisk = TaskScoreEvaluator.HexThreatRisk(siteDefence.ShortfallShare);
             if (siteRisk > AiConfigV2.allocatorSliceEpsilon)
             {

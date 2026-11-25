@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
+using Game.Players;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -43,13 +44,40 @@ namespace Game.Ai.V2
             snap?.Observer != null && AiArmyRoles.FoundingSiteThreat(snap.Observer, site, out _)
                 > AiConfigV2.allocatorSliceEpsilon;
 
-        internal static Assessment Assess(WorldSnapshot snap, HexCoord site, float escortPower, int escortBodies)
+        // 2026-11-25 (match Grimm/Brynn/Halden: Demand.Economy up to 7 s a turn, ~1 s frames) — the
+        // facts of one base-candidate pass that do not depend on the site: the known hostile
+        // contacts and the garrison floor of each own Base (MobileReserveCredit asks it per own
+        // army on a Base, for every one of ~70 sites). Built once per DemandLayer.AddBaseCandidates
+        // call, never kept on the snapshot or across passes: nothing mutates inside that call.
+        internal sealed class PassFacts
         {
-            float threat = AiArmyRoles.FoundingSiteThreat(snap?.Observer, site, out int eta);
+            private readonly PlayerSetupData _player;
+            private readonly Dictionary<(HexCoord, bool), float> _floors = new Dictionary<(HexCoord, bool), float>();
+            internal readonly IReadOnlyList<(Game.Ai.AiMapMemory.KnownEnemySighting Sighting, int UnseenTurns)> Contacts;
+
+            internal PassFacts(PlayerSetupData player)
+            {
+                _player = player;
+                Contacts = AiArmyRoles.ThreatContactsOf(player);
+            }
+
+            internal float FloorOf(HexCoord hex, bool isCitadel)
+            {
+                if (!_floors.TryGetValue((hex, isCitadel), out float floor))
+                    _floors[(hex, isCitadel)] = floor = AiArmyRoles.GarrisonThreatFloor(_player, Contacts, hex, isCitadel);
+                return floor;
+            }
+        }
+
+        internal static Assessment Assess(WorldSnapshot snap, HexCoord site, float escortPower, int escortBodies,
+            PassFacts facts = null)
+        {
+            float threat = AiArmyRoles.FoundingSiteThreat(snap?.Observer, facts?.Contacts, site, out int eta);
             if (threat <= AiConfigV2.allocatorSliceEpsilon)
                 return new Assessment(0f, escortPower, 0f, 0f, eta);
             float hand = HandGarrisonPower(snap, Mathf.Max(0, NewGarrisonSlots - escortBodies));
-            float reserve = AiArmyRoles.MobileReserveCredit(snap.Observer, site, eta);
+            float reserve = AiArmyRoles.MobileReserveCredit(snap.Observer, site, eta,
+                facts == null ? (System.Func<HexCoord, bool, float>)null : facts.FloorOf);
             return new Assessment(threat, escortPower, hand, reserve, eta);
         }
 
