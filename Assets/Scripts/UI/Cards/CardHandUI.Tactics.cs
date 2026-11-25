@@ -144,8 +144,7 @@ namespace Game.UI
         {
             StopTacticFlip();
             CancelTacticDrags();
-            foreach (var card in _tacticCards) card.gameObject.SetActive(false);
-            UIUtility.DestroyAndClear(_tacticCards);
+            UIUtility.DestroyAndClear(_tacticCards, deactivate: true);
             if (_tacticSource != null && cardPrefab != null && handContainer != null)
                 foreach (var data in _tacticSource.Cards)
                 {

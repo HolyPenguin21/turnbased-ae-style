@@ -12,6 +12,7 @@ using Game.Players;
 using Game.Styles;
 using Game.Units;
 using TMPro;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -217,42 +218,12 @@ namespace Game.UI
         private readonly Queue<(HexCoord hex, List<ArmyData> participants)> _pendingRetreatContacts =
             new Queue<(HexCoord hex, List<ArmyData> participants)>();
 
-        // A unit's actual owning army, independent of which grid ROWS it currently occupies — a
-        // non-hero unit can advance across the neutral row into the opposing side's own rows
-        // during the Round's movement step to reach melee range (see BattleGrid's row-layout
-        // comment), so "which row group a unit sits in" stops matching "which army it belongs
-        // to" the moment that happens. Grid-row lookups (BattleTurnOrder.FindHero) are still correct for HEROES, which never leave their own
-        // side's rows, and for genuinely row-relative concerns like initiative bonus/movement
-        // legality — but any code deciding whose hero/Fate/ownership applies to a specific unit
-        // must use this instead. Root cause of the Spend-button bug in project_battle_ai_bugs_open
-        // memory: BeginAttack used to derive attackerHero/defenderHero from the attacking unit's
-        // grid row, which flipped to the wrong side once that unit had moved into enemy rows.
-        private ArmyData OwningArmy(UnitData unit)
-        {
-            if (_battleState != null)
-                return _battleState.OwningArmy(unit);
-            if (unit == null)
-                return null;
-            if (_attacker != null && _attacker.Members.Contains(unit))
-                return _attacker;
-            if (_defender != null && _defender.Members.Contains(unit))
-                return _defender;
-            return null;
-        }
-
-        private static UnitData OwningHero(ArmyData army) => army?.Commander;
-
         private bool _arranging;
         // True only once the "Arrange your units" intro popup has been dismissed — the grid
         // itself is already visible the instant Arrangement starts (see Show), but dragging
         // stays gated behind Ok so the player can't start rearranging while that popup is still
         // covering part of the screen.
         private bool _arrangeInteractive;
-        private List<UnitData> _turnOrder
-        {
-            get => _battleState?.TurnOrder?.ToList();
-
-        }
         private int _turnIndex
         {
             get => _battleState?.TurnIndex ?? 0;
@@ -294,12 +265,14 @@ namespace Game.UI
         private float _idleTimer = -1f;
         private bool _idleNudgeShown;
         private readonly List<BattleGridCellUI> _cells = new List<BattleGridCellUI>();
-        // Start times survive grid rebuilds and movement. Rendering never triggers gameplay.
+        // Start times follow their units across cells. Rendering never triggers gameplay.
         private readonly Dictionary<UnitData, float> _healEffectStarts = new Dictionary<UnitData, float>();
         private void OnUnitHealed(UnitData target) => _healEffectStarts[target] = Time.unscaledTime;
         private readonly Dictionary<UnitData, float> _drillEffectStarts = new Dictionary<UnitData, float>();
         private void OnUnitDrilled(UnitData target) => _drillEffectStarts[target] = Time.unscaledTime;
         private readonly List<BattleTurnOrderIconUI> _queueIcons = new List<BattleTurnOrderIconUI>();
+        private static readonly ProfilerMarker QueueRefreshMarker = new ProfilerMarker("BattleUI.RefreshTurnOrder");
+        private (int Round, bool Sandstorm)? _shownRound;
 
         // Also true while a standalone Capture Kill Challenge is up (see
         // BeginCaptureKillEncounter) — that one deliberately never activates panelRoot at all
@@ -454,6 +427,7 @@ namespace Game.UI
         public void Show(HexCoord hex, List<ArmyData> participants, Action onClosed, bool fastResolve = false)
         {
             CancelAiArrangement();
+            CancelMovePresentation();
             ArmyData attacker = participants != null && participants.Count > 0 ? participants[0] : null;
             ArmyData defender = participants != null && participants.Count > 1 ? participants[1] : null;
             _attackerMarkerAtStart = ArmyDestructionEffect.Capture(attacker?.Controller?.Visual);
@@ -467,6 +441,8 @@ namespace Game.UI
                 Game.Ai.AiActivityFeed.Report(Game.Ai.AiActivity.Fighting);
             _unpacedBattleFrameStart = -1f;
             _onClosed = onClosed;
+            _shownRound = null;
+            ShowUnitDetail(null);
             if (panelRoot != null && !_presentationSuppressed)
                 panelRoot.SetActive(true);
             VisibilityChanged?.Invoke();
@@ -506,8 +482,11 @@ namespace Game.UI
             _drillEffectStarts.Clear();
             _battleEngine = new BattleEngine(_battleState, battleMagnitudes,
                 new System.Random(battleSeed), map);
-            _battleEngine.UnitHealed += OnUnitHealed;
-            _battleEngine.UnitDrilled += OnUnitDrilled;
+            if (!_presentationSuppressed)
+            {
+                _battleEngine.UnitHealed += OnUnitHealed;
+                _battleEngine.UnitDrilled += OnUnitDrilled;
+            }
 
             // STEALTH-COMBAT-01: reveal is no longer primarily done here — every real entry
             // point (HexSelectionController.Movement.cs's TryBeginBattleAt, BattleScreenUI.
@@ -597,9 +576,7 @@ namespace Game.UI
                     passButton.gameObject.SetActive(false);
                 if (roundText != null)
                     roundText.text = string.Empty;
-                UIUtility.DestroyAndClear(_queueIcons);
-                // Same panel the round loop fills later: the local army's first slot.
-                ShowUnitDetail(_localArmy != null && _localArmy.Members.Count > 0 ? _localArmy.Members[0] : null);
+                UIUtility.DestroyAndClear(_queueIcons, deactivate: true);
                 if (IsAutomatedSide(_attacker) || IsAutomatedSide(_defender))
                     aiThoughts?.Show(null, "Establishing link... stand by.", immediate: true);
                 RefreshGrid();
@@ -644,14 +621,12 @@ namespace Game.UI
             _aiArrangementRoutine = null;
             if (HasInteractiveParticipant && arrangePopup != null)
             {
-                // The opponent is hidden until Ready. Rebuilding here would destroy the
-                // player's cell/drag object while they are arranging their own army.
+                // The opponent is hidden until Ready. Leave the player's drag in progress.
                 if (readyButton != null) readyButton.interactable = _arrangeInteractive;
             }
             else
             {
-                RefreshGrid();
-                BeginRound();
+                BeginRound(refreshBeforePrompt: true);
             }
         }
 
@@ -693,7 +668,7 @@ namespace Game.UI
                 SetLocalSide(_secondLocalArmy);
                 _arrangeInteractive = false;
                 if (readyButton != null) readyButton.interactable = false;
-                ShowUnitDetail(_localArmy.Members.Count > 0 ? _localArmy.Members[0] : null);
+                ShowUnitDetail(null);
                 RefreshGrid();
                 arrangePopup.Show(BeginArrangement);
                 return;
@@ -712,17 +687,17 @@ namespace Game.UI
         // here (rather than caching once) since it'll matter the moment anything CAN change it
         // (a unit dying, a buff/debuff, etc.). Shown behind the Round-start preview popup every
         // round (not just the first) — see the class comment.
-        private void BeginRound()
+        private void BeginRound(bool refreshBeforePrompt = false)
         {
             BattleDebugLog.BeginRound(_round);
             ConsiderAiRetreat();
             // Human-vs-human: each side gets its own round-start prompt (and Retreat button),
             // attacker first; only one side retreats per round.
             if (IsHumanVsHuman) SetLocalSide(_attacker);
-            ShowRoundStartForLocalSide();
+            ShowRoundStartForLocalSide(refreshBeforePrompt);
         }
 
-        private void ShowRoundStartForLocalSide()
+        private void ShowRoundStartForLocalSide(bool refreshBeforePrompt = false)
         {
             // Garrisons can never retreat (per the manual); a battle with no local human side
             // has nobody to click the button anyway — canRetreat covers both. Also off once the
@@ -740,11 +715,14 @@ namespace Game.UI
             // effectively inert) — nothing in it (roster preview, retreat warning) is actionable
             // by anyone if no one here is human.
             if (roundStartPopup != null && HasInteractiveParticipant)
+            {
+                if (refreshBeforePrompt) RefreshGrid();
                 roundStartPopup.Show(_round, _grid, _attacker, _defender,
                     ResolveCatalog(_attacker?.Owner)?.logo, ResolveCatalog(_defender?.Owner)?.logo,
                     canRetreat, OnRoundStartAcknowledged, OnRetreatClicked,
                     _retreatingArmy != _localArmy ? _retreatingArmy?.Name : null,
                     unchecked(_battleSeed * 31 + _round));
+            }
             else
                 OnStartRoundClicked();
         }
@@ -855,7 +833,7 @@ namespace Game.UI
 
         private void OnPassClicked()
         {
-            if (_isPresentingAttack) return;
+            if (_isPresentingAttack || _isAnimatingMove) return;
             if (_battleEngine?.TryPass(_currentActingUnit) == true) EndTurn();
         }
 
@@ -864,58 +842,44 @@ namespace Game.UI
         // same round-rollover logic instead of Pass being the only thing that ever called it.
         private void EndTurn()
         {
-            if (_turnOrder == null || _turnOrder.Count == 0)
-                return;
-
-            if (_battleEngine == null)
-                return;
-            BattleTurnAdvance advance = _battleEngine.AdvanceTurn();
+            BattleTurnAdvance advance = _battleEngine?.AdvanceTurn() ?? BattleTurnAdvance.NoTurn;
             switch (advance)
             {
                 case BattleTurnAdvance.ResolveRetreat:
+                    RefreshGrid();
                     ResolveRetreat();
                     break;
                 case BattleTurnAdvance.NextRound:
-                    BeginRound();
+                    BeginRound(refreshBeforePrompt: true);
                     break;
                 case BattleTurnAdvance.NextUnit:
                     RefreshTurnOrder();
+                    break;
+                case BattleTurnAdvance.NoTurn:
+                    RefreshGrid();
                     break;
             }
         }
 
         private void RefreshTurnOrder()
         {
-            // The battle's frozen weather: a short note in the existing header (its effects show in
-            // each unit's Range "(-1)" and in the defence bonus, both read from the same rules).
-            if (roundText != null)
-                roundText.text = _battleEngine != null && _battleEngine.Rules.Environment.InSandstorm
-                    ? $"Round {_round} · Sandstorm" : $"Round {_round}";
-
-            // Destroy is deferred. Retire old entries before a synchronous layout rebuild.
-            foreach (BattleTurnOrderIconUI oldIcon in _queueIcons)
-                if (oldIcon != null) oldIcon.gameObject.SetActive(false);
-            UIUtility.DestroyAndClear(_queueIcons);
-            if (!_presentationSuppressed && turnQueueContainer != null && turnQueueIconPrefab != null && _turnOrder != null)
-                for (int i = 0; i < _turnOrder.Count; i++)
-                {
-                    UnitData queued = _turnOrder[i];
-                    Color ownerColor = queued.Owner != null ? PlayerColorPalette.Colors[queued.Owner.ColorIndex] : Color.white;
-                    BattleTurnOrderIconUI icon = Instantiate(turnQueueIconPrefab, turnQueueContainer);
-                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(icon);
-                    icon.Setup(queued, ResolveCatalog(queued.Owner)?.logo, ownerColor, i == _turnIndex);
-                    _queueIcons.Add(icon);
-                }
-
-            UnitData current = _turnOrder != null && _turnIndex < _turnOrder.Count ? _turnOrder[_turnIndex] : null;
+            var turnOrder = _battleState?.TurnOrder;
+            int turnIndex = _turnIndex;
+            UnitData current = turnOrder != null && (uint)turnIndex < (uint)turnOrder.Count ? turnOrder[turnIndex] : null;
             if (!_presentationSuppressed)
             {
-                RevealCurrentTurnIcon();
-                ShowUnitDetail(current);
+                using (QueueRefreshMarker.Auto())
+                {
+                    var round = (Round: _round, Sandstorm: _battleEngine != null && _battleEngine.Rules.Environment.InSandstorm);
+                    if (roundText != null && _shownRound != round)
+                    {
+                        roundText.text = round.Sandstorm ? $"Round {round.Round} · Sandstorm" : $"Round {round.Round}";
+                        _shownRound = round;
+                    }
+                    RevealCurrentTurnIcon(UpdateTurnOrderIcons(turnOrder, turnIndex));
+                    ShowUnitDetail(current);
+                }
             }
-            // Drives BattleGridCellUI's own yellow acting-unit ring — rebuilding the whole grid
-            // on every Pass (not just every round) is the same "destroy and rebuild" pattern
-            // already used for the queue icons above, just for the battlefield instead.
             _currentActingUnit = current;
             // Human-vs-human: the tactic hand and interactive rows follow the acting side.
             if (IsHumanVsHuman && current?.Owner != null && current.Owner.IsHuman)
@@ -941,6 +905,56 @@ namespace Game.UI
             }
             if (current != null && !isHumanTurn)
                 _aiAutoPassRoutine = StartBattleRoutine(AutoActAfterDelay(current));
+        }
+
+        private bool UpdateTurnOrderIcons(IReadOnlyList<UnitData> order, int turnIndex)
+        {
+            if (turnQueueContainer == null || turnQueueIconPrefab == null || order == null) return false;
+
+            bool layoutChanged = false;
+            for (int i = 0; i < order.Count; i++)
+            {
+                UnitData unit = order[i];
+                int existing = i;
+                while (existing < _queueIcons.Count && _queueIcons[existing].Unit != unit) existing++;
+
+                BattleTurnOrderIconUI icon;
+                if (existing < _queueIcons.Count)
+                {
+                    icon = _queueIcons[existing];
+                    if (existing != i)
+                    {
+                        int sibling = _queueIcons[i].transform.GetSiblingIndex();
+                        _queueIcons.RemoveAt(existing);
+                        _queueIcons.Insert(i, icon);
+                        icon.transform.SetSiblingIndex(sibling);
+                        layoutChanged = true;
+                    }
+                }
+                else
+                {
+                    icon = Instantiate(turnQueueIconPrefab, turnQueueContainer);
+                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(icon);
+                    _queueIcons.Insert(i, icon);
+                    // Index against the next retained icon so even deferred Destroy leaves
+                    // the active icons in model order when several hits resolve in one frame.
+                    if (i + 1 < _queueIcons.Count)
+                        icon.transform.SetSiblingIndex(_queueIcons[i + 1].transform.GetSiblingIndex());
+                    layoutChanged = true;
+                }
+                Color color = unit.Owner != null ? PlayerColorPalette.Colors[unit.Owner.ColorIndex] : Color.white;
+                icon.Setup(unit, ResolveCatalog(unit.Owner)?.logo, color, i == turnIndex);
+            }
+
+            for (int i = _queueIcons.Count - 1; i >= order.Count; i--)
+            {
+                var icon = _queueIcons[i];
+                icon.gameObject.SetActive(false);
+                Destroy(icon.gameObject);
+                _queueIcons.RemoveAt(i);
+                layoutChanged = true;
+            }
+            return layoutChanged;
         }
 
         // Replaces the old auto-pass stub — after the same pacing beat, asks BattleAi what this
@@ -975,7 +989,7 @@ namespace Game.UI
             bool favorableFight = ownArmy != null && _aiFavorableThisRound.TryGetValue(ownArmy, out bool favorable) && favorable;
             BattleAi.AiAction action = _battleEngine != null
                 ? _battleEngine.ChooseAiAction(actor, _aiWaitStreak, ownArmy, enemyArmy,
-                    _turnOrder, _turnIndex, favorableFight, map, _aiPreviousPositions)
+                    _battleState?.TurnOrder?.ToList(), _turnIndex, favorableFight, map, _aiPreviousPositions)
                 : default;
             ShowAiThought(actor, action.Reason, action.Target?.Name);
 
@@ -1007,7 +1021,7 @@ namespace Game.UI
             // Owning army, not grid row — see OwningArmy's own comment. `actor` may have already
             // moved into the opposing side's rows (e.g. mid-melee), so its row is not a reliable
             // stand-in for which army's hero should be "speaking" here.
-            ShowArmyThought(OwningArmy(actor), category, targetName);
+            ShowArmyThought(_battleState?.OwningArmy(actor), category, targetName);
         }
 
         // All battle narration uses the same side/voice rules, including fast resolve.
@@ -1017,7 +1031,7 @@ namespace Game.UI
             if (aiThoughts == null || !aiThoughts.isActiveAndEnabled
                 || army?.Owner == null || army.Owner.IsHuman)
                 return;
-            UnitData sideHero = OwningHero(army);
+            UnitData sideHero = army.Commander;
             bool terminal = category == AiThoughtCategory.BattleWon || category == AiThoughtCategory.BattleLost;
             aiThoughts.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(category, targetName, sideHero != null),
                 immediate: terminal);
@@ -1040,9 +1054,11 @@ namespace Game.UI
         private void ResetBattlePanel()
         {
             CancelAiArrangement();
+            CancelMovePresentation();
             CancelAttackPresentation();
+            ShowUnitDetail(null);
             // RaiseTheRots-summoned units exist only for the battle that's now tearing down — pull
-            // them out of both armies while _grid/_turnOrder are still valid, so nothing summoned
+            // them out of both armies while the grid and turn order are still valid, so nothing summoned
             // ever survives back onto the strategic map (the retreat path strips the retreating
             // army earlier, in PerformRetreat, before it relocates).
             if (_battleState != null && !_battleState.FinalizationApplied)
@@ -1062,8 +1078,9 @@ namespace Game.UI
             roundStartPopup?.Hide();
             attackPopup?.Hide();
             outcomePopup?.Hide();
-            UIUtility.DestroyAndClear(_cells);
-            UIUtility.DestroyAndClear(_queueIcons);
+            UIUtility.DestroyAndClear(_cells, deactivate: true);
+            UIUtility.DestroyAndClear(_queueIcons, deactivate: true);
+            _shownRound = null;
             if (_battleEngine != null)
             {
                 _battleEngine.UnitHealed -= OnUnitHealed;

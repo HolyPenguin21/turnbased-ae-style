@@ -91,16 +91,13 @@ namespace Game.UI
         public static void Show(Transform card, float started, Kind kind)
         {
             if (card == null || Time.unscaledTime - started >= Duration) return;
+            string name = EffectName(kind);
+            Transform old = card.Find(name);
+            if (old != null && old.TryGetComponent(out BattleSkillEffect existing) && existing._started == started)
+                return;
             Sprite[] frames = GetFrames(kind);
             if (frames == null) return;
-
-            string name = kind + "Effect";
-            Transform old = card.Find(name);
-            if (old != null)
-            {
-                old.gameObject.SetActive(false);
-                Destroy(old.gameObject);
-            }
+            if (old != null) Retire(old);
 
             var go = new GameObject(name, typeof(RectTransform), typeof(Image),
                 typeof(LayoutElement), typeof(BattleSkillEffect));
@@ -123,14 +120,36 @@ namespace Game.UI
             effect.Update();
         }
 
+        internal static void Clear(Transform card, Kind kind)
+        {
+            Transform effect = card.Find(EffectName(kind));
+            if (effect != null) Retire(effect);
+        }
+
+        private static string EffectName(Kind kind) => kind switch
+        {
+            Kind.Heal => "HealEffect",
+            Kind.Drill => "DrillEffect",
+            Kind.Berserk => "BerserkEffect",
+            Kind.Bodyguard => "BodyguardEffect",
+            _ => "ShockEffect",
+        };
+
+        private static void Retire(Transform effect)
+        {
+            effect.gameObject.SetActive(false);
+            // Destroy is deferred. A refresh in this frame must find the new effect.
+            effect.name = "RetiredBattleSkillEffect";
+            Destroy(effect.gameObject);
+        }
+
         private void Update()
         {
             if (_image == null) return;
             float elapsed = Time.unscaledTime - _started;
             if (elapsed >= Duration)
             {
-                gameObject.SetActive(false);
-                Destroy(gameObject);
+                Retire(transform);
                 return;
             }
             if (elapsed < 0f) return;

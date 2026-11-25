@@ -875,7 +875,11 @@ namespace Game.UI
                 if (!hex.HasValue) return false;
                 target = CardPlayTarget.AtHex(hex.Value);
             }
-            var result = CardHandCommands.TryPlay(HumanPlayer, _humanHand, data, target, hexSelection?.Map, hexSelection);
+            var owner = HumanPlayer;
+            var map = hexSelection?.Map;
+            // A successful command updates the hand synchronously and removes this view.
+            Sprite placementArt = target.Kind == CardPlayTargetKind.Hex ? card.PlacementArt : null;
+            var result = CardHandCommands.TryPlay(owner, _humanHand, data, target, map, hexSelection);
             if (!result.Ok) { turnController?.ShowSpawnHint(result.FailReason); return false; }
             RecordPlayedCard(data);
             if (target.Kind == CardPlayTargetKind.Army) armyViewerModal?.RefreshAfterExternalDeploy();
@@ -883,6 +887,7 @@ namespace Game.UI
             var changedHex = target.Kind == CardPlayTargetKind.Army ? target.Army.Hex
                 : target.Kind == CardPlayTargetKind.Building ? target.Building.Hex : target.Hex;
             hexSelection?.RefreshSelectedHexIf(changedHex);
+            if (placementArt != null) CardPlacementEffect.Play(map, target.Hex, placementArt, owner);
             return true;
         }
 

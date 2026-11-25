@@ -4,7 +4,7 @@ namespace Game.Map
     // strategic map — used to live as tunable GameConfig fields, moved here once the values
     // settled and stopped needing per-project tuning. See also HexHighlightStyle.sortingOrder
     // (hex highlights: 1-2), MoveArrowStyle's own sortingOrder fields (12-16), which stack
-    // directly above Sandstorm, and FogOfWarStyle.sortingOrder (17), above everything here.
+    // directly above Sandstorm, and FogOfWarStyle.sortingOrder (17).
     public static class MapSortingOrder
     {
         public const int Map = 0;
@@ -19,5 +19,7 @@ namespace Game.Map
         // Weather drifts over armies and buildings but stays under the move arrows (route info
         // must stay readable) and under the fog overlay, which dims it like the terrain.
         public const int Sandstorm = 11;
+        // Short local feedback remains legible over the newly placed army/building marker.
+        public const int CardPlacement = 18;
     }
 }

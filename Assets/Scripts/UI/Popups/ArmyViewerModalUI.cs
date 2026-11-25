@@ -122,6 +122,7 @@ namespace Game.UI
         // hand does. _currentArmy.Members itself is never touched until the drop actually
         // commits, so an aborted/invalid drag has nothing to undo.
         private ArmyUnitCardUI _draggingCard;
+        private UnitData _selectedUnit;
         private List<UnitData> _dragPreviewOrder;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
@@ -248,7 +249,7 @@ namespace Game.UI
         public void RefreshAfterExternalDeploy()
         {
             RefreshGrid();
-            ShowArmySummary();
+            ShowUnitDetail(_selectedUnit);
         }
 
         // Set once by CardHandUI.Awake — lets a unit card's own click route into an in-progress
@@ -398,6 +399,7 @@ namespace Game.UI
             ClearGrid();
 
             _currentArmy = null;
+            _selectedUnit = null;
             _readOnly = false;
             _hideArmySwitcher = false;
             _snapshotSiblings = null;
@@ -452,6 +454,7 @@ namespace Game.UI
         {
             TutorialHintController.Invalidate();
             _currentArmy = army;
+            _selectedUnit = null;
             if (tutorialScroll != null) { tutorialScroll.StopMovement(); tutorialScroll.verticalNormalizedPosition = 1f; }
             RefreshTitle();
             RefreshButtonRow();
@@ -461,13 +464,14 @@ namespace Game.UI
 
         public void ShowUnitDetail(UnitData unit)
         {
-            ResetDetailScroll();
             if (unit == null)
             {
                 ShowArmySummary();
                 return;
             }
 
+            SetSelectedUnit(unit);
+            ResetDetailScroll();
             if (detailArt != null)
             {
                 detailArt.sprite = unit.DetailArt;
@@ -737,7 +741,7 @@ namespace Game.UI
                 // player can refill this turn; HexSelectionController.DisbandEmptyArmiesOf removes
                 // it at the end of the turn if it is still empty.
                 RefreshGrid();
-                ShowArmySummary();
+                ShowUnitDetail(_selectedUnit);
                 return true;
             }
 
@@ -928,6 +932,7 @@ namespace Game.UI
                 return;
 
             List<UnitData> shown = VisibleMembers();
+            if (_selectedUnit != null && !shown.Contains(_selectedUnit)) _selectedUnit = null;
             int slots = System.Math.Max(EffectiveCapacityFor(shown), shown.Count);
             FitGridContent(slots);
             for (int i = 0; i < slots; i++)
@@ -936,16 +941,23 @@ namespace Game.UI
                 ArmyUnitCardUI card = Instantiate(gameConfig.armyUnitCardPrefab, gridContainer);
                 Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
                 card.Setup(this, member);
+                card.SetSelected(member != null && member == _selectedUnit);
                 card.SetSlot(SlotPosition(i), animated: false);
                 _cards.Add(card);
             }
         }
 
+        private void SetSelectedUnit(UnitData unit)
+        {
+            _selectedUnit = unit;
+            foreach (var card in _cards)
+                if (card != null) card.SetSelected(unit != null && card.Unit == unit);
+        }
+
         private void ClearGrid()
         {
             ClearReorderPreview();
-            foreach (var card in _cards) if (card != null) card.gameObject.SetActive(false);
-            UIUtility.DestroyAndClear(_cards);
+            UIUtility.DestroyAndClear(_cards, deactivate: true);
         }
 
         private void FitGridContent(int slots)
@@ -970,7 +982,7 @@ namespace Game.UI
         }
 
         // Default detail-panel state — the army's own aggregate stats, shown whenever nothing
-        // is selected (on open, on switching army, after a drag-and-drop move).
+        // is selected (on open, on switching army, after transferring the selected unit out).
         // Experience/Battle Honors/Prestige are declined mechanics (see MECHANICS_CHECKLIST.md
         // pt. 10) and are omitted entirely rather than stubbed. Leader/capacity, Movement Range
         // and Fate Points are real, computed from
@@ -979,6 +991,7 @@ namespace Game.UI
         // see what this army's hex would give it before it's actually attacked.
         private void ShowArmySummary()
         {
+            SetSelectedUnit(null);
             ResetDetailScroll();
             if (detailArt != null)
                 detailArt.gameObject.SetActive(false);
