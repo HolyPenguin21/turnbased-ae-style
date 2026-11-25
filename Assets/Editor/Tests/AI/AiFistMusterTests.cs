@@ -322,6 +322,25 @@ namespace Game.EditorTests
                 "an own garrison's floor keeps ignoring enemy garrisons");
         }
 
+        // 2026-11-25 (match Grimm/Brynn/Halden) — an enemy garrison unseen for six turns "could stand"
+        // anywhere within MaxMovement x 6 under the mobile-army model, so every unseen Base site read
+        // its power at ETA 0. A garrison container stays on its Base; a field army keeps the model.
+        [Test]
+        public void FoundingSiteThreat_AnUnseenGarrisonStaysOnItsBase_AnUnseenFieldArmyDrifts()
+        {
+            var site = new HexCoord(-6, 0);   // 6 hexes from the enemy Base, beyond a 2-turn sortie (2 x 2)
+            var defenders = new[] { new WorthIt.DefenderProfile(5f, false, attack: 8f, hitPoints: 8f) };
+            var garrison = new AiMapMemory.KnownEnemySighting(new HexCoord(0, 0), new PlayerSetupData(), "garrison",
+                7, 20f, 40f, defenders, armyId: 12, isGarrison: true, maxMovement: 2);
+            var field = new AiMapMemory.KnownEnemySighting(new HexCoord(0, 0), new PlayerSetupData(), "field",
+                7, 20f, 40f, defenders, armyId: 13, maxMovement: 2);
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(new[] { (garrison, 6) }, new[] { site }, site, true,
+                out _, includeGarrisons: true), Is.Zero);
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(new[] { (field, 6) }, new[] { site }, site, true,
+                out int eta, includeGarrisons: true), Is.GreaterThan(0f));
+            Assert.That(eta, Is.Zero, "the unseen field army keeps the worst-case reach");
+        }
+
         [Test]
         public void FoundingDefence_ShortfallIsTheSiteRisk()
         {

@@ -617,8 +617,12 @@ namespace Game.Ai
                     continue;
                 int reach = enemy.MaxMovement * AiConfigV2.activeDefenceWithdrawMaxEnemyEta;
                 bool hides = observer != null && AiReconMemory.HidesInSight(enemy.Defenders);
+                // 2026-11-25 — a garrison container never leaves its Base: a sortie starts from the
+                // known Base hex, so its position does not drift with the turns it went unseen
+                // (only FoundingSiteThreat counts garrisons). Mobile armies keep the worst-case model.
+                int drift = enemy.IsGarrison ? 0 : Math.Max(0, unseen);
                 int Near(HexCoord h) => AiReconMemory.PossibleDistance(observer, enemy.Hex,
-                    enemy.MaxMovement, Math.Max(0, unseen), enemy.IsAir, h, hidesInSight: hides, limit: reach);
+                    enemy.MaxMovement, drift, enemy.IsAir, h, hidesInSight: hides, limit: reach);
                 if (Near(garrisonHex) > reach)
                     continue;
                 HexCoord nearest = garrisons
