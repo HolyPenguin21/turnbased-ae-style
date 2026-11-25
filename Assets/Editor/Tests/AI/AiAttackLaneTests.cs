@@ -1456,7 +1456,7 @@ namespace Game.EditorTests
                 i?.ActiveDefence != null && i.ActiveDefence.PrimaryArmyId == 35);
             Assert.That(walk, Is.Not.Null);
             Assert.That(walk.ActiveDefence.Phase, Is.EqualTo(ActiveDefencePhase.Return));
-            Assert.That(walk.ActiveDefence.ReturnPurpose, Is.EqualTo(ActiveDefenceReturnPurpose.SafeWithdrawal));
+            Assert.That(walk.ActiveDefence.ReturnPurpose, Is.EqualTo(ActiveDefenceReturnPurpose.RecoveryWalk));
             Assert.That(walk.ActiveDefence.ReturnHex, Is.EqualTo(OurBase));
         }
 

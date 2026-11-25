@@ -26,7 +26,11 @@ namespace Game.Ai.V2
     // Muster (2026-11-19): a fist muster leg (FistMusterObjectiveEvaluator) — an idle army, a
     // garrison detachment or a staging-garrison intake joining the standing fist on the staging Base.
     // It lives for the turn it was admitted only (ImmediateTurn), so the army stays free to compete.
-    public enum ActiveDefenceReturnPurpose { SafeWithdrawal = 0, RegroupForAsset = 1, GarrisonRelief = 2, Muster = 3 }
+    // RecoveryWalk (2026-11-25, owner variant 2): an Attack army's walk home (RecoveryReturn) that a
+    // new preparation on the same target superseded (AttackContinuity.TrySupersedeRecoveryReturn).
+    // The army reaches its recovery Base and only then is free; only losing that Base ends it. It
+    // answers no enemy army (EnemyArmyId = -1) and, unlike a withdrawal, holds no fist muster.
+    public enum ActiveDefenceReturnPurpose { SafeWithdrawal = 0, RegroupForAsset = 1, GarrisonRelief = 2, Muster = 3, RecoveryWalk = 4 }
 
     // Why an Intercept exists. Zero keeps every existing intent a strategic defence of an asset.
     // ImmediateOpportunity is one fight the defender can START in the very own turn it is admitted

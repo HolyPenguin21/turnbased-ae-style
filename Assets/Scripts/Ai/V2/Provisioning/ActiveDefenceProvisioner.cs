@@ -233,7 +233,9 @@ namespace Game.Ai.V2
                         "regroup_no_longer_needed"));
                 }
             }
-            else
+            // RecoveryWalk (2026-11-25, owner variant 2) — the superseded Attack walk home owes no
+            // threat to the army itself: the own Base checked above is its only condition.
+            else if (target.ReturnPurpose != ActiveDefenceReturnPurpose.RecoveryWalk)
             {
                 ArmySnapshot current = snap.Self.Armies.FirstOrDefault(a => a.ArmyId == actor.Id);
                 var committed = ActorCommitments.FromIntents(

@@ -76,12 +76,19 @@ namespace Game.Ai.V2
                 }
                 // GarrisonRelief — the detachment delivers its bodies whatever became of the threat;
                 // only losing the recipient base ends it (the shell then stands free where it is).
-                if (defence.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)
+                // RecoveryWalk (2026-11-25, owner variant 2) — the same lifecycle: the superseded
+                // Attack recovery walk reaches its Base, whatever threatens the army on the way.
+                if (defence.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief
+                    || defence.ReturnPurpose == ActiveDefenceReturnPurpose.RecoveryWalk)
                 {
                     if (!ActiveDefenceObjectiveEvaluator.IsDefendableAsset(snap,
                             defence.ProtectedAssetKind, defence.ProtectedAssetHex))
                     {
-                        AiDebugLog.Write($"[AI][V2][GarrisonRelief][Continuity] decision=END actor={actor.ArmyId} reason=relief_base_lost");
+                        string lane = defence.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief
+                            ? "GarrisonRelief" : "RecoveryWalk";
+                        string reason = defence.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief
+                            ? "relief_base_lost" : "recovery_base_lost";
+                        AiDebugLog.Write($"[AI][V2][{lane}][Continuity] decision=END actor={actor.ArmyId} reason={reason}");
                         return false;
                     }
                     ResumeTransientSuspension(intent);
@@ -312,10 +319,10 @@ namespace Game.Ai.V2
         }
         // 2026-11-25 (owner, variant 2) — an Attack army walking home (RecoveryReturn) whose intent a
         // new preparation on the same target supersedes keeps walking as an ActiveDefence
-        // SafeWithdrawal Return to the same base (own key: mover + destination), instead of being
-        // freed mid-route (Brynn T23: Rust Bite never reached the Base it was called to). The
-        // ordinary SafeWithdrawal continuity then owns it: it ends once the army is no longer
-        // threatened or arrives.
+        // RecoveryWalk Return to the same base (own key: mover + destination), instead of being
+        // freed mid-route (Brynn T23: Rust Bite never reached the Base it was called to). It ends
+        // on arrival or when that Base is lost, never because the army itself is unthreatened
+        // (the SafeWithdrawal rule would free it on the next pass), and it holds no fist muster.
         internal static void ContinueRecoveryWalk(MissionIntentState state, int armyId, HexCoord home,
             AssetKind homeKind, int turn)
         {
@@ -324,7 +331,7 @@ namespace Game.Ai.V2
             var payload = new ActiveDefenceIntent
             {
                 Phase = ActiveDefencePhase.Return,
-                ReturnPurpose = ActiveDefenceReturnPurpose.SafeWithdrawal,
+                ReturnPurpose = ActiveDefenceReturnPurpose.RecoveryWalk,
                 EnemyArmyId = -1,
                 LastKnownHex = home, LastObservedTurn = turn, Confidence = 1f,
                 ProtectedAssetHex = home, ProtectedAssetKind = homeKind,
@@ -343,7 +350,7 @@ namespace Game.Ai.V2
                 return;
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE {intent.IntentKey} "
-                + $"phase=Return purpose=SafeWithdrawal actor={armyId} reason=superseded_attack_recovery");
+                + $"phase=Return purpose=RecoveryWalk actor={armyId} reason=superseded_attack_recovery");
         }
 
         internal static bool TryCreateActiveDefenceStep(MissionIntentState state, AiAllocatorState allocState,

@@ -2926,6 +2926,38 @@ namespace Game.EditorTests
             finally { MissionIntentRegistry.Clear(); }
         }
 
+        // 2026-11-25 (owner, variant 2) — a superseded Attack recovery walk reaches its Base: an
+        // unthreatened army keeps the leg (a SafeWithdrawal leg would end here and free it
+        // mid-route), and only losing the Base ends it.
+        [TestCase(ActiveDefenceReturnPurpose.RecoveryWalk, true, true, TestName = "RecoveryWalk_Unthreatened_Kept")]
+        [TestCase(ActiveDefenceReturnPurpose.RecoveryWalk, false, false, TestName = "RecoveryWalk_BaseLost_Ends")]
+        [TestCase(ActiveDefenceReturnPurpose.SafeWithdrawal, true, false, TestName = "SafeWithdrawal_Unthreatened_Ends")]
+        public void RecoveryWalk_Lifecycle(ActiveDefenceReturnPurpose purpose, bool baseHeld, bool kept)
+        {
+            var player = new PlayerSetupData { Nickname = "RecoveryWalkLifecycle" };
+            MissionIntentRegistry.Clear();
+            try
+            {
+                ArmySnapshot actor = DefenceActor(player, 7, new HexCoord(0, 0));
+                WorldSnapshot snap = ImmediateWorld(player, new HexCoord(-4, 0), false, false, actor);
+                if (!baseHeld) snap.Self.BaseHexes = new[] { Secondary };
+                var state = MissionIntentRegistry.GetOrCreate(player);
+                ActiveDefenceContinuity.ContinueRecoveryWalk(state, 7, Home, AssetKind.Base, snap.TurnNumber);
+                MissionIntent intent = state.All.Single(i => i?.ActiveDefence?.PrimaryArmyId == 7);
+                Assert.That(intent.ActiveDefence.ReturnPurpose, Is.EqualTo(ActiveDefenceReturnPurpose.RecoveryWalk));
+                intent.ActiveDefence.ReturnPurpose = purpose;
+                var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
+
+                bool alive = (bool)typeof(ActiveDefenceContinuity).GetMethod("ResolveActiveDefenceIntent",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                    .Invoke(null, new object[] { player, snap, intent, rekeys });
+
+                Assert.That(alive, Is.EqualTo(kept));
+                Assert.That(rekeys, Is.Empty);
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
         [Test]
         public void Immediate_ProjectedCurrentMovement_FollowsTheAssembledRoster()
         {
