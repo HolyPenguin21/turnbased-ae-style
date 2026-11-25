@@ -111,7 +111,7 @@ namespace Game.Ai.V2
                     if (av < bv - eps) return 1;
                 }
 
-                // Threat-backed profiles have a fixed three entries per contactable threat;
+                // Threat-backed profiles have a fixed five entries per contactable threat;
                 // the variable-length case is the no-threat AiPower fallback. There, a trailing
                 // weaker formation remains neutral so an empty reusable shell never creates
                 // pressure to seed itself.
@@ -252,6 +252,11 @@ namespace Game.Ai.V2
                 state.Transfers.AddRange(best.Transfers);
                 state.MovedUnitKeys.Clear();
                 state.MovedUnitKeys.UnionWith(best.MovedUnitKeys);
+                // The rows belong to the roster: the accepted candidate's are exact (it IS this
+                // roster now). 2026-11-25 (housekeeping stand E12): they were kept from the first
+                // roster, so every later iteration — its baseline and RaisesHexHold's — read the
+                // hold of the layout before the first step, and the next pass saw another hex.
+                state.ThreatRows = best.ThreatRows;
             }
 
             Outcome final = Evaluate(state);

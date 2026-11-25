@@ -499,9 +499,11 @@ namespace Game.Ai
                 if (!i.IsLifecycleLeg)
                     return true;
                 // A return leg heading to ANOTHER hex only passes through; a relief detachment
-                // always walks away from its donor.
+                // always walks away from its donor. 2026-11-25 — every leg's destination
+                // (MissionIntent.LifecycleDestination): a Raid/Attack recovery return or an Economy
+                // return passing through used to count as this hex's resident defence.
                 ActiveDefenceIntent ad = i.ActiveDefence;
-                HexCoord? destination = ad?.ReturnHex ?? i.Raid?.ReturnHex;
+                HexCoord? destination = i.LifecycleDestination;
                 if ((destination.HasValue && !destination.Value.Equals(hex))
                     || (ad != null && ad.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief
                         && !destination.HasValue))

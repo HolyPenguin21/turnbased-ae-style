@@ -437,25 +437,33 @@ namespace Game.EditorTests
 
         public void EndTask(MissionIntent intent) => Intents.Remove(intent.IntentKey);
 
-        public MissionIntent Raid(ArmyData primary, RaidMissionPhase phase, ArmyData support = null)
+        // A return leg either passes through this hex towards another own base (`home` false:
+        // the walk goes on) or has arrived here (`home` true: its destination is this hex).
+        public static readonly HexCoord Elsewhere = new HexCoord(-6, 6);
+
+        private static HexCoord Destination(bool home) => home ? Home : Elsewhere;
+
+        public MissionIntent Raid(ArmyData primary, RaidMissionPhase phase, ArmyData support = null, bool home = false)
         {
             var raid = new RaidIntent
             {
                 Target = RaidTargetRef.ForNeutralArmy(_targetSeed++), OperationStarted = true,
                 Phase = phase, PrimaryArmyId = primary.Id, SupportArmyId = support?.Id,
-                ReturnHex = Home,
+                ReturnHex = Destination(home), RecoveryBaseHex = Destination(home),
+                SupportReturnHex = Destination(home),
             };
             return Put(MissionKind.Raid, raid);
         }
 
         public MissionIntent Attack(ArmyData primary, AttackMissionPhase phase, bool assaultStarted = false,
-            IEnumerable<ArmyData> gatherSupports = null)
+            IEnumerable<ArmyData> gatherSupports = null, bool home = false)
         {
             var attack = new AttackIntent
             {
                 Target = AttackTargetRef.For(new HexCoord(_targetSeed++, 5), Foe, AttackTargetKind.Base),
                 Phase = phase, OperationStarted = true, AssaultStarted = assaultStarted,
-                PrimaryArmyId = primary.Id, RecoveryBaseHex = Home,
+                PrimaryArmyId = primary.Id, RecoveryBaseHex = Destination(home),
+                SupportReturnHex = Destination(home),
             };
             if (gatherSupports != null)
                 attack.GatherSupportArmyIds.AddRange(gatherSupports.Select(a => a.Id));
@@ -477,13 +485,14 @@ namespace Game.EditorTests
             return Put(MissionKind.Attack, attack);
         }
 
-        public MissionIntent Defence(ArmyData primary, ActiveDefencePhase phase, ArmyData enemy = null)
+        public MissionIntent Defence(ArmyData primary, ActiveDefencePhase phase, ArmyData enemy = null,
+            bool home = false)
         {
             var defence = new ActiveDefenceIntent
             {
                 Phase = phase, EnemyArmyId = enemy?.Id ?? _targetSeed++, PrimaryArmyId = primary.Id,
                 InterceptPurpose = ActiveDefenceInterceptPurpose.StrategicDefence,
-                ReturnHex = phase == ActiveDefencePhase.Return ? Home : (HexCoord?)null,
+                ReturnHex = phase == ActiveDefencePhase.Return ? Destination(home) : (HexCoord?)null,
                 ProtectedAssetHex = Home,
             };
             return Put(MissionKind.ActiveDefence, defence);
@@ -499,12 +508,12 @@ namespace Game.EditorTests
             return intent;
         }
 
-        public MissionIntent Economy(ArmyData actor, EconomyTaskKind kind)
+        public MissionIntent Economy(ArmyData actor, EconomyTaskKind kind, bool home = false)
         {
             bool collector = kind == EconomyTaskKind.MobileCollection || kind == EconomyTaskKind.ReturnCollector;
             var economy = new EconomyIntent
             {
-                Kind = kind, TargetHex = new HexCoord(3, -3),
+                Kind = kind, TargetHex = home ? Home : new HexCoord(3, -3),
                 BuilderArmyId = collector ? (int?)null : actor.Id,
                 CollectorArmyId = collector ? actor.Id : (int?)null,
             };
@@ -850,6 +859,14 @@ namespace Game.EditorTests
             List<int> fresh = t.After.Values.Where(a => a.Members.Count > 0
                 && (!t.Before.TryGetValue(a.Id, out StandArmy b) || b.Members.Count == 0)).Select(a => a.Id).ToList();
             Expect(fresh.Count == 0, $"no empty army taken into use{Why(why)} (filled: {string.Join(",", fresh)})");
+        }
+
+        // The own formations on the hex that hold ground battle bodies (garrison included).
+        public void ExpectFightingFormations(int count, string why = null)
+        {
+            int n = OwnArmies.Count(a => !a.IsPrison && !a.IsAirfield && !AviationRules.IsAirArmy(a)
+                && a.Members.Any(AiArmyRoles.IsGroundBattleBody));
+            Expect(n == count, $"{count} fighting formation(s) on the hex, got {n}{Why(why)}");
         }
 
         // A Support hero never rides in a field army that fights (it serves from the garrison

@@ -18,15 +18,29 @@ namespace Game.Ai.V2
             public readonly float HexTolerance;
             public readonly float FirstReadiness;
             public readonly float SecondReadiness;
+            // 2026-11-25 (owner, housekeeping stand D09/E15: "even without a chance the game must
+            // stay interesting for the human") — what taking the hex costs this attacker: 1 - the
+            // HP share it keeps over the trials it wins (1 when it never wins). Read after the
+            // first/second rows, so it decides only where the hold and the contact rows tie - a
+            // hex lost whatever the layout is still defended as one hard fight.
+            public readonly float AttackerCost;
+            // The hex falls to this attacker whatever the layout (it wins every trial): then the
+            // hex is fought as ONE formation (owner 2026-11-25: "all armies merged as usual, the
+            // game must stay interesting") - fewer contactable formations rank first.
+            public readonly bool Lost;
+            public readonly int Formations;
 
             public ThreatContactRow(int threatArmyId, float hexReadiness, float hexTolerance,
-                float firstReadiness, float secondReadiness)
+                float firstReadiness, float secondReadiness, float attackerCost, bool lost, int formations)
             {
+                Lost = lost;
+                Formations = formations;
                 ThreatArmyId = threatArmyId;
                 HexReadiness = hexReadiness;
                 HexTolerance = hexTolerance;
                 FirstReadiness = firstReadiness;
                 SecondReadiness = secondReadiness;
+                AttackerCost = attackerCost;
             }
         }
 
@@ -214,16 +228,20 @@ namespace Game.Ai.V2
                 return a.ThreatArmyId.CompareTo(b.ThreatArmyId);
             });
 
-            var profile = new List<float>(rows.Count * 3);
-            var tolerances = new List<float>(rows.Count * 3);
+            var profile = new List<float>(rows.Count * 5);
+            var tolerances = new List<float>(rows.Count * 5);
             foreach (ThreatContactRow row in rows)
             {
                 profile.Add(row.HexReadiness);
                 profile.Add(row.FirstReadiness);
                 profile.Add(row.SecondReadiness);
+                profile.Add(row.Lost ? -row.Formations : 0f);
+                profile.Add(row.AttackerCost);
                 tolerances.Add(row.HexTolerance);
                 tolerances.Add(0f);
                 tolerances.Add(0f);
+                tolerances.Add(0f);
+                tolerances.Add(AiConfigV2.housekeepingHexHoldMargin);
             }
             return new LazyProfile.Data(profile, tolerances);
         }
@@ -285,9 +303,10 @@ namespace Game.Ai.V2
                 float second = ranked.Count > 1
                     ? ContactReadiness(state, threat, ranked[1].defenders, ranked[1].commander)
                     : NoDefenderReadiness(threat.EtaToGroup);
-                rows.Add(new ThreatContactRow(threat.ArmyId, HexReadiness(state, threat, ranked),
+                float hex = HexReadiness(state, threat, ranked, out float attackerCost, out bool lost);
+                rows.Add(new ThreatContactRow(threat.ArmyId, hex,
                     AiConfigV2.housekeepingHexHoldMargin / (1f + Math.Max(0, threat.EtaToGroup)),
-                    first, second));
+                    first, second, attackerCost, lost, ranked.Count));
             }
             state.ThreatRows = rows;
             return rows;
@@ -313,6 +332,13 @@ namespace Game.Ai.V2
                 float eps = Math.Max(FloatEps, Math.Max(r.HexTolerance, b.HexTolerance));
                 if (r.HexReadiness > b.HexReadiness + eps)
                     return true;
+                // A lost hex (the hold cannot move): packing still counts when the hex is then
+                // fought as fewer formations, or the attacker pays clearly more for it.
+                if (r.Lost && b.Lost && r.Formations < b.Formations)
+                    return true;
+                if (Math.Abs(r.HexReadiness - b.HexReadiness) <= eps
+                    && r.AttackerCost > b.AttackerCost + AiConfigV2.housekeepingHexHoldMargin)
+                    return true;
             }
             return false;
         }
@@ -325,7 +351,7 @@ namespace Game.Ai.V2
         // there and was refused (Kryll (0,4): hold 0.32 as it stood, 0.92 folded; lost all six).
         private static float HexReadiness(VState state, ReorgThreatBenchmark threat,
             List<(int containerId, WorthIt.BattleEstimate selection, List<WorthIt.DefenderProfile> defenders,
-                WorthIt.SideCommander commander)> ranked)
+                WorthIt.SideCommander commander)> ranked, out float attackerCost, out bool lost)
         {
             var armies = new List<WorthIt.DefendingArmy>(ranked.Count);
             foreach (var r in ranked)
@@ -333,9 +359,12 @@ namespace Game.Ai.V2
                 // attacker carrying Disruption (DefendingArmy.DefenseBonus), as in the real battle.
                 armies.Add(new WorthIt.DefendingArmy(r.defenders, r.commander, armyId: r.containerId,
                     buildingDefenseBonus: state.BuildingDefenseBonus));
-            float attackerWins = WorthIt.EstimateHexControl(threat.Members, threat.Commander, armies,
+            WorthIt.BattleEstimate control = WorthIt.EstimateHexControl(threat.Members, threat.Commander, armies,
                 state.HexDefenseBonus, environment: state.Environment,
-                monteCarloTrials: AiConfigV2.housekeepingHexHoldTrials).WinChance;
+                monteCarloTrials: AiConfigV2.housekeepingHexHoldTrials);
+            float attackerWins = control.WinChance;
+            lost = attackerWins >= 1f - FloatEps;
+            attackerCost = attackerWins > 0f ? 1f - Math.Max(0f, Math.Min(1f, control.ExpectedSurvivingHpRatioOnWin)) : 1f;
             return 1f - attackerWins / (1f + Math.Max(0, threat.EtaToGroup));
         }
 

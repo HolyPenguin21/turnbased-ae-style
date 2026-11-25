@@ -522,6 +522,46 @@ namespace Game.Ai.V2
             }
         }
 
+        // 2026-11-25 (owner, housekeeping stand B02) — `armyId` walks a return leg of this intent
+        // (the primary's lifecycle leg, a support walking home, an Attack gather donor going back)
+        // and already stands on that leg's destination: the walk is over, only the turn-start
+        // continuity pass has not retired it yet.
+        internal bool ReturnLegArrived(int armyId, HexCoord hex)
+        {
+            if (PreferredMoverArmyId == armyId && LifecycleDestination?.Equals(hex) == true)
+                return true;
+            if (Raid != null)
+                return Raid.Phase == RaidMissionPhase.SupportReturn && Raid.SupportArmyId == armyId
+                    && Raid.SupportReturnHex?.Equals(hex) == true;
+            if (Attack != null)
+                return Attack.Phase == AttackMissionPhase.SupportReturn && Attack.SupportArmyId == armyId
+                        && Attack.SupportReturnHex?.Equals(hex) == true
+                    || Attack.GatherReturns.Any(r => r != null && r.ArmyId == armyId && r.BaseHex?.Equals(hex) == true);
+            return false;
+        }
+
+        // THE destination of the primary's lifecycle leg (IsLifecycleLeg): the Economy return's
+        // target, the Raid return / recovery base, the Attack recovery base, the ActiveDefence
+        // return hex. Null when the leg names none (a completed raid target awaiting a decision).
+        // Read by ReturnLegArrived and AiArmyRoles.LeavesOnOperation (a leg heading elsewhere only
+        // passes through a hex; one standing on its destination is home).
+        internal HexCoord? LifecycleDestination
+        {
+            get
+            {
+                if (Economy != null)
+                    return Economy.Kind.IsReturn() ? Economy.TargetHex : (HexCoord?)null;
+                if (Raid != null)
+                    return Raid.Phase == RaidMissionPhase.Return ? Raid.ReturnHex
+                        : Raid.Phase == RaidMissionPhase.RecoveryReturn ? Raid.RecoveryBaseHex : null;
+                if (Attack != null)
+                    return Attack.Phase == AttackMissionPhase.RecoveryReturn ? Attack.RecoveryBaseHex : null;
+                if (ActiveDefence != null)
+                    return ActiveDefence.Phase == ActiveDefencePhase.Return ? ActiveDefence.ReturnHex : null;
+                return null;
+            }
+        }
+
         // The value lost by taking `armyId` off whatever it is doing now. `isOwn` names the
         // intents the asking task continues (its own durable intent): continuing yourself is free.
         public static float DisplacementValueOf(IEnumerable<MissionIntent> intents, int armyId,

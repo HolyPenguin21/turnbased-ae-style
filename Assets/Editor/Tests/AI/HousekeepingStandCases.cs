@@ -40,10 +40,7 @@ namespace Game.EditorTests
         // decided by the owner 2026-11-25 and fixed - no longer pending.)
         internal static readonly Dictionary<string, string> Pending = new Dictionary<string, string>
         {
-            ["E12_TwoThreats_StandingRules"] =
-                "OPEN DEFECT: under a held threat a singleton is fixed by splitting the fist on the "
-                + "first/second-defender rows; the next pass reads the same rosters differently "
-                + "(0.72 vs 0.92) and merges back (Rusty Miller, Nyx decks)",
+            // (E12, 2026-11-25: the "different reading" was the planner's stale threat rows - fixed.)
         };
 
         static HousekeepingStandCases()
@@ -350,7 +347,7 @@ namespace Game.EditorTests
             });
 
             Case("B02_RaidReturnLeg_GivesNothingAway",
-                "the raid army is still on its return leg, a lone body beside -> the raid keeps its members", s =>
+                "the raid army passes through on its return leg to another base, a lone body beside -> the raid keeps its members", s =>
             {
                 UnitData hero = s.Hero(HeroPick.Combat), mid = s.Body(BodyPick.Mid);
                 s.Garrison(s.Body(BodyPick.Strong));
@@ -372,7 +369,7 @@ namespace Game.EditorTests
             });
 
             Case("B04_RaidReturnLeg_KeepsSecondaryHero",
-                "the same army still on its return leg -> it keeps both heroes", s =>
+                "the same army passing through on its return leg -> it keeps both heroes", s =>
             {
                 s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 ArmyData army = s.Field(s.Hero(HeroPick.Combat), s.Hero(HeroPick.Combat2), s.Body(BodyPick.Mid));
@@ -382,7 +379,7 @@ namespace Game.EditorTests
             });
 
             Case("B05_AttackRecoveryReturn_Arrived",
-                "an Attack army on its recovery return stands home -> it gives nothing away", s =>
+                "an Attack army passing through on its recovery return -> it gives nothing away", s =>
             {
                 UnitData hero = s.Hero(HeroPick.Combat), mid = s.Body(BodyPick.Mid);
                 s.Garrison(s.Body(BodyPick.Strong));
@@ -407,7 +404,7 @@ namespace Game.EditorTests
             });
 
             Case("B07_DefenceReturn_Arrived",
-                "an ActiveDefence army walking home stands on the hex -> it gives nothing away", s =>
+                "an ActiveDefence army passing through on its way home -> it gives nothing away", s =>
             {
                 UnitData hero = s.Hero(HeroPick.Combat), mid = s.Body(BodyPick.Mid);
                 s.Garrison(s.Body(BodyPick.Strong));
@@ -504,6 +501,73 @@ namespace Game.EditorTests
                 s.Field(s.Hero(HeroPick.Combat), a, b);
                 s.Shell();
                 s.EndTurn();
+            });
+
+            // 2026-11-25 (owner, stand B02: "why does the strong unit stay alone?") - a return leg
+            // standing on its destination is home: Housekeeping packages it with the hex. The
+            // garrison's last body still stays (one body always stays, 2026-09-30).
+            Case("B15_RaidReturnArrived_JoinsTheHex",
+                "the raid army has arrived home (Return leg on its destination), a lone body beside -> one formation", s =>
+            {
+                UnitData hero = s.Hero(HeroPick.Combat), weak = s.Body(BodyPick.Weak);
+                s.Garrison(s.Body(BodyPick.Strong));
+                ArmyData raid = s.Field(hero, s.Body(BodyPick.Mid));
+                s.Raid(raid, RaidMissionPhase.Return, home: true);
+                s.Field(weak);
+                s.EndTurn();
+                if (s.Last.Before[raid.Id].Contract != null)
+                    s.Failures.Add($"T1: expected the arrived raid army free, got [{s.Last.Before[raid.Id].Contract.Label}]");
+                s.ExpectNotAlone(weak);
+            });
+
+            Case("B16_AttackRecoveryArrived_SecondHeroReleased",
+                "an Attack army has arrived at its recovery base with two heroes -> it is free, one hero leaves", s =>
+            {
+                s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
+                ArmyData army = s.Field(s.Hero(HeroPick.Combat), s.Hero(HeroPick.Combat2), s.Body(BodyPick.Mid),
+                    s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
+                s.Attack(army, AttackMissionPhase.RecoveryReturn, home: true);
+                s.EndTurn();
+                s.ExpectHeroes(army, 1);
+            });
+
+            Case("B17_DefenceReturnArrived_JoinsTheHex",
+                "an ActiveDefence army has arrived home, a lone body beside -> it is free, the body is not left alone", s =>
+            {
+                UnitData weak = s.Body(BodyPick.Weak);
+                s.Garrison(s.Body(BodyPick.Strong));
+                ArmyData army = s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Mid));
+                s.Defence(army, ActiveDefencePhase.Return, home: true);
+                s.Field(weak);
+                s.EndTurn();
+                if (s.Last.Before[army.Id].Contract != null)
+                    s.Failures.Add($"T1: expected the arrived army free, got [{s.Last.Before[army.Id].Contract.Label}]");
+                s.ExpectNotAlone(weak);
+            });
+
+            Case("B18_BuilderArrivedHome_Free",
+                "a builder has arrived home (ReturnBuilder on its destination) -> it is free for the hex", s =>
+            {
+                s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
+                ArmyData builder = s.Field(s.Hero(HeroPick.SmallCommand), s.Body(BodyPick.Mid));
+                s.Economy(builder, EconomyTaskKind.ReturnBuilder, home: true);
+                s.EndTurn();
+                if (s.Last.Before[builder.Id].Contract != null)
+                    s.Failures.Add($"T1: expected the arrived builder free, got [{s.Last.Before[builder.Id].Contract.Label}]");
+            });
+
+            Case("B19_SupportReturnArrived_PrimaryStillClaimed",
+                "a raid support has walked home while its primary stands on the hex -> the support is free, the primary is not", s =>
+            {
+                s.Garrison(s.Body(BodyPick.Strong));
+                ArmyData primary = s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Strong));
+                ArmyData support = s.Field(s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
+                s.Raid(primary, RaidMissionPhase.SupportReturn, support, home: true);
+                s.EndTurn();
+                if (s.Last.Before[support.Id].Contract != null)
+                    s.Failures.Add($"T1: expected the arrived support free, got [{s.Last.Before[support.Id].Contract.Label}]");
+                if (s.Last.Before[primary.Id].Contract == null)
+                    s.Failures.Add("T1: expected the raid primary still claimed");
             });
         }
 
@@ -796,21 +860,20 @@ namespace Game.EditorTests
                     s.Failures.Add($"T1: expected both missing positions filled from the garrison spares, got {wanted}");
             });
 
-            // 2026-11-16 (owner) — the exchange is legal while the garrison keeps min(held, floor);
-            // a known enemy raises the floor above what the weak body would leave.
-            Case("D07_Host_KeepsTheBody_WhenTheGarrisonFloorForbids",
-                "the same host with a one-body garrison and a company 2 turns away -> no exchange", s =>
+            // 2026-11-25 (owner, stand D09) - a known enemy within the shelter horizon frees the
+            // preparation host for Housekeeping: the hex is defended as one (MissionActorPolicy).
+            Case("D07_Host_UnderSiege_IsFreedForTheHex",
+                "a host with a weak non-roster body, a one-body garrison, a company 2 turns away -> the host is free", s =>
             {
-                UnitData weak = s.Body(BodyPick.Weak);
                 s.Garrison(s.Body(BodyPick.Strong));
-                ArmyData host = s.Field(s.Hero(HeroPick.BigCommand), weak);
+                ArmyData host = s.Field(s.Hero(HeroPick.BigCommand), s.Body(BodyPick.Weak));
                 s.Preparation(host, s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 s.EnemyAtEta(2, EnemyForce.Company);
                 s.EndTurn();
-                s.ExpectIn(weak, host);
+                if (s.Last.Before[host.Id].Contract != null)
+                    s.Failures.Add($"T1: expected the besieged host free, got [{s.Last.Before[host.Id].Contract.Label}]");
             });
 
-            // With no source of a missing position the non-roster body stays: nothing to wait for.
             Case("D08_Host_KeepsTheBody_WithoutASource",
                 "the same host with no wanted body anywhere on the hex -> it keeps the weak one", s =>
             {
@@ -822,17 +885,19 @@ namespace Game.EditorTests
                 s.ExpectIn(weak, host);
             });
 
-            Case("D09_Host_NeverWeakened_UnderANearThreat",
-                "a host of strong bodies, a Support-led garrison, a strong enemy next door -> the host keeps its bodies", s =>
+            // 2026-11-25 (owner) - "all armies are merged as usual; even without a chance the game
+            // must stay interesting for the human": a lost hex still packs (AttackerCost).
+            Case("D09_Host_UnderSiege_HexDefendedAsOne",
+                "a host of strong bodies, a Support-led garrison with room, a strong enemy next door -> one formation", s =>
             {
-                UnitData a = s.Body(BodyPick.Strong), b = s.Body(BodyPick.Strong);
                 s.Garrison(s.Hero(HeroPick.Support), s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
-                ArmyData host = s.Field(s.Hero(HeroPick.Combat), a, b);
+                ArmyData host = s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 s.Preparation(host, s.Body(BodyPick.Strong), s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 s.EnemyAtEta(1, EnemyForce.Host);
                 s.EndTurn();
-                s.ExpectIn(a, host);
-                s.ExpectIn(b, host);
+                if (s.Last.Before[host.Id].Contract != null)
+                    s.Failures.Add($"T1: expected the besieged host free, got [{s.Last.Before[host.Id].Contract.Label}]");
+                s.ExpectFightingFormations(1, "one hex, one fight");
             });
 
             Case("D10_Host_TakesTheWalkInPair",
@@ -1034,13 +1099,14 @@ namespace Game.EditorTests
                 s.ExpectUnchanged(air);
             });
 
-            Case("E15_HopelessThreat_StandingRules",
-                "a tiny garrison and one body against a full enemy host next door -> nothing makes it worse", s =>
+            Case("E15_HopelessThreat_StillOneFight",
+                "a garrison and a led field army against a full enemy host next door -> merged into one fight", s =>
             {
-                s.Garrison(s.Body(BodyPick.Weak));
-                s.Field(s.Body(BodyPick.Mid));
+                s.Garrison(s.Hero(HeroPick.Support), s.Body(BodyPick.Weak));
+                s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
                 s.EnemyAtEta(1, EnemyForce.Host);
                 s.EndTurn();
+                s.ExpectFightingFormations(1, "a lost hex is still defended as one hard fight");
             });
 
             Case("E16_Threat_IdleScoutShelters",
