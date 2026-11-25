@@ -31,7 +31,8 @@ namespace Game.Ai.V2.Initiative
     // Values additional initiative tokens PURELY as extra AP capacity and (secondarily) earlier
     // turn position, against the strategic cost of the resources a purchase would consume.
     // Initiative is never a strategic objective here — no DesireVector, no mission priorities,
-    // no radar. Every candidate 0..MaxBonusTokens is evaluated for its real marginal value, so the
+    // no radar. The one non-capacity fact (2026-11-25, owner): a near threat to an own stronghold
+    // raises TurnOrderPressure (PreTurnCapacityAnalysis.StrongholdThreatPressure). Every candidate 0..MaxBonusTokens is evaluated for its real marginal value, so the
     // planner never targets a fixed tokens count.
     public static class InitiativePlanner
     {
