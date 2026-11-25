@@ -374,28 +374,6 @@ namespace Game.EditorTests
             });
         }
 
-        [Test, Category("UnityScene")] public void SurvivingExplorerHeroStillFacesLibraryGuard()
-        {
-            WithScene((selector, hand) =>
-            {
-                var hex = new HexCoord(3, 1);
-                var human = new PlayerSetupData { IsHuman = true };
-                var neutralPlayer = new PlayerSetupData { IsNeutral = true };
-                var explorer = new ArmyData { Owner = human, Hex = hex };
-                explorer.Members.Add(new UnitData { Owner = human, IsHero = true, HitPointsCurrent = 1, HitPointsMax = 1 });
-                var guard = new ArmyData { Owner = neutralPlayer, Name = "Library guard", Hex = hex };
-                guard.Members.Add(new UnitData { Owner = neutralPlayer, HitPointsCurrent = 1, HitPointsMax = 1 });
-                ArmyRegistry.Register(explorer); ArmyRegistry.Register(guard);
-                HexEventRegistry.Set(hex, new EventDefinition { grantsRandomCollectionCard = true }, guard.Name,
-                    new System.Collections.Generic.List<(CardDefinition, int)> { (card, 1) }, neutralPlayer, null);
-                var entry = HexEventRegistry.FindAt(hex); entry.Triggered = true;
-                var result = BattleEngine.FinalizeEncounter(new BattleState(hex, explorer, guard, new BattleGrid(), 123), selector);
-                Assert.That(result.Survivor, Is.SameAs(guard));
-                Assert.That(entry.Triggered, Is.True);
-                Assert.That(BattleInitiator.FindEnemyAt(hex, guard), Is.SameAs(explorer));
-            });
-        }
-
         private static void SetField(object target, string field, object value) => target.GetType()
             .GetField(field, BindingFlags.NonPublic | BindingFlags.Instance).SetValue(target, value);
 

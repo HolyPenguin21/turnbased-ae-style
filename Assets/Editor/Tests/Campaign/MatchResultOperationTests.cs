@@ -241,7 +241,7 @@ public sealed class MatchResultOperationTests
             typeof(ProgressionContext).GetProperty("Collection").SetValue(null, collection);
             typeof(ProgressionContext).GetProperty("Rewards").SetValue(null, Rewards());
             typeof(GameSession).GetProperty("Stage").SetValue(null, MatchSessionStage.Running);
-            typeof(GameSession).GetProperty("CampaignContext").SetValue(null, context);
+            typeof(GameSession).GetProperty("CampaignContext").SetValue(null, campaignMatch ? context : null);
             typeof(GameSession).GetProperty("FinalResult").SetValue(null, null);
             typeof(GameSession).GetProperty("RewardsEligible").SetValue(null, true);
             string matchId = campaignMatch ? context.MatchId : "ordinary-without-popup";

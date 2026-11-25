@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.Serialization;
+using UnityEngine;
 using Game.Campaign;
 using Game.Cards;
 using Game.Players;
@@ -12,7 +13,8 @@ namespace Game.EditorTests
     public sealed class AiHeroDeckRulesTests
     {
         // Only plain fields and catalogue methods are exercised; no native Object APIs are used.
-        private static T Shell<T>() => (T)FormatterServices.GetUninitializedObject(typeof(T));
+        // Real instances: an uninitialized shell is Unity-null, and catalog lookups skip null catalogs.
+        private static T Shell<T>() where T : ScriptableObject => ScriptableObject.CreateInstance<T>();
         private static StartingDeckCatalog Catalog(out CardDefinition hero, out CardDefinition body)
         {
             hero = new CardDefinition { authoredKey = "hero", displayName = "Leader", cardType = CardType.Hero,

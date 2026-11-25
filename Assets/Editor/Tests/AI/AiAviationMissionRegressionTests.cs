@@ -59,19 +59,24 @@ namespace Game.EditorTests
             var wing = new ArmyData { Owner = owner, IsAirArmy = true };
             wing.AddMemberSorted(plane);
             // No scene/popup is needed: Transit must exit before target discovery or combat.
-            var presenter = (AviationCombatPresenter)FormatterServices.GetUninitializedObject(typeof(AviationCombatPresenter));
-            foreach (HexCoord step in new[] { new HexCoord(3, 0), new HexCoord(3, 1), new HexCoord(3, 0) })
+            var host = new GameObject("air presenter");
+            try
             {
-                var order = AiDecision.Move(wing, step, "flight", 0);
-                var result = new AviationCombatPresenter.AirStrikeResult();
-                IEnumerator resolution = presenter.ResolveAirStrikeAtCurrentHex(wing, step, order.AirStrikePolicy, result);
-                Assert.That(resolution.MoveNext(), Is.False);
-                Assert.That(result.Attacked, Is.False);
-                Assert.That(plane.HasAirAttackedThisTurn, Is.False);
-                Assert.That(plane.MoveCurrent, Is.EqualTo(6));
+                var presenter = host.AddComponent<AviationCombatPresenter>();
+                foreach (HexCoord step in new[] { new HexCoord(3, 0), new HexCoord(3, 1), new HexCoord(3, 0) })
+                {
+                    var order = AiDecision.Move(wing, step, "flight", 0);
+                    var result = new AviationCombatPresenter.AirStrikeResult();
+                    IEnumerator resolution = presenter.ResolveAirStrikeAtCurrentHex(wing, step, order.AirStrikePolicy, result);
+                    Assert.That(resolution.MoveNext(), Is.False);
+                    Assert.That(result.Attacked, Is.False);
+                    Assert.That(plane.HasAirAttackedThisTurn, Is.False);
+                    Assert.That(plane.MoveCurrent, Is.EqualTo(6));
+                }
+                Assert.That(AviationRange.StrikeTurns(6, 6, 1, Edges(4), Edges(4)), Is.EqualTo(2),
+                    "transit must leave the full planned strike series available");
             }
-            Assert.That(AviationRange.StrikeTurns(6, 6, 1, Edges(4), Edges(4)), Is.EqualTo(2),
-                "transit must leave the full planned strike series available");
+            finally { UnityEngine.Object.DestroyImmediate(host); }
         }
 
         [Test]

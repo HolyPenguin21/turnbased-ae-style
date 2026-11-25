@@ -185,6 +185,10 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.ForceNeedModel", MatchStateKind.Cache),
             // muster steps, weakly keyed by the WorldSnapshot they were computed for
             new MatchStateEntry("Game.Ai.V2.FistMusterObjectiveEvaluator", MatchStateKind.Cache),
+            // stronghold-pin / march-block / defeat reads, weakly keyed by the WorldSnapshot
+            new MatchStateEntry("Game.Ai.V2.ActiveDefenceObjectiveEvaluator", MatchStateKind.Cache),
+            new MatchStateEntry("Game.Ai.V2.AttackMarchPolicy", MatchStateKind.Cache),
+            new MatchStateEntry("Game.Ai.V2.AttackObjectiveEvaluator", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.EconomyBuilderSelection", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.EquipmentEfficiency", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.Initiative.InitiativeOutcomeEvaluator", MatchStateKind.Cache),
@@ -199,6 +203,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.ProfileRowCache", MatchStateKind.Cache),
             // a thread-static re-entrancy flag set and cleared inside one forecast call
             new MatchStateEntry("Game.Ai.V2.EquipmentUpgradeValuation", MatchStateKind.Scoped),
+            // thread-static scratch borrowed only during one synchronous availability read
+            new MatchStateEntry("Game.Ai.V2.TurnResourceBook", MatchStateKind.Scoped),
 
             // --- wiring, presentation, profile, constants -------------------------------------------
             new MatchStateEntry("Game.Ai.V2.AiConfigV2", MatchStateKind.Wiring),
@@ -221,7 +227,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.UI.TutorialHintController", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.CollectionMessageUI", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.CollectionScreensUI", MatchStateKind.Presentation),
-            new MatchStateEntry("Game.UI.CollectionUIElements", MatchStateKind.Presentation),
+            new MatchStateEntry("Game.UI.SceneLoadCurtain", MatchStateKind.Presentation),
+            new MatchStateEntry("Game.UI.ScreenWearOverlay", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.GameMenuPanelUI", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.UIFocusUtility", MatchStateKind.Presentation),
             new MatchStateEntry("Game.Progression.ProgressionContext", MatchStateKind.Profile),

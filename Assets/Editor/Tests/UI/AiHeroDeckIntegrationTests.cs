@@ -35,7 +35,7 @@ namespace Game.EditorTests
         {
             previousPlayers = GameSession.Players; previousContext = GameSession.CampaignContext;
             MatchStateInventory.ResetForNewMatch();
-            GameSession.TryPrepareMatch(new List<PlayerSetupData>(), null, out _);
+            GameSession.ClearMatch(); // an empty TryPrepareMatch is rejected and reset nothing
             decks = AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset");
             host = new GameObject("AI deck integration"); host.SetActive(false);
         }
@@ -44,7 +44,7 @@ namespace Game.EditorTests
             foreach (var root in host.GetComponentsInChildren<PlayerRoot>(true)) Object.DestroyImmediate(root.gameObject);
             Object.DestroyImmediate(host);
             MatchStateInventory.ResetForNewMatch();
-            GameSession.TryPrepareMatch(new List<PlayerSetupData>(), null, out _);
+            GameSession.ClearMatch();
             GameSession.Players = previousPlayers;
             if (previousContext != null) GameSession.SetCampaignContext(previousContext);
         }

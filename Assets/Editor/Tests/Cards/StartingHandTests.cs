@@ -203,7 +203,11 @@ namespace Game.EditorTests
                     Assert.That(hand.Hand.Count, Is.EqualTo(System.Math.Min(7, capacity)));
                     CollectionAssert.AreEquivalent(original, hand.Hand.Select(c => c.Definition).Concat(hand.RemainingDeck));
                     Assert.That(hand.MutationVersion, Is.EqualTo(hand.Hand.Count));
-                    if (capacity > 0) Assert.That(hand.Hand.Any(c => c.Definition.authoredKey == scoutKey), Is.True);
+                    // The reserved opening scout is the deck's cheapest mobile ground Recce unit
+                    // (DeckDraw), whichever card that is after balance edits.
+                    if (capacity > 0) Assert.That(hand.Hand.Any(c => c.Definition.cardType == CardType.Unit
+                        && !c.Definition.isAviation && c.Definition.moveMax > 0
+                        && AbilityParams.GetBestRecceRadius(c.Definition.grantedAbilities) > 0), Is.True, deck.deckName);
                 }
                 var campaignHand = new AiHandData(catalog, faction, 7, 10, deck.deckName, leader.authoredKey);
                 var campaignPool = campaignHand.Hand.Select(c => c.Definition).Concat(campaignHand.RemainingDeck).ToList();
