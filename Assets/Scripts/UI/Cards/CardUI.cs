@@ -76,6 +76,21 @@ namespace Game.UI
 
         public CardData Data { get; private set; }
         internal Sprite PlacementArt => artImage != null ? artImage.overrideSprite : null;
+        // On-screen width of the art right now (hover/drag shrink and hand layout scale included),
+        // so the map placement effect starts at the size the player last saw. 0 when unknown.
+        internal float PlacementArtScreenWidth
+        {
+            get
+            {
+                if (artImage == null) return 0f;
+                var corners = new Vector3[4];
+                artImage.rectTransform.GetWorldCorners(corners);
+                var canvas = artImage.canvas;
+                Camera cam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
+                return Vector2.Distance(RectTransformUtility.WorldToScreenPoint(cam, corners[0]),
+                    RectTransformUtility.WorldToScreenPoint(cam, corners[3]));
+            }
+        }
         public bool IsDragging { get; private set; }
         // Pointer is over the card and it's raised to hover size (see Retarget).
         public bool IsHovered => _isHovered;
