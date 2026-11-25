@@ -55,7 +55,7 @@ namespace Game.Ai.V2.Initiative
 
                 AiDebugLog.Write($"[AI][V2][Initiative] {p.Nickname} (turn {turnNumber}) - "
                     + $"apPressure={analysis.ApPressure:0.00} (cur={analysis.CurrentApPressure:0.00} hist={analysis.HistoricalApPressure:0.00}), "
-                    + $"turnOrderPressure={analysis.TurnOrderPressure:0.00}, bottleneck={bottleneck}, "
+                    + $"turnOrderPressure={analysis.TurnOrderPressure:0.00} (strongholdThreat={analysis.StrongholdThreatPressure:0.00}), bottleneck={bottleneck}, "
                     + $"armies={analysis.ActionableFieldArmyCount} power={analysis.ActionableMilitaryPower:0.0} apCards={analysis.ApCostingActionsAvailable}, "
                     + $"avail H/E/M/T={analysis.Available[0]}/{analysis.Available[1]}/{analysis.Available[2]}/{analysis.Available[3]}, "
                     + $"committed H/E/M/T={analysis.CommittedResourceFloor[0]}/{analysis.CommittedResourceFloor[1]}/{analysis.CommittedResourceFloor[2]}/{analysis.CommittedResourceFloor[3]}, "

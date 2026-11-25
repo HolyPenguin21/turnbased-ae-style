@@ -3,6 +3,7 @@ using System.Linq;
 using Game.Aviation;
 using Game.Cards;
 using Game.Economy;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Turns;
@@ -33,7 +34,8 @@ namespace Game.Ai.V2.Initiative
 
         // ---- Blended pressures the value model consumes ----
         public float ApPressure;                  // [0..1] current structural workload + recent starvation evidence
-        public float TurnOrderPressure;           // [0..1] generic capacity only — never DesireVector / mission priorities
+        public float TurnOrderPressure;           // [0..1] capacity, or the stronghold threat below when higher
+        public float StrongholdThreatPressure;    // [0..1] an own Citadel / Base a known enemy reaches soon (2026-11-25)
 
         // ---- Resource expendability (index order: Human, Energy, Materials, Tech) ----
         public readonly int[] Available = new int[4];              // raw stockpile (PlayerRoot.GetResource)
@@ -126,6 +128,10 @@ namespace Game.Ai.V2.Initiative
             // turn position stays a secondary benefit and never drives an expensive purchase alone.
             a.TurnOrderPressure = Mathf.Clamp01(
                 a.CurrentApPressure * AiConfigV2.initiativeTurnOrderPressureScale);
+            // 2026-11-25 (owner) — who moves first decides a stronghold under a near threat: the
+            // existing garrison-floor threat rule names it (no own timing model).
+            a.StrongholdThreatPressure = StrongholdThreatPressureOf(player);
+            a.TurnOrderPressure = Mathf.Max(a.TurnOrderPressure, a.StrongholdThreatPressure);
 
             // --- resource expendability ---
             // Hand cards are instances: Research/Production may have prepaid their resources.
@@ -181,6 +187,27 @@ namespace Game.Ai.V2.Initiative
             return ArmyRegistry.AllForOwner(player).Count(ar =>
                 IsMeaningfullyActionableFieldArmy(ar)
                 && (!unactivatedOnly || !ar.HasActivatedThisTurn));
+        }
+
+        // The strongest stronghold threat: an own Citadel / Base whose garrison floor a known enemy
+        // raises within activeDefenceWithdrawMaxEnemyEta turns (AiArmyRoles.GarrisonThreatFloor).
+        internal static float StrongholdThreatPressureOf(PlayerSetupData player)
+        {
+            if (player == null)
+                return 0f;
+            HexCoord citadel = AiTurnController.GarrisonHexFor(player);
+            float pressure = 0f;
+            foreach (HexCoord hex in ArmyRegistry.AllForOwner(player)
+                         .Where(x => x != null && x.IsGarrison).Select(x => x.Hex).Distinct())
+            {
+                bool isCitadel = hex.Equals(citadel);
+                if (AiArmyRoles.GarrisonThreatFloor(player, hex, isCitadel, out int eta) <= 0f
+                    || eta > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+                    continue;
+                pressure = Mathf.Max(pressure, isCitadel ? AiConfigV2.initiativeCitadelThreatTurnOrderPressure
+                    : AiConfigV2.initiativeBaseThreatTurnOrderPressure);
+            }
+            return Mathf.Clamp01(pressure);
         }
 
         private static bool IsMeaningfullyActionableFieldArmy(ArmyData army) =>
