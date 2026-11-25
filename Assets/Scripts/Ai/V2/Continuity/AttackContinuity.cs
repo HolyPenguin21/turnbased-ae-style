@@ -897,6 +897,23 @@ namespace Game.Ai.V2
                 return false;
             }
 
+            // 2026-11-25 — a host still walking to its staging Base owes the Attack home proof every
+            // pass (AttackMarchPolicy.PreparationWalkReason, the rule the planner's MoveHost reads):
+            // standing on the home that needs it the operation HOLDs, elsewhere it ends and the
+            // host is free for the defence (the same edge as "retired before departure").
+            HexCoord? walkStaging = AttackPreparationPolicy.KeptStagingBase(snap, a, host);
+            if (walkStaging.HasValue && !host.Hex.Equals(walkStaging.Value))
+            {
+                string walkWhy = AttackMarchPolicy.PreparationWalkReason(snap, a.Target, host, walkStaging);
+                if (walkWhy != null)
+                {
+                    if (HoldsTheHomeItStandsOn(snap, a, host, walkWhy, intent))
+                        return true;
+                    AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} retired before departure: {walkWhy}");
+                    return false;
+                }
+            }
+
             List<int> dropped = a.GatherSupportArmyIds.Where(id =>
             {
                 ArmySnapshot s = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == id);

@@ -76,7 +76,7 @@ namespace Game.Ai.V2
                 + $"staging=({citadel.Q},{citadel.R})";
 
             // 1) an existing free field army hosts the fist wherever it stands.
-            ArmySnapshot fieldHost = PreparationFieldHost(snap, excluded, citadel, objective.Hex);
+            ArmySnapshot fieldHost = PreparationFieldHost(snap, excluded, citadel, objective.Hex, objective.Target);
             PlayerSetupData player = snap.Observer;
             HexCoord? hostStaging = fieldHost == null ? (HexCoord?)null
                 : AttackPreparationPolicy.PreparationStagingBase(snap, objective.Hex, fieldHost);
@@ -104,6 +104,14 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.WriteDeduped(logKey,
                         $"{head} decision=HOLD host=#{fieldHost.ArmyId} reason=host_is_pinned_stronghold_defender");
+                    return;
+                }
+                // 2026-11-25 — and the Attack home proof every other departure reads (Brynn T23).
+                string walkWhy = AttackMarchPolicy.PreparationWalkReason(snap, objective.Target, fieldHost, citadel);
+                if (walkWhy != null)
+                {
+                    AiDebugLog.WriteDeduped(logKey,
+                        $"{head} decision=HOLD host=#{fieldHost.ArmyId} reason=host_needed_home:{walkWhy}");
                     return;
                 }
                 AppendPreparationStep(snap, objective, fieldHost.ArmyId, citadel,
@@ -224,8 +232,12 @@ namespace Game.Ai.V2
         // already stood on the staging Base (-1,-3). A host is an army already on its staging
         // Base (the preparation's own, or the one PreparationStagingBase picks for it) or one
         // IsPinnedStrongholdDefender lets leave. A host without movement this turn stays eligible.
+        // 2026-11-25 — a host that must first walk also passes the Attack home proof
+        // (AttackMarchPolicy.PreparationWalkReason): Brynn T31 handed Raw Meat to ActiveDefence
+        // because its Base needed it, yet the Intercept paid this preparation's value
+        // (PendingPreparationHost) for an army that could never leave, and lost to a fresh Gather.
         internal static ArmySnapshot PreparationFieldHost(WorldSnapshot snap, ISet<int> excluded,
-            HexCoord? staging, HexCoord? objectiveHex = null) =>
+            HexCoord? staging, HexCoord? objectiveHex = null, AttackTargetRef target = default) =>
             GroundCombatActorEligibility.EligibleArmies(snap, excluded, requireMovementNow: false)
                 .OrderByDescending(a => a.EffectiveArmyPower)
                 .ThenByDescending(a => staging.HasValue && a.Hex.Equals(staging.Value))
@@ -233,7 +245,11 @@ namespace Game.Ai.V2
                 .FirstOrDefault(a => (staging.HasValue && a.Hex.Equals(staging.Value))
                     || (objectiveHex.HasValue && AttackPreparationPolicy.PreparationStagingBase(
                         snap, objectiveHex.Value, a) is HexCoord own && own.Equals(a.Hex))
-                    || !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a));
+                    || (!ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)
+                        && AttackMarchPolicy.PreparationWalkReason(snap, target, a,
+                            objectiveHex.HasValue
+                                ? AttackPreparationPolicy.PreparationStagingBase(snap, objectiveHex.Value, a)
+                                : staging) == null));
 
         // 2026-09-30 (user decision) — the army a preparation about to open would host in, and
         // what taking it elsewhere costs (the best Attack objective's TaskScore): the mobilization
@@ -271,7 +287,7 @@ namespace Game.Ai.V2
             if (!staging.HasValue)
                 return (null, null);
             var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
-            ArmySnapshot host = PreparationFieldHost(snap, excluded, staging, objective.Hex);
+            ArmySnapshot host = PreparationFieldHost(snap, excluded, staging, objective.Hex, objective.Target);
             return host == null ? (null, null) : (objective, host);
         }
 

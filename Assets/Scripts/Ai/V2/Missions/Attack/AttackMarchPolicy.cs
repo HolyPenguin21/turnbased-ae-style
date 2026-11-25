@@ -101,6 +101,25 @@ namespace Game.Ai.V2
             return home.Verdict == AttackMarchVerdict.DefendHome ? "home_needs_the_army:" + home.Reason : null;
         }
 
+        // 2026-11-25 (owner, match Grimm/Brynn/Halden) — the walk of a preparation host to its
+        // staging Base, and the choice of an army as a future preparation host, owe the same home
+        // proof as every other Attack departure (Assess). A home that needs the army and is not the
+        // staging Base itself keeps it: Brynn T23 walked Raw Meat off its Citadel for 7 AP and the
+        // Gather was retired by this very rule one pass later. Walking to the home that waits for
+        // the army is legal. Null: the host may walk / be a host.
+        internal static string PreparationWalkReason(WorldSnapshot snap, AttackTargetRef target,
+            ArmySnapshot host, HexCoord? stagingHex)
+        {
+            if (host == null || !target.HasValue)
+                return null;
+            AttackMarchAssessment home = Assess(snap, target, host);
+            if (home.Verdict != AttackMarchVerdict.DefendHome || !home.HomeHex.HasValue)
+                return null;
+            if (stagingHex.HasValue && home.HomeHex.Value.Equals(stagingHex.Value))
+                return null;
+            return "home_needs_the_army:" + home.Reason;
+        }
+
         // 2026-11-13 (owner, P1) — a structure-defended target is approached to distance 1 only
         // when the step onto it can follow: the entry gate already holds (observation aside —
         // approach_only on stale data stays legal), or the counted carrier on its DisruptStructure
