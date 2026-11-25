@@ -125,7 +125,7 @@ namespace Game.Ai.V2
             {
                 ActiveDefenceMissionTarget target = pm.ActiveDefenceTarget;
                 if (target.Phase == ActiveDefencePhase.Return)
-                    return target.ReturnHex.HasValue && mover.Hex.Equals(target.ReturnHex.Value)
+                    return !target.PinnedTransfer && target.ReturnHex.HasValue && mover.Hex.Equals(target.ReturnHex.Value)
                         ? MissionValidity.StaleGoalMet : MissionValidity.Valid;
                 // Knowledge of an enemy army is AiMapMemory's, never a global ArmyRegistry sweep:
                 // an intercept ends because WE learned something, not because the army vanished

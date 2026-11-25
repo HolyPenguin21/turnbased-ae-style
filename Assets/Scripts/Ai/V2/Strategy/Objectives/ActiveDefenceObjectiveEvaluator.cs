@@ -68,6 +68,10 @@ namespace Game.Ai.V2
         // bodies Provisioning moves into the empty shell PrimaryArmyId. Null once the shell walks.
         public int? ReliefDonorGarrisonId;
         public IReadOnlyList<int> ReliefUnitRuntimeIds;
+        // 2026-11-25 — a Return whose step is a pinned transfer (GarrisonRelief extraction, muster
+        // Detach / Intake). Its goal is the transfer, never the mover's position: a muster Intake's
+        // mover is the fist already standing on ReturnHex (MissionRevalidator, live objective check).
+        public bool PinnedTransfer => ReliefDonorGarrisonId.HasValue;
         // Kept through the intercept, not discarded on materialization: the exact roster remains pinned.
         public GarrisonSortiePlan Sortie;
         public bool SortieMaterialized;

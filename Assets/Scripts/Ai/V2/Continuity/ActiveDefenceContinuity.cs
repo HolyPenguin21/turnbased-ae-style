@@ -24,7 +24,8 @@ namespace Game.Ai.V2
             {
                 Game.Map.ArmyData actor = Game.Map.ArmyRegistry.AllForOwner(player)
                     .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
-                return actor != null && pm.ActiveDefenceTarget.ReturnHex.HasValue
+                return actor != null && !pm.ActiveDefenceTarget.PinnedTransfer
+                    && pm.ActiveDefenceTarget.ReturnHex.HasValue
                     && actor.Hex.Equals(pm.ActiveDefenceTarget.ReturnHex.Value);
             }
             // Preserve the observation-owned fog-of-war seam; no global enemy sweep.
