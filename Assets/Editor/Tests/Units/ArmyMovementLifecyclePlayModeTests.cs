@@ -127,20 +127,6 @@ namespace Game.EditorTests
             return army;
         }
 
-        private ArmyController LayoutMarker()
-        {
-            var go = NewObject("layout marker");
-            var renderer = go.AddComponent<SpriteRenderer>();
-            var visual = go.AddComponent<MapObjectVisual>();
-            Field(visual, "innerCircle", renderer);
-            var controller = go.AddComponent<ArmyController>();
-            controller.SetData(new ArmyData { Owner = _owner });
-            VisionSystem.CurrentViewer = _owner;
-            visual.SetVisible(true);
-            controller.SetLayoutPosition(Vector3.zero, false);
-            return controller;
-        }
-
         private IEnumerator RevealResidentIntoEnemy(bool hero)
         {
             ArmyData mover = Army(air: false);
@@ -234,110 +220,6 @@ namespace Game.EditorTests
             Assert.That(mover.Members[0].MoveCurrent, Is.EqualTo(5));
             Assert.That(enemy.Members[0].IsHidden, Is.True);
             Assert.That(_selection.IsBattleActive, Is.False);
-        }
-
-        [UnityTest]
-        public IEnumerator SelectedMoverReplacesFriendlyMarkerOnlyAtItsPositionOnSharedHex()
-        {
-            var config = ScriptableObject.CreateInstance<GameConfig>();
-            Field(_selection, "gameConfig", config);
-            try
-            {
-                var mover = Army(air: false, controller: LayoutMarker());
-                var friendly = Army(air: false, hex: _first, controller: LayoutMarker());
-                var enemy = Army(hex: _first, controller: LayoutMarker(),
-                    owner: new PlayerSetupData { PlayerId = "rival", Nickname = "rival", ColorIndex = 1 });
-                mover.Controller.Visual.SetVisible(false);
-                friendly.Controller.Visual.SetVisible(false);
-                enemy.Controller.Visual.SetVisible(false);
-                Field(_selection, "_selectedArmy", mover.Controller);
-                _selection.enabled = true;
-
-                Vector3 origin = mover.Controller.transform.position;
-                Vector3 enemyPosition = enemy.Controller.transform.position;
-                Assert.That(friendly.Controller.transform.position, Is.Not.EqualTo(enemyPosition));
-                Field(mover.Controller, "stepDuration", 10f);
-                Assert.That(_selection.IssueMoveOrder(mover.Controller, _first), Is.EqualTo(MoveOrderResult.Started));
-                for (int frame = 0; frame < 120 && mover.Controller.transform.position == origin; frame++)
-                    yield return null;
-
-                Assert.That(mover.Hex, Is.EqualTo(_first));
-                Assert.That(mover.Controller.transform.position, Is.Not.EqualTo(origin));
-                Assert.That(mover.Controller.Visual.IsVisible, Is.True);
-                Assert.That(friendly.Controller.Visual.IsVisible, Is.True, "Keep the resident visible in transit.");
-                Assert.That(enemy.Controller.Visual.IsVisible, Is.True);
-
-                // Model a marker whose visible position differs from its settled layout slot.
-                Vector3 meetingPoint = friendly.Controller.transform.position + new Vector3(0f, 0f, 0.1f);
-                friendly.Controller.SetLayoutPosition(meetingPoint, false);
-                Vector3? arrivalPosition = null;
-                mover.Movement.Completed += _ => arrivalPosition = mover.Controller.transform.position;
-                Field(mover.Controller, "stepDuration", 0f);
-                yield return Settled(mover);
-
-                Assert.That(arrivalPosition, Is.EqualTo(meetingPoint));
-                Assert.That(mover.Controller.Visual.IsVisible, Is.True);
-                Assert.That(friendly.Controller.Visual.IsVisible, Is.False);
-                Assert.That(enemy.Controller.Visual.IsVisible, Is.True);
-                Assert.That(enemy.Controller.transform.position, Is.EqualTo(enemyPosition));
-            }
-            finally
-            {
-                _selection.enabled = false;
-                Field(_selection, "gameConfig", null);
-                Object.Destroy(config);
-            }
-        }
-
-        [UnityTest]
-        public IEnumerator RepeatedReconciliationDoesNotRestartLayoutTransition()
-        {
-            var marker = LayoutMarker();
-            marker.SetLayoutPosition(Vector3.right, true);
-            Assert.That(marker.transform.position, Is.EqualTo(Vector3.zero), "no instant jump");
-            float previous = 0f;
-            for (int frame = 0; frame < 180 && marker.transform.position.x != 1f; frame++)
-            {
-                yield return null;
-                Assert.That(marker.transform.position.x, Is.GreaterThanOrEqualTo(previous));
-                Assert.That(marker.transform.position.x, Is.LessThanOrEqualTo(1f));
-                previous = marker.transform.position.x;
-                marker.SetLayoutPosition(Vector3.right, true);
-            }
-            Assert.That(marker.transform.position, Is.EqualTo(Vector3.right));
-            Assert.That(marker.IsMoving, Is.False, "layout never becomes a gameplay move");
-        }
-
-        [UnityTest]
-        public IEnumerator LayoutRetargetContinuesFromTheActualPosition()
-        {
-            var marker = LayoutMarker();
-            marker.SetLayoutPosition(Vector3.right, true);
-            yield return null;
-            Vector3 before = marker.transform.position;
-            marker.SetLayoutPosition(Vector3.left, true);
-            Assert.That(marker.transform.position, Is.EqualTo(before));
-            for (int frame = 0; frame < 180 && marker.transform.position.x != -1f; frame++)
-                yield return null;
-            Assert.That(marker.transform.position, Is.EqualTo(Vector3.left));
-        }
-
-        [UnityTest]
-        public IEnumerator ViewerSwitchAndRevealDoNotAnimateFromAnotherPerspective()
-        {
-            var marker = LayoutMarker();
-            marker.SetLayoutPosition(Vector3.right, true);
-            yield return null;
-            VisionSystem.CurrentViewer = new PlayerSetupData { IsHuman = true };
-            marker.SetLayoutPosition(Vector3.left, true);
-            Assert.That(marker.transform.position, Is.EqualTo(Vector3.left));
-            marker.Visual.SetVisible(false);
-            marker.SetLayoutPosition(Vector3.zero, false);
-            Assert.That(marker.Visual.IsVisible, Is.False);
-            yield return null;
-            Assert.That(marker.transform.position, Is.EqualTo(Vector3.zero));
-            marker.Visual.SetVisible(true);
-            Assert.That(marker.transform.position, Is.EqualTo(Vector3.zero));
         }
 
         // An army emptied during the turn survives until the end of its owner's turn; only then is

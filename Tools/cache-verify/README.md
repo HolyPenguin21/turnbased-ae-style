@@ -76,9 +76,6 @@ Capacity-проверка читает настоящую memo-таблицу ч
 Lifetime-проверка вызывает настоящий `MatchStateInventory.EndMatch`, но не моделирует
 native scene unloading или размер native объектов.
 
-В Unity запустите `HoverCacheUnityTests` (пять correctness-сценариев).
-Отдельно, явно выбрав тест, запустите
-`Game.EditorTests.HoverCacheUnityTests.MeasureIdleHoverCacheAgainstDirectLookup`:
-это Explicit native-замер cached/direct пути с настоящими камерой и мышью.
-Он выводит `NATIVE_HOVER_BENCH`, не задаёт машинозависимых assertions скорости.
+Hover-кэш (камера и мышь) проверяется вручную в игре: Unity-тесты UI удалены
+2026-11-25 по правилу «UI настраивается руками».
 Затем выполните полный EditMode-набор и обычный игровой сценарий.
