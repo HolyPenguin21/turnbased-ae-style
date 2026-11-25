@@ -53,8 +53,24 @@ namespace Game.Map
             marker.SetColor(PlayerColorPalette.Colors[army.Owner.ColorIndex]);
             marker.SetSortingOrder(MapSortingOrder.ArmyCircle, MapSortingOrder.ArmyIcon);
             marker.SetVisible(false);
+            ProjectSightingsOfNewMarker(army);
             RestackArmiesOn(army.Hex, null);
             return controller;
+        }
+
+        // Registered before its marker existed (map content spawn): a viewer who already sees
+        // the hex recorded the sighting while there was nothing to clone. Project it now —
+        // otherwise the remembered marker waits for the next observation of this hex, and a
+        // save in between fails ValidateRememberedVisualCoverage. Never during a restore:
+        // remembered appearances come from the save there, not from a live marker.
+        private void ProjectSightingsOfNewMarker(ArmyData army)
+        {
+            if (Game.Setup.MatchRestoreScope.IsRestoring)
+                return;
+            foreach (PlayerSetupData viewer in VisionSystem.ViewersOf(army.Hex))
+                if (HumanVisualMemory.TryGetArmySighting(viewer, army.Id, out HumanVisualMemory.ArmySighting sighting)
+                    && sighting.Hex.Equals(army.Hex))
+                    ProjectObservedHex(viewer, army.Hex);
         }
 
         public void RefreshArmyAirLook(ArmyData army)

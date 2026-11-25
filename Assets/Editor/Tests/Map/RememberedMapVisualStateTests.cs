@@ -2,11 +2,13 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Game.Cards;
 using Game.Core;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Terrain;
+using Game.UI;
 using Game.Units;
 using NUnit.Framework;
 using UnityEngine;
@@ -260,6 +262,50 @@ namespace Game.EditorTests
                 Assert.That(GhostOf(first).IsVisible, Is.False);
                 Assert.That(GhostOf(second).IsVisible, Is.True, "The remaining ghost must take over the fogged hex.");
             }, seen, fogged, unseen);
+        }
+
+        [Test]
+        public void ArmyObservedBeforeItsMarkerExistsGetsItsGhostWhenTheMarkerIsCreated()
+        {
+            var hex = new HexCoord(0, 0);
+            var decks = ScriptableObject.CreateInstance<StartingDeckCatalog>();
+            var catalog = ScriptableObject.CreateInstance<FactionCardCatalog>();
+            ArmyController created = null;
+            try
+            {
+                catalog.faction = enemy.Faction; catalog.armyPrefab = Marker("enemy-army-prefab", Color.green);
+                decks.catalogs.Add(catalog);
+                var handObject = new GameObject("inactive-hand"); handObject.SetActive(false); handObject.transform.SetParent(root.transform);
+                var hand = handObject.AddComponent<CardHandUI>(); Set(hand, "startingDeckCatalog", decks);
+                Set(selection, "cardHandUI", hand);
+                RunWithLiveSelection(() =>
+                {
+                    SetVisible(viewer, hex);
+                    // Map content spawn order: the roster is registered (and observed) first,
+                    // the marker is created afterwards.
+                    var army = new ArmyData { Owner = enemy, Hex = hex };
+                    army.Members.Add(new UnitData { Owner = enemy, Name = "spawned", HitPointsCurrent = 3 });
+                    ArmyRegistry.Register(army);
+                    Assert.That(HumanVisualMemory.TryGetArmySighting(viewer, army.Id, out _), Is.True);
+                    Assert.That(GhostOf(army), Is.Null, "Nothing to clone yet.");
+                    created = selection.CreateArmyMarker(army);
+                    Assert.That(created, Is.Not.Null);
+                    // Edit Mode skips the Awake that binds Visual inside AddComponent in play;
+                    // run it and the projection CreateArmyMarker performs right after it.
+                    Call(created, "Awake"); Call(selection, "ProjectSightingsOfNewMarker", army);
+                    selection.RestackArmiesOn(hex, null);
+                    Assert.That(GhostOf(army), Is.Not.Null);
+                    Assert.DoesNotThrow(() => selection.ValidateRememberedVisualCoverage(),
+                        "A save right after the spawn must find the remembered marker.");
+                    Assert.That(GhostOf(army).IsVisible, Is.False, "The hex is in sight: the live marker shows instead.");
+                    Assert.That(created.Visual.IsVisible, Is.True);
+                }, hex);
+            }
+            finally
+            {
+                if (created != null) Object.DestroyImmediate(created.gameObject);
+                Object.DestroyImmediate(decks); Object.DestroyImmediate(catalog);
+            }
         }
 
         [Test]
