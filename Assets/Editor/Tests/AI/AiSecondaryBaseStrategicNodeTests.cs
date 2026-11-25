@@ -523,6 +523,7 @@ namespace Game.EditorTests
                     Owner = owner, IsAviation = true, MoveMax = 2, MoveCurrent = 2,
                     ActivationApCost = 1, LaunchEnergyCost = 1,
                 };
+                aircraft.Abilities.Add(UnitAbilities.R1S4); // an AirSweep is flown only by Recce aircraft
                 var storage = new ArmyData
                 {
                     Owner = owner, Hex = sourceHex, IsAirfield = true, Name = "Airfield",

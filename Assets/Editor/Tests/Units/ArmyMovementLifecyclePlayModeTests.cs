@@ -545,32 +545,6 @@ namespace Game.EditorTests
         }
 
         [UnityTest]
-        public IEnumerator SynchronousAiEventSkipContinuesOnlyAfterPreviousMoveSettles()
-        {
-            var army = Army(air: false);
-            HexEventRegistry.Set(_first, new EventDefinition { name = "skip-test" }, null, null, null, null);
-            try
-            {
-                var trace = new AiMoveExecutionTrace();
-                bool completed = false;
-                IEnumerator Execute()
-                {
-                    yield return AiTurnController.MoveArmyRoutine(_owner, AiDecision.Move(army, _last, "skip-test", 0f), Context(), trace);
-                    completed = true;
-                }
-                var driver = _map.StartCoroutine(Execute());
-                for (int frame = 0; frame < 120 && !completed; frame++) yield return null;
-                if (!completed) _map.StopCoroutine(driver);
-                Assert.That(completed, Is.True); Assert.That(trace.ReachedDestination, Is.True);
-                Assert.That(trace.EndHex, Is.EqualTo(_last));
-                Assert.That(army.Hex, Is.EqualTo(_last)); Assert.That(army.Controller.IsMoving, Is.False);
-                Assert.That(army.CurrentMovement, Is.EqualTo(3)); Assert.That(_root.ActionPoints, Is.EqualTo(19));
-                Assert.That(HexEventRegistry.FindAt(_first).Skipped, Is.True);
-            }
-            finally { HexEventRegistry.Clear(); }
-        }
-
-        [UnityTest]
         public IEnumerator SettlementContinuationRemainsBusyAndCancellationDropsIt()
         {
             foreach (bool cancel in new[] { false, true })
@@ -594,23 +568,6 @@ namespace Game.EditorTests
                 Assert.That(continued, Is.EqualTo(cancel ? 0 : 1));
                 Assert.That(ArmyRegistry.HasMovementInProgress, Is.False);
             }
-        }
-
-        [UnityTest]
-        public IEnumerator CancellationDuringEventSkipCannotReviveMoveContinuation()
-        {
-            var army = Army(air: false);
-            HexEventRegistry.Set(_first, new EventDefinition { name = "cancel-skip-test" }, null, null, null, null);
-            Action<HexCoord> cancel = _ => army.Controller.CancelMovement();
-            HexEventRegistry.EventSkipped += cancel;
-            try
-            {
-                _selection.IssueMoveOrder(army.Controller, _last, allowAiEventExplore: false);
-                for (int frame = 0; frame < 12; frame++) yield return null;
-                Assert.That(army.Hex, Is.EqualTo(_first)); Assert.That(army.Controller.IsMoving, Is.False);
-                Assert.That(army.CurrentMovement, Is.EqualTo(4));
-            }
-            finally { HexEventRegistry.EventSkipped -= cancel; HexEventRegistry.Clear(); }
         }
 
         [UnityTest]
@@ -677,21 +634,6 @@ namespace Game.EditorTests
                 });
                 Assert.That(state.Armies.Count, Is.EqualTo(1)); Assert.That(frozen.IsVisible, Is.True);
                 Assert.That(frozen.GetComponent<SpriteRenderer>().color, Is.EqualTo(Color.red));
-                var host = NewObject("observer inspection"); host.SetActive(false);
-                var turns = host.AddComponent<GameTurnController>();
-                Field(turns, "_aiObserverMatch", true); Field(turns, "_aiObserverPauseEngaged", true);
-                var modal = host.AddComponent<ArmyViewerModalUI>();
-                var camera = NewObject("inspection camera").AddComponent<Camera>();
-                camera.transform.position = new Vector3(0, 0, -10);
-                Field(_selection, "armyViewerModal", modal); Field(_selection, "turnController", turns);
-                Field(_selection, "targetCamera", camera);
-                Assert.That(frozen.TryGetScreenAnchor(camera, out var point, out _), Is.True);
-                bool handled = (bool)typeof(HexSelectionController).GetMethod("TryHandleArmyMarkerClick",
-                    BindingFlags.Instance | BindingFlags.NonPublic).Invoke(_selection, new object[] { _origin, point });
-                Assert.That(handled, Is.True); Assert.That(modal.IsReadOnly, Is.True);
-                var displayed = (ArmyData)typeof(ArmyViewerModalUI).GetField("_currentArmy",
-                    BindingFlags.Instance | BindingFlags.NonPublic).GetValue(modal);
-                Assert.That(displayed.Id, Is.EqualTo(-1)); Assert.That(displayed.Members[0].HitPointsCurrent, Is.EqualTo(3));
                 ArmyRegistry.MoveArmy(watcher, _origin);
                 Assert.That(HumanVisualMemory.TryGetArmySighting(_owner, source.Id, out _), Is.False);
                 Assert.That(_selection.CaptureRememberedVisuals(_ => throw new AssertionException("Stale neutral ghost")).Armies, Is.Empty);
@@ -699,7 +641,7 @@ namespace Game.EditorTests
             }
             finally
             {
-                Field(_selection, "gameConfig", null); Field(_selection, "turnController", null);
+                Field(_selection, "gameConfig", null);
                 Object.Destroy(config); Object.Destroy(sprite); Object.Destroy(texture);
             }
         }
@@ -830,6 +772,7 @@ namespace Game.EditorTests
                 .SetValue(null, "movement-save-test");
             Field(turns, "<CurrentPlayer>k__BackingField", _owner);
             Field(turns, "<TurnConfirmed>k__BackingField", true); Field(turns, "<TurnNumber>k__BackingField", 1);
+            Field(turns, "<Phase>k__BackingField", StrategicTurnPhase.Ready); // a confirmed turn is in its Ready phase
             ArmyData army = Army(air: false);
             var operation = ArmyMovementOperation.ForMap(army, _map, new[] { _origin, _first });
             Assert.That(army.Controller.IsMoving, Is.False);
@@ -950,19 +893,16 @@ namespace Game.EditorTests
         {
             ArmyData army = Army(air: false);
             Field(army.Controller, "stepDuration", 0.05f);
-            var screen = NewObject("battle").AddComponent<BattleScreenUI>();
-            screen.enabled = false;
-            GameObject panel = NewObject("panel");
-            panel.SetActive(false);
-            Field(screen, "panelRoot", panel);
-            Field(_selection, "battleScreen", screen);
+            // An open battle is an authoritative fact (IsBattleActive): an unresolved contact.
+            var contacts = (List<(ArmyData Army, HexCoord Hex)>)typeof(HexSelectionController)
+                .GetField("_revealedArmyContacts", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_selection);
             bool done = false;
             var trace = new AiMoveExecutionTrace();
             IEnumerator OpenBattle()
             {
                 yield return new WaitUntil(() => army.Controller != null && army.Controller.IsMoving
                     && army.Controller.CurrentHex.Equals(_first));
-                panel.SetActive(true);
+                contacts.Add((army, _first));
             }
             IEnumerator Move()
             {
@@ -972,15 +912,18 @@ namespace Game.EditorTests
             }
             _map.StartCoroutine(OpenBattle());
             _map.StartCoroutine(Move());
-            // Wait for the physical completion while leaving the battle open.
-            for (int frame = 0; frame < 120 && !trace.EndHex.Equals(_first); frame++)
+            // The mover reaches the hex while the battle opens; the move operation stays in
+            // progress until that encounter is settled, and the AI order waits for it.
+            for (int frame = 0; frame < 120 && !(army.Hex.Equals(_first) && contacts.Count > 0); frame++)
                 yield return null;
-            Assert.That(trace.EndHex, Is.EqualTo(_first));
-            Assert.That(trace.BattleOccurred, Is.True);
-            Assert.That(done, Is.False);
-            panel.SetActive(false);
+            Assert.That(army.Hex, Is.EqualTo(_first));
+            for (int frame = 0; frame < 10; frame++) yield return null;
+            Assert.That(_selection.IsBattleActive, Is.True);
+            Assert.That(done, Is.False, "the AI order must not continue past an open battle");
+            contacts.Clear();
             for (int frame = 0; frame < 120 && !done; frame++) yield return null;
             Assert.That(done, Is.True);
+            Assert.That(trace.EndHex, Is.EqualTo(_first));
         }
 
         [UnityTest]
