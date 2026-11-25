@@ -437,9 +437,10 @@ namespace Game.Map
             Members.Insert(index, unit);
         }
 
-        // Canonical garrison order: heroes first, stable by descending CommandRating (equal
-        // ratings keep their relative order), then ordinary units in their existing order. A pure
-        // function of the list — never touches live Members.
+        // Canonical garrison order: heroes first, stable by descending CommandRating, an equal
+        // rating led by the higher Fate (2026-11-25, owner: the commander's Fate is the battle's;
+        // a full tie keeps the relative order), then ordinary units in their existing order. A
+        // pure function of the list — never touches live Members.
         public static List<UnitData> NormalizeRoster(IEnumerable<UnitData> members)
         {
             var heroes = new List<UnitData>();
@@ -447,7 +448,7 @@ namespace Game.Map
             if (members != null)
                 foreach (UnitData m in members)
                     (m != null && m.IsHero ? heroes : rest).Add(m);
-            var ordered = heroes.OrderByDescending(h => h.CommandRating).ToList();
+            var ordered = heroes.OrderByDescending(h => h.CommandRating).ThenByDescending(h => h.Fate).ToList();
             ordered.AddRange(rest);
             return ordered;
         }

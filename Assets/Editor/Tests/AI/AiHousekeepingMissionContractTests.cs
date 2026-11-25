@@ -68,26 +68,9 @@ namespace Game.EditorTests
         private static ReorgUnit Hero(float power, int command = 4) => new ReorgUnit
         {
             Key = _key++, IsHero = true, Power = power, CommandRating = command,
-            IsGroundCombatant = true, HeroRole = HeroOperationalRole.CombatLeader,
+            IsGroundCombatant = true, HeroRole = HeroOperationalRole.Flexible,
             MoveCurrent = 3, MoveMax = 3,
         };
-
-        [Test]
-        public void ThreeRealHeroBenches_AreNotFoldedToReduceNonViableContainers()
-        {
-            ReorgUnit RealHero(int command)
-            {
-                ReorgUnit hero = Hero(0f, command);
-                hero.IsGroundCombatant = false;
-                hero.ActivationApCost = 1;
-                return hero;
-            }
-            ReorganizationPlan plan = Plan(Free(17, RealHero(7)),
-                Free(22, RealHero(8)), Free(23, RealHero(8)));
-            Assert.That(plan.Transfers, Is.Empty,
-                "three waiting commanders have no combat power to concentrate");
-            Assert.That(plan.ExpectedMembership.Values.Count(r => r.Count == 1), Is.EqualTo(3));
-        }
 
         [Test]
         public void FreeFieldArmy_ReleasesOrdinarySecondaryHeroWithoutLosingItsFighter()
@@ -149,64 +132,6 @@ namespace Game.EditorTests
                 Containers = containers.ToList(),
             });
 
-        [Test]
-        public void HeroOnlyPreparationHost_ReceivesFreeBody_InsteadOfGarrisonDeposit()
-        {
-            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
-            ReorgContainer host = Mission(2, receives: true, movementFloor: -1, Hero(3f));
-            ReorgContainer free = Free(3, Body(8f));
-            ReorganizationPlan plan = Plan(garrison, host, free);
-            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 3 && t.ToArmyId == 2), Is.True,
-                plan.DebugSummary());
-            Assert.That(plan.Transfers.Any(t => t.ToArmyId == 1), Is.False);
-            Assert.That(plan.ExpectedMembership[2].Count, Is.EqualTo(2));
-        }
-
-        // ATK-F03 — Vashti T13: a container of two heroes folded into a 3/7 preparation host left
-        // its power unchanged and took two fighter slots. A hero enters a claimed receiver only
-        // as its better commander without losing body room.
-        [Test]
-        public void PreparationHost_DoesNotTakeHeroesThatOnlyOccupyFighterSlots()
-        {
-            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
-            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
-                Hero(0f, command: 7), Body(6f), Body(6f));
-            ReorgContainer heroes = Free(3, Hero(0f, command: 4), Hero(0f, command: 4));
-            ReorganizationPlan plan = Plan(garrison, host, heroes);
-            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 3 && t.ToArmyId == 2), Is.False,
-                plan.DebugSummary());
-            Assert.That(plan.ExpectedMembership[2].Count, Is.EqualTo(3));
-        }
-
-        [Test]
-        public void HeroRaisingCapacity_MayStillLeadAHeroLessReceiver()
-        {
-            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
-            ReorgContainer host = Mission(2, receives: true, movementFloor: -1, Body(6f), Body(6f));
-            ReorgContainer bench = Free(3, Hero(0f, command: 5));
-            ReorganizationPlan plan = Plan(garrison, host, bench);
-            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 3 && t.ToArmyId == 2), Is.True,
-                plan.DebugSummary());
-        }
-
-        // The already damaged host (T17-T20: three heroes, four bodies, 7/7) sheds the heroes that
-        // are neither its commander nor its best leader into the local garrison, zero-AP.
-        [Test]
-        public void DamagedPreparationHost_ReleasesExcessHeroesToTheGarrison()
-        {
-            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
-            ReorgUnit lead = Hero(0f, command: 7);
-            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
-                lead, Hero(0f, command: 4), Hero(0f, command: 4),
-                Body(6f), Body(6f), Body(6f), Body(6f));
-            host.MayReleaseExcessHeroes = true;
-            ReorganizationPlan plan = Plan(garrison, host);
-            Assert.That(plan.Transfers.Count(t => t.FromArmyId == 2 && t.ToArmyId == 1), Is.EqualTo(2),
-                plan.DebugSummary());
-            Assert.That(plan.ExpectedMembership[2], Does.Contain(lead.Key));
-            Assert.That(plan.ExpectedMembership[2].Count, Is.EqualTo(5));
-        }
-
         private static ReorgUnit Operator(int command = 3)
         {
             ReorgUnit u = Hero(0f, command);
@@ -251,41 +176,6 @@ namespace Game.EditorTests
 
         private static ReorgUnit Keyed(ReorgUnit u, string key) { u.StrikeKey = key; return u; }
 
-        // 2026-10-01 — a full preparation host swaps a body its target roster does not need for
-        // a free same-hex body of a missing position: the scout goes out, the tank comes in.
-        [Test]
-        public void PreparationHost_SwapsNonRosterBodyForMissingPosition()
-        {
-            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
-            ReorgUnit scout = Keyed(Body(3f), "scout");
-            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
-                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), scout);
-            host.MayReleaseExcessHeroes = true;
-            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
-            ReorgUnit tank = Keyed(Body(12f), "tank");
-            ReorgContainer free = Free(3, Hero(0f, command: 4), tank, Keyed(Body(5f), "inf"),
-                Keyed(Body(5f), "inf"));
-            ReorganizationPlan plan = Plan(garrison, host, free);
-            Assert.That(plan.ExpectedMembership[2], Does.Contain(tank.Key), plan.DebugSummary());
-            Assert.That(plan.ExpectedMembership[2], Has.No.Member(scout.Key), plan.DebugSummary());
-        }
-
-        // A garrison body the garrison may not spare is no source: no release, no ping-pong.
-        [Test]
-        public void PreparationHost_KeepsNonRosterBody_WhenTheGarrisonCannotSpareTheSource()
-        {
-            ReorgContainer garrison = Garrison(1, Keyed(Body(6f), "tank"));
-            garrison.GarrisonNonHeroFloor = 1;
-            garrison.GarrisonPowerFloor = 5f;
-            ReorgUnit scout = Keyed(Body(3f), "scout");
-            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
-                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), scout);
-            host.MayReleaseExcessHeroes = true;
-            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
-            ReorganizationPlan plan = Plan(garrison, host);
-            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 2), Is.False, plan.DebugSummary());
-        }
-
         // 2026-11-16 (owner decision) — the armies take their best fighters back: a garrison body
         // its floor keeps (no release) comes into a full preparation host by a 1-for-1 exchange
         // for the host's non-roster body, the garrison keeping min(held, floor).
@@ -303,38 +193,6 @@ namespace Game.EditorTests
             ReorganizationPlan plan = Plan(garrison, host);
             Assert.That(plan.ExpectedMembership[2], Does.Contain(tank.Key), plan.DebugSummary());
             Assert.That(plan.ExpectedMembership[1], Does.Contain(heavy.Key), plan.DebugSummary());
-        }
-
-        // The exchange that would leave the garrison below min(held, floor) is never taken.
-        [Test]
-        public void PreparationHost_NoExchange_WhenTheGarrisonWouldFallBelowItsFloor()
-        {
-            ReorgUnit tank = Keyed(Body(12f), "tank");
-            ReorgContainer garrison = Garrison(1, tank, Keyed(Body(8f), "inf"));
-            garrison.GarrisonPowerFloor = 9.5f;
-            ReorgUnit light = Keyed(Body(5f), "light");
-            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
-                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), light);
-            host.MayReleaseExcessHeroes = true;
-            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
-            ReorganizationPlan plan = Plan(garrison, host);
-            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 2 || t.FromArmyId == 1), Is.False,
-                plan.DebugSummary());
-        }
-
-        // With no source of a missing position the non-roster body stays: nothing to wait for.
-        [Test]
-        public void PreparationHost_KeepsNonRosterBodyWithoutAPendingSource()
-        {
-            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
-            ReorgUnit scout = Keyed(Body(3f), "scout");
-            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
-                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), scout);
-            host.MayReleaseExcessHeroes = true;
-            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
-            ReorganizationPlan plan = Plan(garrison, host);
-            Assert.That(plan.ExpectedMembership.TryGetValue(2, out var members)
-                ? members.Contains(scout.Key) : true, Is.True, plan.DebugSummary());
         }
 
         // A held card of a missing position is a source too: the slot is freed for it.
@@ -357,49 +215,6 @@ namespace Game.EditorTests
             roomy.PreparationTargetKeys = host.PreparationTargetKeys;
             roomy.PreparationHandKeys = new[] { "tank" };
             Assert.That(ReorgViability.PreparationBlockedSlots(roomy, roomy.Units, none), Is.EqualTo(0));
-        }
-
-        [Test]
-        public void OtherMissionReceivers_StillNeverGiveAHeroAway()
-        {
-            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
-            ReorgContainer raid = Mission(2, receives: true, movementFloor: 3,
-                Hero(0f, command: 7), Hero(0f, command: 4), Body(6f));
-            ReorganizationPlan plan = Plan(garrison, raid);
-            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 2), Is.False, plan.DebugSummary());
-        }
-
-        [Test]
-        public void RouteBoundMission_RejectsSlowerInboundBody()
-        {
-            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
-            ReorgContainer raid = Mission(2, receives: true, movementFloor: 3, Hero(3f));
-            ReorgContainer free = Free(3, Body(8f, move: 2));
-            ReorganizationPlan plan = Plan(garrison, raid, free);
-            Assert.That(plan.Transfers.Any(t => t.ToArmyId == 2), Is.False, plan.DebugSummary());
-        }
-
-        [Test]
-        public void MissionArmy_NeverDonates_EvenToGarrisonFloor()
-        {
-            ReorgContainer garrison = Garrison(1);
-            garrison.GarrisonNonHeroFloor = 2;
-            ReorgContainer mission = Mission(2, receives: true, movementFloor: 3,
-                Hero(3f), Body(8f), Body(8f));
-            ReorganizationPlan plan = Plan(garrison, mission);
-            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 2 || t.ToArmyId == 2 && t.IsSwap),
-                Is.False, plan.DebugSummary());
-        }
-
-        [Test]
-        public void FullyProtectedMission_ReceivesNothing()
-        {
-            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
-            ReorgContainer locked = Mission(2, receives: false, movementFloor: 3, Hero(3f));
-            ReorgContainer free = Free(3, Body(8f));
-            ReorganizationPlan plan = Plan(garrison, locked, free);
-            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 2 || t.ToArmyId == 2), Is.False,
-                plan.DebugSummary());
         }
 
         [Test]

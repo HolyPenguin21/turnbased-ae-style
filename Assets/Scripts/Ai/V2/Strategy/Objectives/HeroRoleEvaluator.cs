@@ -20,10 +20,13 @@ namespace Game.Ai.V2
     //  The result is a PREFERENCE, not a prohibition: RaidAssembly / Housekeeping fall back to a
     //  SupportOperator rather than deadlock when it is the only usable hero.
     // ===========================================================================================
+    // 2026-11-25 (owner) — the former CombatLeader tier is removed: heroes carry no combat power and
+    // move at most 3, so (CR + 0.6 x power) x move/5 never reached its floor (the best authored
+    // hero scores 4.8 against 7). Among the field heroes the commander evaluation's leadership
+    // score (CR and pace) decides.
     public enum HeroOperationalRole
     {
-        CombatLeader,     // well suited to lead a field army
-        Flexible,         // acceptable for either use
+        Flexible,         // a field hero: acceptable for either use
         SupportOperator,  // production/research/base utility clearly outweighs combat leadership
     }
 
@@ -99,13 +102,10 @@ namespace Game.Ai.V2
                     ? HeroOperationalRole.SupportOperator
                     : HeroOperationalRole.Flexible;
 
-            return combat >= AiConfigV2.heroRoleCombatLeaderFloor
-                ? HeroOperationalRole.CombatLeader
-                : HeroOperationalRole.Flexible;
+            return HeroOperationalRole.Flexible;
         }
 
-        // Preference rank for leading a FIELD force: CombatLeader (2) > Flexible (1) >
-        // SupportOperator (0).
+        // Preference rank for leading a FIELD force: Flexible (1) > SupportOperator (0).
         public static int FieldCommandPreference(UnitData hero)
         {
             return RolePreference(Classify(hero));
@@ -302,7 +302,7 @@ namespace Game.Ai.V2
                 hero.CommandRating, hero.Commander.Fate, hero.StableKey);
 
         public static int RolePreference(HeroOperationalRole role) =>
-            role == HeroOperationalRole.CombatLeader ? 2 : role == HeroOperationalRole.Flexible ? 1 : 0;
+            role == HeroOperationalRole.Flexible ? 1 : 0;
 
         // Differences smaller than one Monte-Carlo trial (1/25) are noise, not a better commander.
         private const float CommandWinEpsilon = 0.05f;

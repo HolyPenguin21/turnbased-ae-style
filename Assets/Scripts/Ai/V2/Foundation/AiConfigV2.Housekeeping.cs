@@ -43,13 +43,11 @@ namespace Game.Ai.V2
         //     Researcher/Assembler/ApBonus support vocation (or too slow to keep pace with a field
         //     force at all — see homeHeroMoveMaxThreshold) whose score is below
         //     heroRoleFlexibleCombatFloor is a SupportOperator (preserve it for base/research/
-        //     production/Economy duty); a non-support
-        //     hero at or above heroRoleCombatLeaderFloor is a CombatLeader; everything else is
-        //     Flexible. The classification is a PREFERENCE, never an absolute bar — an urgent raid
-        //     may still take a SupportOperator.
+        //     production/Economy duty); every other hero is Flexible (2026-11-25, owner: the
+        //     CombatLeader tier is removed - no hero could reach it). The classification is a
+        //     PREFERENCE, never an absolute bar — an urgent raid may still take a SupportOperator.
         public const float heroRoleCommandWeight = 1.0f;
         public const float heroRoleCombatContributionWeight = 0.6f;
-        public const float heroRoleCombatLeaderFloor = 7f;
         public const float heroRoleFlexibleCombatFloor = 8f;
         // A hero this slow is a "home" hero by design regardless of ability tags — it cannot keep
         // pace with a field force (see mobileCombatMoveMax=5) and is worth more standing garrison

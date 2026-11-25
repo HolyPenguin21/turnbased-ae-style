@@ -46,13 +46,18 @@ namespace Game.Ai.V2
             // strongest-first canonical AiPower formation profile. Higher is always better.
             private readonly LazyProfile _formationStrengths;
             public IReadOnlyList<float> FormationStrengths => _formationStrengths.Value;
+            // Under a deployed enemy only: the strongest-first AiPower profile, read when the
+            // threat-first profile ties. Null on a quiet hex (there it IS the profile).
+            private readonly IReadOnlyList<float> _quietStrengths;
             public readonly float NegComposition;
             public readonly int Operations;
 
             public Outcome(int gd, int legal, int operatorExposure, int preparationSlotWaste,
                 int singles, int nonViable, int commandWaste, int formationDefect,
-                LazyProfile formationStrengths, float negComp, int operations)
+                LazyProfile formationStrengths, float negComp, int operations,
+                IReadOnlyList<float> quietStrengths = null)
             {
+                _quietStrengths = quietStrengths;
                 GarrisonDeficit = gd;
                 Legality = legal;
                 OperatorExposure = operatorExposure;
@@ -80,6 +85,11 @@ namespace Game.Ai.V2
                 c = CompareFormationProfiles(FormationStrengths, o.FormationStrengths,
                     _formationStrengths.Tolerances, o._formationStrengths.Tolerances);
                 if (c != 0) return c;
+                if (_quietStrengths != null && o._quietStrengths != null)
+                {
+                    c = CompareFormationProfiles(_quietStrengths, o._quietStrengths, null, null);
+                    if (c != 0) return c;
+                }
 
                 if (NegComposition < o.NegComposition - FloatEps) return -1;
                 if (NegComposition > o.NegComposition + FloatEps) return 1;

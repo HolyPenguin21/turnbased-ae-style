@@ -350,7 +350,7 @@ namespace Game.Ai.V2
                 return false;
             // A garrison may participate on one side when a hero leaves it. The field-side member
             // may be either a body (forming a previously heroless army) OR another hero (returning
-            // a SupportOperator to base while a CombatLeader takes command). Never allow a
+            // a SupportOperator to base while a field hero takes command). Never allow a
             // non-hero to be the member leaving the garrison through this Housekeeping-owned path.
             bool garrisonA = armyA.IsGarrison;
             bool garrisonB = armyB.IsGarrison;

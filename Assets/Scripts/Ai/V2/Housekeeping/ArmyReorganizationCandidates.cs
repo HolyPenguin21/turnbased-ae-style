@@ -36,6 +36,39 @@ namespace Game.Ai.V2
                         if (moved != null)
                             yield return moved;
                     }
+
+                    // 2026-11-25 (housekeeping stand S02) — all of them together: one at a time
+                    // only a whole fold of the army into the garrison cleared every exposed hero in
+                    // a single step, and its fighters and their combat commander went in too. The
+                    // order that keeps every step within capacity (a low-command hero first, or
+                    // the commander first) is the plan; the rules are TryMoveOne's.
+                    List<ReorgUnit> home = state.Roster[srcId]
+                        .Where(x => x != null && (x.IsDevelopmentOperator || x.IsGarrisonHero)).ToList();
+                    if (home.Count < 2)
+                        continue;
+                    foreach (List<ReorgUnit> order in new[]
+                             {
+                                 home.OrderBy(x => x.CommandRating).ThenBy(x => x.Key).ToList(),
+                                 home.OrderByDescending(x => x.CommandRating).ThenBy(x => x.Key).ToList(),
+                             })
+                    {
+                        VState all = state;
+                        foreach (ReorgUnit u in order)
+                        {
+                            all = TryMoveOne(all, srcId, operatorGarrisonId, u,
+                                u.IsDevelopmentOperator
+                                    ? "protect Research/Production operator in local garrison"
+                                    : "return a garrison hero to the local garrison",
+                                allowDevelopmentOperator: true);
+                            if (all == null)
+                                break;
+                        }
+                        if (all != null)
+                        {
+                            yield return all;
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -234,6 +267,34 @@ namespace Game.Ai.V2
                         if (released != null)
                             yield return released;
                     }
+
+                // 2026-11-25 (housekeeping stand A04/B03/C17) — the current commander that is not
+                // the best one is released in the same candidate as the zero-AP promotion of the
+                // best: one step at a time, the promotion alone leaves the slot waste and only a
+                // whole fold of the army into the garrison removed it at once, burying both heroes.
+                List<ReorgUnit> roster = state.Roster[srcId];
+                if (roster.Count(u => u != null && u.IsHero) < 2 || !src.CanReorderCommander)
+                    continue;
+                ReorgUnit current = roster.First(u => u != null && u.IsHero);
+                ReorgUnit lead = BestCommander(roster, src.IsGarrison, commandContext);
+                if (lead == null || ReferenceEquals(lead, current) || current.IsCommitted
+                    || current.IsArmySupportCarrier || (current.IsDevelopmentOperator && !preparation))
+                    continue;
+                VState promoted = TryReorderCommander(state, srcId, lead);
+                if (promoted == null)
+                    continue;
+                foreach (int dstId in OrderedDestinations(promoted, armyIds, srcId))
+                {
+                    if (promoted.Meta[dstId].IsMissionReceiver)
+                        continue;
+                    if (current.IsDevelopmentOperator && !promoted.Meta[dstId].IsGarrison)
+                        continue;
+                    VState released = TryMoveOne(promoted, srcId, dstId, current,
+                        "release the former commander after the best one took command",
+                        allowDevelopmentOperator: current.IsDevelopmentOperator);
+                    if (released != null)
+                        yield return released;
+                }
             }
 
             // 0.8 (2026-10-01) — an Attack preparation host releases a body its target roster
@@ -570,7 +631,7 @@ namespace Game.Ai.V2
 
         // §8/§9 — the best benched hero to lead a field formation: never a SupportOperator
         // (Housekeeping keeps those for base/research/production; an urgent operation takes its own
-        // support-fallback path). CombatLeader before Flexible, then combat leadership, then key.
+        // support-fallback path). Role preference, then combat leadership, then key.
         // A benched (garrison / lone) hero that may lead `field`: never a SupportOperator, never a
         // committed or development-operator hero; among the rest, the one commander evaluation's
         // best for the field formation's own bodies.
@@ -606,10 +667,11 @@ namespace Game.Ai.V2
             List<ReorgUnit> heroes = units.Where(u => u != null && u.IsHero).ToList();
             if (heroes.Count == 0)
                 return null;
-            // Garrison rule (ArmyData.NormalizeRoster): the highest CommandRating leads, equal
-            // ratings keep their current order. Combat probability never lowers garrison capacity.
+            // Garrison rule (ArmyData.NormalizeRoster): the highest CommandRating leads, then the
+            // higher Fate, a full tie keeps the current order. Combat probability never lowers
+            // garrison capacity.
             if (isGarrison)
-                return heroes.OrderByDescending(h => h.CommandRating).First();
+                return heroes.OrderByDescending(h => h.CommandRating).ThenByDescending(h => h.AsCommander.Fate).First();
             List<ReorgUnit> legal = heroes
                 .Where(h => ReorgViability.Capacity(LedBy(units, h), isGarrison) >= units.Count)
                 .ToList();

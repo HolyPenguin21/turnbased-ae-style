@@ -324,23 +324,38 @@ namespace Game.Ai.V2
         public static int PreparationRosterWaste(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
             IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others)
         {
-            PreparationRosterGap(host, hostUnits, others, out int pending, out int blocked);
+            PreparationRosterGap(host, hostUnits, others, out int pending, out int blocked, out _);
             return pending + blocked;
+        }
+
+        // 2026-11-25 (housekeeping stand, D01) — the planner's comparison term: the waste above
+        // plus the missing positions whose body stands in a garrison that will not release it
+        // (outside its strongest-first spare set, no exchange either). Putting a free roster
+        // body into the garrison used to LOWER the waste (its pending source vanished) and so
+        // tied with handing it to the host; the body then sat there for good, since neither
+        // Housekeeping nor the preparation's assembly takes a non-spare garrison body.
+        public static int PreparationRosterPenalty(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
+            IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others)
+        {
+            PreparationRosterGap(host, hostUnits, others, out int pending, out int blocked, out int stranded);
+            return pending + blocked + stranded;
         }
 
         // The second term alone: non-roster bodies that block a pending source's slot.
         public static int PreparationBlockedSlots(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
             IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others)
         {
-            PreparationRosterGap(host, hostUnits, others, out _, out int blocked);
+            PreparationRosterGap(host, hostUnits, others, out _, out int blocked, out _);
             return blocked;
         }
 
         private static void PreparationRosterGap(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
-            IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others, out int pending, out int blocked)
+            IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others, out int pending, out int blocked,
+            out int stranded)
         {
             pending = 0;
             blocked = 0;
+            stranded = 0;
             if (host?.PreparationTargetKeys == null || hostUnits == null)
                 return;
             var need = new Dictionary<string, int>();
@@ -429,6 +444,20 @@ namespace Game.Ai.V2
             int free = Math.Max(0, Capacity(hostUnits, host.IsGarrison) - hostUnits.Count);
             pending = found;
             blocked = Math.Min(nonTarget, Math.Max(0, released - free));
+            // What is still missing and stands in a garrison is held there (not spare, no exchange).
+            foreach (KeyValuePair<ReorgContainer, List<ReorgUnit>> o in others
+                         ?? Enumerable.Empty<KeyValuePair<ReorgContainer, List<ReorgUnit>>>())
+            {
+                if (o.Key == null || o.Key == host || !o.Key.IsGarrison || o.Value == null)
+                    continue;
+                foreach (ReorgUnit u in o.Value)
+                    if (u != null && !u.IsHero && !u.IsAviation && !u.IsCommitted && u.StrikeKey != null
+                        && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                    {
+                        need[u.StrikeKey] = n - 1;
+                        stranded++;
+                    }
+            }
         }
 
         // §7 — the container holds >= 2 heroes, so which of them commands is a real choice.
@@ -464,15 +493,16 @@ namespace Game.Ai.V2
             roster.Insert(index, unit);
         }
 
-        // Mirrors ArmyData.NormalizeRoster: heroes first, stable by descending CommandRating, then
-        // the other units in their existing order.
+        // Mirrors ArmyData.NormalizeRoster: heroes first, stable by descending CommandRating then
+        // Fate (the commander's battle Fate, SideCommander), then the other units in their order.
         public static List<ReorgUnit> NormalizeRoster(IEnumerable<ReorgUnit> units)
         {
             var heroes = new List<ReorgUnit>();
             var rest = new List<ReorgUnit>();
             foreach (ReorgUnit u in units ?? Enumerable.Empty<ReorgUnit>())
                 (u != null && u.IsHero ? heroes : rest).Add(u);
-            List<ReorgUnit> ordered = heroes.OrderByDescending(h => h.CommandRating).ToList();
+            List<ReorgUnit> ordered = heroes.OrderByDescending(h => h.CommandRating)
+                .ThenByDescending(h => h.AsCommander.Fate).ToList();
             ordered.AddRange(rest);
             return ordered;
         }

@@ -26,6 +26,14 @@ namespace Game.Ai
             BumpRouteAndKnowledge(player);
         }
 
+        // Remembers `enemy` exactly as `player` would observe it now (the game's own Observe),
+        // without native scene visibility.
+        internal static void ObserveForTest(PlayerSetupData player, ArmyData enemy)
+        {
+            StoreFor(EnemySightings, player)[enemy.Id] = Observe(player, enemy, enemy.Hex);
+            BumpRouteAndKnowledge(player);
+        }
+
         internal static void RememberBuildingForTest(PlayerSetupData player, KnownBuilding building)
         {
             StoreFor(KnownBuildings, player)[building.Hex] = building;

@@ -236,7 +236,7 @@ namespace Game.EditorTests
         private static Game.Ai.V2.ReorgUnit ReorgLead(bool committed = false) => new Game.Ai.V2.ReorgUnit
         {
             Key = ++_reorgKey, RuntimeIdentity = _reorgKey, IsHero = true, CommandRating = 6, IsCommitted = committed,
-            IsGroundCombatant = true, HeroRole = Game.Ai.V2.HeroOperationalRole.CombatLeader,
+            IsGroundCombatant = true, HeroRole = Game.Ai.V2.HeroOperationalRole.Flexible,
             MoveCurrent = 4, MoveMax = 4, NativeMoveMax = 4,
         };
 

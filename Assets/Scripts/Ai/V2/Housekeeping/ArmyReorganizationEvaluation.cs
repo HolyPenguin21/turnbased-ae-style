@@ -97,7 +97,7 @@ namespace Game.Ai.V2
                         .Count(u => !u.IsCommitted && !u.IsDevelopmentOperator
                             && !u.IsGarrisonHero && !u.IsArmySupportCarrier);
                 if (meta.PreparationTargetKeys != null)
-                    preparationSlotWaste += ReorgViability.PreparationRosterWaste(meta, units,
+                    preparationSlotWaste += ReorgViability.PreparationRosterPenalty(meta, units,
                         s.Meta.Select(kv => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(
                             kv.Value, s.Roster[kv.Key])));
 
@@ -112,12 +112,14 @@ namespace Game.Ai.V2
                         benchedCombatCapable += units.Count(u => u != null && u.IsHero
                             && u.HeroRole != HeroOperationalRole.SupportOperator
                             && GarrisonMayRelease(units, u, meta));
-                        if (nonHero > 0)
-                        {
-                            if (!hasThreatBenchmarks)
-                                formationStrengths.Add(ReorgViability.EffectivePower(units));
+                        // 2026-11-25 (owner, housekeeping stand Q1: "why repackage when the
+                        // strongest army is already formed?") — the garrison's own strength and
+                        // composition are no reason to move bodies: a sound free field army was
+                        // folded whole into a garrison with room, burying its commander. Its floor
+                        // (GarrisonDeficit, the release rule) stays; under a deployed enemy the
+                        // whole-hex hold reads every formation, the garrison included.
+                        if (nonHero > 0 && hasThreatBenchmarks)
                             composition += ReorgViability.CompositionQuality(units);
-                        }
                     }
                     continue;
                 }
@@ -146,8 +148,7 @@ namespace Game.Ai.V2
 
                 if (ReorgViability.IsViable(units))
                 {
-                    if (!hasThreatBenchmarks)
-                        formationStrengths.Add(ReorgViability.EffectivePower(units));
+                    formationStrengths.Add(ReorgViability.EffectivePower(units));
                     composition += ReorgViability.CompositionQuality(units);
 
                     ReorgUnit commander = units.FirstOrDefault(u => u.IsHero);
@@ -166,8 +167,14 @@ namespace Game.Ai.V2
                 ? Math.Min(unledViableFields + supportLedWhileCombatBenched, benchedCombatCapable)
                 : 0;
 
+            formationStrengths.Sort((a, b) => b.CompareTo(a));
             if (hasThreatBenchmarks)
             {
+                // 2026-11-25 (housekeeping stand, E12/E18/S04) — when the readiness against every
+                // threat ties (a hex held with certainty, or a hopeless one), the same strongest-
+                // first AiPower profile as on a quiet hex decides before composition: a fist was
+                // split across formations for composition alone (hold 1.00 -> 1.00) and the next
+                // pass merged it back.
                 // Already ordered by the worst enemy contact first. Keep enemy identity and the
                 // hex/first/second layers adjacent; never collapse them back per container.
                 // Built only when the discrete keys above tie (Outcome.CompareTo): the whole-hex
@@ -176,11 +183,10 @@ namespace Game.Ai.V2
                 return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
                     singles, nonViable, commandWaste, formationDefect,
                     new LazyProfile(() => BuildThreatContactReadiness(s)), -composition,
-                    s.Transfers.Count);
+                    s.Transfers.Count, formationStrengths);
             }
 
             // No deployed enemy benchmark: retain the canonical AiPower fallback.
-            formationStrengths.Sort((a, b) => b.CompareTo(a));
             return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
                 singles, nonViable, commandWaste, formationDefect, new LazyProfile(formationStrengths),
                 -composition, s.Transfers.Count);

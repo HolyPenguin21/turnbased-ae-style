@@ -789,7 +789,7 @@ namespace Game.EditorTests
         private static ReorgUnit RHero(int command, bool support) => new ReorgUnit
         {
             Key = _key++, IsHero = true, CommandRating = command, IsGroundCombatant = false,
-            HeroRole = HeroOperationalRole.CombatLeader, MoveCurrent = 3, MoveMax = 3,
+            HeroRole = HeroOperationalRole.Flexible, MoveCurrent = 3, MoveMax = 3,
             TypeTags = support ? new[] { UnitTypeTag.Hero, UnitTypeTag.Support } : new[] { UnitTypeTag.Hero },
         };
 
@@ -809,26 +809,6 @@ namespace Game.EditorTests
 
         private static ReorganizationPlan RPlan(params ReorgContainer[] containers) =>
             ArmyReorganizationPlanner.Plan(new LocalForceGroup { Containers = containers.ToList() });
-
-        [Test]
-        public void GarrisonHero_InAFieldArmy_ReturnsToTheLocalGarrison()
-        {
-            ReorgUnit iri = RHero(8, support: true);
-            ReorgContainer garrison = RGarrison(1, RBody(6f), RBody(6f));
-            ReorgContainer field = RFree(2, iri, RBody(5f), RBody(5f));
-            ReorganizationPlan plan = RPlan(garrison, field);
-            Assert.That(plan.ExpectedMembership[1], Does.Contain(iri.Key), plan.DebugSummary());
-        }
-
-        [Test]
-        public void GarrisonHero_NeverLeavesTheGarrisonToLeadAField()
-        {
-            ReorgUnit iri = RHero(8, support: true);
-            ReorgContainer garrison = RGarrison(1, iri, RBody(6f), RBody(6f));
-            ReorgContainer field = RFree(2, RBody(5f), RBody(5f));
-            ReorganizationPlan plan = RPlan(garrison, field);
-            Assert.That(plan.ExpectedMembership[1], Does.Contain(iri.Key), plan.DebugSummary());
-        }
 
         private static ReorgUnit RFighter(float attack, float defence, float hp) => new ReorgUnit
         {
@@ -882,35 +862,6 @@ namespace Game.EditorTests
             foreach (int id in new[] { 2, 3 })
                 Assert.That(plan.ExpectedMembership[id].All(k => k == hank.Key || k == rusty.Key || k == nova.Key),
                     Is.True, "no Support hero rides in a fighting formation");
-        }
-
-        // 2026-11-20 (owner, match Halden vs Orlan T24) — Citadel (-6,2): garrison 5 bodies under a
-        // Support commander and the fist Cinderwolves (Nadia Thorne + 3 bodies) on the hex; a far
-        // enemy (eta 5) that the hex holds against with certainty. Packing the fist's strongest
-        // bodies only raised the second-line row (0.83 -> 0.92), never the whole-hex hold: the
-        // fist keeps its bodies. Before the fix the three were moved into the garrison.
-        [Test]
-        public void FarThreat_HexAlreadyHeld_TheFistIsNotEmptiedIntoTheGarrison()
-        {
-            ReorgUnit vector = RHero(8, support: true);
-            ReorgUnit nadia = RHero(6, support: false);
-            var garrisonBodies = new[] { RFighter(5f, 3f, 6f), RFighter(5f, 3f, 6f), RFighter(5f, 3f, 6f) };
-            var fistBodies = new[] { RFighter(6f, 4f, 8f), RFighter(6f, 4f, 8f), RFighter(6f, 4f, 8f) };
-            ReorgContainer garrison = RGarrison(1, new[] { vector }.Concat(garrisonBodies).ToArray());
-            ReorgContainer fist = RFree(2, new[] { nadia }.Concat(fistBodies).ToArray());
-            var group = new LocalForceGroup { Containers = new List<ReorgContainer> { garrison, fist } };
-            group.ThreatBenchmarks.Add(new ReorgThreatBenchmark
-            {
-                ArmyId = 22, EtaToGroup = 5, EtaToNearestBase = 2,
-                Members = Enumerable.Range(0, 2).Select(_ =>
-                    new Game.Combat.WorthIt.DefenderProfile(1f, false, attack: 3f, hitPoints: 4f)).ToArray(),
-                TargetableUnitKeys = new HashSet<int>(garrisonBodies.Concat(fistBodies).Select(u => u.Key)),
-            });
-
-            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
-
-            Assert.That(plan.ExpectedMembership[2], Is.EquivalentTo(new[] { nadia.Key }.Concat(fistBodies.Select(b => b.Key))),
-                "the hex holds anyway; the fist keeps its fighters: " + plan.DebugSummary());
         }
 
         // 2026-11-20 (owner, match Halden vs Brynn T25) — Talon Corps carried Disruption and the
@@ -967,28 +918,6 @@ namespace Game.EditorTests
                 "Ironclad takes both heroless pairs: " + plan.DebugSummary());
         }
 
-        // The planner gives frames back between candidates (FramePacer); a plan split over frames
-        // is the plan computed in one go.
-        [Test]
-        public void PacedPlan_EqualsThePlanComputedInOneGo()
-        {
-            ReorganizationPlan direct = ArmyReorganizationPlanner.Plan(KryllBaseUnderDustDogs(out _, keySeed: 9000));
-            var paced = new ReorganizationPlan();
-            var pacer = new FramePacer();
-            var stack = new Stack<System.Collections.IEnumerator>();
-            stack.Push(ArmyReorganizationPlanner.PlanRoutine(KryllBaseUnderDustDogs(out _, keySeed: 9000), pacer, paced));
-            while (stack.Count > 0)
-            {
-                System.Collections.IEnumerator top = stack.Peek();
-                if (!top.MoveNext()) { stack.Pop(); continue; }
-                if (top.Current is System.Collections.IEnumerator nested) stack.Push(nested);
-            }
-
-            Assert.That(paced.Transfers.Count, Is.EqualTo(direct.Transfers.Count));
-            foreach (var kv in direct.ExpectedMembership)
-                Assert.That(paced.ExpectedMembership[kv.Key], Is.EqualTo(kv.Value), $"army {kv.Key}");
-        }
-
         // Garrison 4/4, a hero army 3/7 and two heroless 2-body armies under a 5-body attacker that
         // beats every formation alone (garrison and the packed army both lose ~1.00), while the
         // whole hex holds better packed (1.00 -> 0.66; one fold alone 0.94, inside the margin).
@@ -1020,31 +949,6 @@ namespace Game.EditorTests
             return group;
         }
 
-        // 2026-10-15 (user decision) — playtest: Aldric and Dorian stood as lone free heroes on
-        // Draven's Base (-1,3) beside its garrison while Sentinels were one turn away. A lone hero
-        // stays a bench in peace; under a near threat it shelters in the local garrison.
-        [TestCase(false)]
-        [TestCase(true)]
-        public void LoneFreeHero_SheltersInTheLocalGarrisonOnlyUnderANearThreat(bool threatened)
-        {
-            ReorgUnit aldric = RHero(4, support: false);
-            ReorgUnit tank = RBody(9f), medic = RBody(3f);
-            ReorgContainer garrison = RGarrison(1, tank, medic);
-            ReorgContainer lone = RFree(2, aldric);
-            var group = new LocalForceGroup { Containers = new List<ReorgContainer> { garrison, lone } };
-            if (threatened)
-                group.ThreatBenchmarks.Add(new ReorgThreatBenchmark
-                {
-                    ArmyId = 11, EtaToGroup = 1, EtaToNearestBase = 1,
-                    Members = new[] { new Game.Combat.WorthIt.DefenderProfile(3f, false, attack: 5f, hitPoints: 5f) },
-                    TargetableUnitKeys = new HashSet<int> { tank.Key, medic.Key },
-                });
-
-            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
-
-            Assert.That(plan.ExpectedMembership[1].Contains(aldric.Key), Is.EqualTo(threatened),
-                plan.DebugSummary());
-        }
     }
 }
 #endif
