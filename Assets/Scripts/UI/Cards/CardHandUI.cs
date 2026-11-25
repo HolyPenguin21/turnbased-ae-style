@@ -879,7 +879,8 @@ namespace Game.UI
             var map = hexSelection?.Map;
             // A successful command updates the hand synchronously and removes this view.
             Sprite placementArt = target.Kind == CardPlayTargetKind.Hex ? card.PlacementArt : null;
-            float placementArtWidth = placementArt != null ? card.PlacementArtScreenWidth : 0f;
+            Vector2 artCenter = default, artBottomEdge = default;
+            bool artPose = placementArt != null && card.TryGetPlacementArtScreenPose(out artCenter, out artBottomEdge);
             var result = CardHandCommands.TryPlay(owner, _humanHand, data, target, map, hexSelection);
             if (!result.Ok) { turnController?.ShowSpawnHint(result.FailReason); return false; }
             RecordPlayedCard(data);
@@ -888,7 +889,7 @@ namespace Game.UI
             var changedHex = target.Kind == CardPlayTargetKind.Army ? target.Army.Hex
                 : target.Kind == CardPlayTargetKind.Building ? target.Building.Hex : target.Hex;
             hexSelection?.RefreshSelectedHexIf(changedHex);
-            if (placementArt != null) CardPlacementEffect.Play(map, target.Hex, placementArt, owner, placementArtWidth);
+            if (placementArt != null) CardPlacementEffect.Play(map, target.Hex, placementArt, owner, artPose, artCenter, artBottomEdge);
             return true;
         }
 

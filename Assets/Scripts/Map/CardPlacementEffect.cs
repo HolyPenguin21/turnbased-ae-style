@@ -10,10 +10,12 @@ namespace Game.Map
         private const float CardDiagonalInHexRadii = 1.6f;
         private const float SurfaceOffset = 0.015f;
 
-        // screenWidth: the card art's on-screen width at the drop, in pixels. The map copy is sized
-        // to the same on-screen width at the hex, so it does not jump in size; <= 0 falls back
-        // to a fixed size relative to the hex.
-        public static void Play(HexMap map, HexCoord hex, Sprite art, PlayerSetupData owner, float screenWidth = 0f)
+        // hasScreenPose: the card art's on-screen pose at the drop is known — screenCenter and
+        // screenBottomEdge (bottom-left -> bottom-right, pixels). The map copy is laid on the map
+        // surface under that centre, with the same on-screen width and tilt, so it does not jump.
+        // Without it the copy falls back to a fixed size centred on the hex, top towards the camera.
+        public static void Play(HexMap map, HexCoord hex, Sprite art, PlayerSetupData owner,
+            bool hasScreenPose = false, Vector2 screenCenter = default, Vector2 screenBottomEdge = default)
         {
             if (map == null || art == null || !CanShow(owner, hex))
                 return;
@@ -28,16 +30,16 @@ namespace Game.Map
             var mapTransform = map.transform;
             var camera = Camera.main;
             Vector3 hexWorld = map.HexToWorld(hex);
-            float scale = ScreenMatchedScale(camera, mapTransform, hexWorld, screenWidth, bounds.size.x)
-                ?? map.OuterRadius * CardDiagonalInHexRadii / diagonal;
-            Vector3 cardTop = camera != null
-                ? mapTransform.InverseTransformDirection(camera.transform.up)
-                : Vector3.forward;
-            cardTop.y = 0f;
-            if (cardTop.sqrMagnitude < 0.0001f)
-                cardTop = Vector3.forward;
-            var rotation = Quaternion.LookRotation(Vector3.down, cardTop);
-            Vector3 center = mapTransform.InverseTransformPoint(hexWorld) + Vector3.up * SurfaceOffset;
+            if (!hasScreenPose || !TryScreenPose(camera, mapTransform, hexWorld, screenCenter, screenBottomEdge,
+                    bounds.size.x, out Vector3 center, out Vector3 cardRight, out float scale))
+            {
+                center = mapTransform.InverseTransformPoint(hexWorld);
+                cardRight = DefaultCardRight(camera, mapTransform);
+                scale = map.OuterRadius * CardDiagonalInHexRadii / diagonal;
+            }
+            // Card lies face up (forward = down into the map); its top follows from its right edge.
+            var rotation = Quaternion.LookRotation(Vector3.down, Vector3.Cross(Vector3.down, cardRight));
+            center += Vector3.up * SurfaceOffset;
 
             var go = new GameObject("Card Placement Dissolve");
             go.layer = map.gameObject.layer;
@@ -53,22 +55,38 @@ namespace Game.Map
             CardDissolveEffect.Play(go, material, () => CanShow(owner, hex));
         }
 
-        // Local scale at which the sprite (local width spriteWidth) covers screenWidth pixels across
-        // the screen's horizontal through the hex centre, measured on the map surface plane. The
-        // card lies with its top towards the camera's up, so its width runs along screen X.
-        private static float? ScreenMatchedScale(Camera camera, Transform mapTransform, Vector3 hexWorld,
-            float screenWidth, float spriteWidth)
+        // Projects the art's screen centre and bottom edge (laid through that centre) onto the map
+        // surface plane through the hex: map-local centre, map-local right direction, and the local
+        // scale at which the sprite (local width spriteWidth) spans that edge.
+        private static bool TryScreenPose(Camera camera, Transform mapTransform, Vector3 hexWorld,
+            Vector2 screenCenter, Vector2 screenBottomEdge, float spriteWidth,
+            out Vector3 center, out Vector3 cardRight, out float scale)
         {
-            if (camera == null || screenWidth <= 0f || spriteWidth <= 0f) return null;
-            Vector3 centre = camera.WorldToScreenPoint(hexWorld);
-            if (centre.z <= 0f) return null;
+            center = cardRight = Vector3.zero;
+            scale = 0f;
+            if (camera == null || spriteWidth <= 0f || screenBottomEdge.sqrMagnitude <= 0f) return false;
             var plane = new Plane(mapTransform.up, hexWorld);
-            Vector3? left = ProjectToPlane(camera, plane, new Vector2(centre.x - screenWidth * 0.5f, centre.y));
-            Vector3? right = ProjectToPlane(camera, plane, new Vector2(centre.x + screenWidth * 0.5f, centre.y));
-            if (!left.HasValue || !right.HasValue) return null;
-            Vector3 localSpan = mapTransform.InverseTransformVector(right.Value - left.Value);
-            float width = localSpan.magnitude;
-            return width > 0f ? width / spriteWidth : (float?)null;
+            Vector3? mid = ProjectToPlane(camera, plane, screenCenter);
+            Vector3? left = ProjectToPlane(camera, plane, screenCenter - screenBottomEdge * 0.5f);
+            Vector3? right = ProjectToPlane(camera, plane, screenCenter + screenBottomEdge * 0.5f);
+            if (!mid.HasValue || !left.HasValue || !right.HasValue) return false;
+            Vector3 span = mapTransform.InverseTransformVector(right.Value - left.Value);
+            span.y = 0f;
+            float width = span.magnitude;
+            if (width <= 0f) return false;
+            center = mapTransform.InverseTransformPoint(mid.Value);
+            cardRight = span / width;
+            scale = width / spriteWidth;
+            return true;
+        }
+
+        private static Vector3 DefaultCardRight(Camera camera, Transform mapTransform)
+        {
+            Vector3 right = camera != null
+                ? mapTransform.InverseTransformDirection(camera.transform.right)
+                : Vector3.right;
+            right.y = 0f;
+            return right.sqrMagnitude < 0.0001f ? Vector3.right : right.normalized;
         }
 
         private static Vector3? ProjectToPlane(Camera camera, Plane plane, Vector2 screenPoint)

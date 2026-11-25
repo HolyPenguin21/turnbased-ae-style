@@ -76,20 +76,23 @@ namespace Game.UI
 
         public CardData Data { get; private set; }
         internal Sprite PlacementArt => artImage != null ? artImage.overrideSprite : null;
-        // On-screen width of the art right now (hover/drag shrink and hand layout scale included),
-        // so the map placement effect starts at the size the player last saw. 0 when unknown.
-        internal float PlacementArtScreenWidth
+        // Where the art is on screen right now (drag position, hover/drag shrink, hand layout scale
+        // and drag tilt included), so the map placement effect starts exactly where the player let
+        // go: centre, bottom-left -> bottom-right edge (width and tilt), in pixels.
+        internal bool TryGetPlacementArtScreenPose(out Vector2 center, out Vector2 bottomEdge)
         {
-            get
-            {
-                if (artImage == null) return 0f;
-                var corners = new Vector3[4];
-                artImage.rectTransform.GetWorldCorners(corners);
-                var canvas = artImage.canvas;
-                Camera cam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
-                return Vector2.Distance(RectTransformUtility.WorldToScreenPoint(cam, corners[0]),
-                    RectTransformUtility.WorldToScreenPoint(cam, corners[3]));
-            }
+            center = bottomEdge = Vector2.zero;
+            if (artImage == null) return false;
+            var corners = new Vector3[4];
+            artImage.rectTransform.GetWorldCorners(corners);
+            var canvas = artImage.canvas;
+            Camera cam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
+            Vector2 bottomLeft = RectTransformUtility.WorldToScreenPoint(cam, corners[0]);
+            Vector2 topRight = RectTransformUtility.WorldToScreenPoint(cam, corners[2]);
+            Vector2 bottomRight = RectTransformUtility.WorldToScreenPoint(cam, corners[3]);
+            center = (bottomLeft + topRight) * 0.5f;
+            bottomEdge = bottomRight - bottomLeft;
+            return bottomEdge.sqrMagnitude > 0f;
         }
         public bool IsDragging { get; private set; }
         // Pointer is over the card and it's raised to hover size (see Retarget).
@@ -131,6 +134,11 @@ namespace Game.UI
         // dragHoverShrink while poised over a hex this card could actually be dropped on (see
         // SetDragHoverValid).
         private const float DragScale = 1f;
+        // Carried card leans towards where it is being pulled: full tilt once the pointer is this
+        // fraction of the screen width to either side of where the drag started.
+        private const float DragTiltMaxDegrees = 10f;
+        private const float DragTiltFullOffsetScreenFraction = 0.2f;
+        private float _dragStartScreenX;
 
         private void Awake()
         {
@@ -453,6 +461,7 @@ namespace Game.UI
 
             IsDragging = true;
             _isHovered = false;
+            _dragStartScreenX = eventData.position.x;
             _dragHoverValid = false;
             _dragSiblingIndex = rectTransform.GetSiblingIndex();
             rectTransform.SetAsLastSibling();
@@ -482,6 +491,7 @@ namespace Game.UI
                 return;
 
             UIUtility.ApplyScreenDelta(rectTransform, eventData, _canvas);
+            ApplyDragTilt(eventData.position.x);
             // Live reorder preview — the rest of the hand shifts to make room right now,
             // instead of only snapping into place once the card is dropped. CardHandUI itself
             // decides whether this position still counts as "over the hand" (see
@@ -570,7 +580,16 @@ namespace Game.UI
 
         public void SnapToHome()
         {
+            rectTransform.localRotation = Quaternion.identity;
             Retarget(animated: false);
+        }
+
+        private void ApplyDragTilt(float pointerScreenX)
+        {
+            float fullOffset = Mathf.Max(1f, Screen.width * DragTiltFullOffsetScreenFraction);
+            float t = Mathf.Clamp((pointerScreenX - _dragStartScreenX) / fullOffset, -1f, 1f);
+            // Pulled right -> top leans right (clockwise, negative Z).
+            rectTransform.localRotation = Quaternion.Euler(0f, 0f, -t * DragTiltMaxDegrees);
         }
 
         internal void SetHandLayoutScale(float scale)
