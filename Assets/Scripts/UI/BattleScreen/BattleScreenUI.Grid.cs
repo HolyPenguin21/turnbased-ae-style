@@ -13,6 +13,7 @@ using Game.Players;
 using Game.Styles;
 using Game.Units;
 using TMPro;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -33,15 +34,24 @@ namespace Game.UI
         private Vector2 _authoredCellSize;
         private Vector2 _authoredSpacing;
         private bool _gridLayoutSizeCaptured;
+        private bool _turnQueueLayoutDirty;
+        private static readonly ProfilerMarker GridRefreshMarker = new ProfilerMarker("BattleUI.RefreshGrid");
+        private Coroutine _moveRoutine;
+        private BattleGridCellUI _movingCell;
+        private bool _moveLayoutWasEnabled;
 
-        private void RevealCurrentTurnIcon()
+        private void RevealCurrentTurnIcon(bool layoutChanged)
         {
             if (!(turnQueueContainer is RectTransform content))
                 return;
             ScrollRect scroll = content.GetComponentInParent<ScrollRect>();
             if (scroll == null || scroll.content != content || scroll.viewport == null)
                 return;
-            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            if (layoutChanged || _turnQueueLayoutDirty)
+            {
+                _turnQueueLayoutDirty = false;
+                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            }
             float overflow = Mathf.Max(0f, content.rect.height - scroll.viewport.rect.height);
             float offset = 0f;
             if (_turnIndex >= 0 && _turnIndex < _queueIcons.Count)
@@ -103,22 +113,22 @@ namespace Game.UI
 
         private void OnRectTransformDimensionsChange()
         {
+            _turnQueueLayoutDirty = true;
             if (gridContainer == null || _isAnimatingMove)
                 return;
             FitBattleGrid();
-            RevealCurrentTurnIcon();
+            RevealCurrentTurnIcon(layoutChanged: false);
         }
 
         private void RefreshGrid()
         {
-            if (_isPresentingAttack || _presentationSuppressed) return;
-            foreach (BattleGridCellUI oldCell in _cells)
-                if (oldCell != null) oldCell.gameObject.SetActive(false);
-            UIUtility.DestroyAndClear(_cells);
-            if (gridContainer == null || gridCellPrefab == null || _grid == null)
+            if (_isPresentingAttack || _presentationSuppressed || _isAnimatingMove
+                || gridContainer == null || gridCellPrefab == null || _grid == null)
                 return;
 
-            FitBattleGrid();
+            using var sample = GridRefreshMarker.Auto();
+            bool createCells = _cells.Count == 0;
+            if (createCells) FitBattleGrid();
 
             // Legal-target hints only make sense once a real round is underway (not Arranging)
             // and only for the local human's own current unit — an AI turn has no player input to
@@ -142,16 +152,25 @@ namespace Game.UI
                     bool isLegalAttackTarget = canAct && unit != null && _battleEngine != null
                         && _battleEngine.CanGroundAttack(_currentActingUnit, unit);
 
-                    BattleGridCellUI cell = Instantiate(gridCellPrefab, gridContainer);
-                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(cell);
-                    cell.Setup(this, unit, row, col, draggable, isActingUnit, isLegalMoveTarget, isLegalAttackTarget);
+                    BattleGridCellUI cell;
+                    if (createCells)
+                    {
+                        cell = Instantiate(gridCellPrefab, gridContainer);
+                        Game.Audio.SceneUIAudioBinder.BindCreatedRoot(cell);
+                        cell.Setup(this, unit, row, col, draggable, isActingUnit, isLegalMoveTarget, isLegalAttackTarget);
+                        _cells.Add(cell);
+                    }
+                    else
+                    {
+                        cell = _cells[row * BattleGrid.Columns + col];
+                        cell.Refresh(unit, draggable, isActingUnit, isLegalMoveTarget, isLegalAttackTarget);
+                    }
                     if (unit != null && _healEffectStarts.TryGetValue(unit, out float started)
                         && Time.unscaledTime - started < BattleSkillEffect.Duration)
                         BattleSkillEffect.Show(cell.transform, started, BattleSkillEffect.Kind.Heal);
                     if (unit != null && _drillEffectStarts.TryGetValue(unit, out float drillStarted)
                         && Time.unscaledTime - drillStarted < BattleSkillEffect.Duration)
                         BattleSkillEffect.Show(cell.transform, drillStarted, BattleSkillEffect.Kind.Drill);
-                    _cells.Add(cell);
                 }
         }
 
@@ -200,64 +219,74 @@ namespace Game.UI
 
         private BattleGridCellUI FindCell(int row, int col)
         {
-            foreach (BattleGridCellUI cell in _cells)
-                if (cell.Row == row && cell.Col == col)
-                    return cell;
-            return null;
+            if (!BattleGrid.InBounds(row, col)) return null;
+            int index = row * BattleGrid.Columns + col;
+            return index < _cells.Count ? _cells[index] : null;
         }
 
         private void PerformMove(int fromRow, int fromCol, int toRow, int toCol)
         {
-            if (_isAnimatingMove)
-                return;
-            StartBattleRoutine(AnimateThenMove(fromRow, fromCol, toRow, toCol));
-        }
-
-        // Fast but smooth, per the user's own spec — the moving cell's own card slides from the
-        // source cell to the destination (see BattleGridCellUI.AnimateMoveTo), then the actual
-        // grid swap/rebuild/turn advance happens all at once, same as before. Input is blocked
-        // for the animation's short duration (see _isAnimatingMove) so a second click can't
-        // queue up mid-slide. gridContainer's GridLayoutGroup is disabled for that same span —
-        // otherwise it fights the manual position Lerp and, worse, reflows every other cell the
-        // instant sibling order/state changes underneath it (that's what made neighbouring units
-        // visibly jump) — it's re-enabled just before RefreshGrid rebuilds everything anyway.
-        private IEnumerator AnimateThenMove(int fromRow, int fromCol, int toRow, int toCol)
-        {
-            _isAnimatingMove = true;
+            if (_isAnimatingMove) return;
             BattleGridCellUI fromCell = FindCell(fromRow, fromCol);
             BattleGridCellUI toCell = FindCell(toRow, toCol);
-            GridLayoutGroup layoutGroup = gridContainer != null ? gridContainer.GetComponent<GridLayoutGroup>() : null;
-            // No human participant in this battle at all (_localArmy == null — AI vs. AI or AI vs.
-            // neutral) skips the slide entirely and swaps straight to the grid update below, per
-            // the user's own request (2026-08-24) to stop pacing a purely AI/neutral fight for
-            // spectator readability. A human-vs-AI battle still animates the AI's own moves.
-            if (HasInteractiveParticipant && fromCell != null && toCell != null)
+            if (!HasInteractiveParticipant || _presentationSuppressed || moveAnimDuration <= 0f
+                || fromCell == null || toCell == null)
             {
-                if (layoutGroup != null)
-                    layoutGroup.enabled = false;
-                yield return StartCoroutine(fromCell.AnimateMoveTo(toCell.RectTransform, moveAnimDuration));
-                if (layoutGroup != null)
-                    layoutGroup.enabled = true;
+                CompleteMove(fromRow, fromCol, toRow, toCol);
+                return;
             }
 
+            _isAnimatingMove = true;
+            _movingCell = fromCell;
+            if (_responsiveGridLayout != null)
+            {
+                _moveLayoutWasEnabled = _responsiveGridLayout.enabled;
+                _responsiveGridLayout.enabled = false;
+            }
+            _moveRoutine = StartBattleRoutine(AnimateThenMove(fromCell, toCell));
+        }
+
+        private IEnumerator AnimateThenMove(BattleGridCellUI from, BattleGridCellUI to)
+        {
+            yield return from.AnimateMoveTo(to.RectTransform, moveAnimDuration);
+            RestoreMoveLayout();
+            CompleteMove(from.Row, from.Col, to.Row, to.Col);
+        }
+
+        private void CompleteMove(int fromRow, int fromCol, int toRow, int toCol)
+        {
             if (_battleEngine == null
                 || !_battleEngine.TryMoveUnit(_currentActingUnit, fromRow, fromCol, toRow, toCol))
             {
-                _isAnimatingMove = false;
                 RefreshGrid();
-                yield break;
+                return;
             }
-            _isAnimatingMove = false;
-            RefreshGrid();
             EndTurn();
+        }
+
+        private void CancelMovePresentation()
+        {
+            StopBattleRoutine(_moveRoutine);
+            RestoreMoveLayout();
+        }
+
+        private void RestoreMoveLayout()
+        {
+            if (!_isAnimatingMove) return;
+            _moveRoutine = null;
+            if (_movingCell != null) _movingCell.RestoreMovePose();
+            _movingCell = null;
+            if (_responsiveGridLayout != null) _responsiveGridLayout.enabled = _moveLayoutWasEnabled;
+            _isAnimatingMove = false;
+            // Apply any viewport change that occurred during the slide.
+            FitBattleGrid();
         }
 
         // Resolves a drag started on `dragged` (see BattleGridCellUI.OnEndDrag) — the drop only
         // succeeds while Arranging and only onto another cell within the SAME local player's own
         // rows (may be empty or occupied; occupied just swaps the two). Anywhere else (enemy
         // rows, the neutral row, off the grid entirely) snaps back to where it was picked up
-        // from by simply doing nothing here — RefreshGrid was never called, so the cell's own
-        // Setup data (and therefore its rendered position/content) is untouched.
+        // from by simply doing nothing here.
         public void TryDropOnCell(BattleGridCellUI dragged, Vector2 screenPosition)
         {
             if (!_arranging || !_arrangeInteractive || dragged == null || !IsLocalRow(dragged.Row))
@@ -286,8 +315,9 @@ namespace Game.UI
         {
             if (detailArt != null)
             {
-                detailArt.sprite = unit != null ? unit.DetailArt : null;
-                detailArt.gameObject.SetActive(unit != null);
+                Sprite art = unit?.DetailArt;
+                detailArt.sprite = art;
+                detailArt.gameObject.SetActive(art != null);
             }
             if (detailText == null)
                 return;

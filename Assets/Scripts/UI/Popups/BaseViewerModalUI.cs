@@ -153,10 +153,12 @@ namespace Game.UI
             }
         }
 
-        private void ClearGrid() => UIUtility.DestroyAndClear(_cards);
+        private void ClearGrid() => UIUtility.DestroyAndClear(_cards, deactivate: true);
 
         public void ShowBaseSummary()
         {
+            foreach (var card in _cards)
+                if (card != null) card.RefreshSelection(null);
             UIUtility.ResetDetailScroll(_detailScroll);
             if (detailArt != null)
             {
@@ -183,6 +185,8 @@ namespace Game.UI
                 ShowBaseSummary();
                 return;
             }
+            foreach (var card in _cards)
+                if (card != null) card.RefreshSelection(facility);
             UIUtility.ResetDetailScroll(_detailScroll);
             if (detailArt != null)
             {

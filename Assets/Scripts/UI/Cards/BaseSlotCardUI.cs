@@ -21,6 +21,7 @@ namespace Game.UI
     public class BaseSlotCardUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
     {
         [SerializeField] private Image artImage;
+        [SerializeField] private GameObject selectionFrame;
         // Sprite shown in an empty/locked Facility slot in place of a real Facility's art.
         // Tinted by emptySlotAlpha below. Leave unset for a plain tinted box.
         [SerializeField] private Sprite emptySlotSprite;
@@ -85,6 +86,7 @@ namespace Game.UI
             _modal = modal;
             _building = building;
             _facility = null;
+            selectionFrame?.SetActive(false);
 
             // See the class comment — a resource site has no base cell at all, so cellIndex 0
             // means its first Facility slot there, not "the building itself".
@@ -174,9 +176,12 @@ namespace Game.UI
             if (rangeStatText != null) rangeStatText.text = facility.Fate.ToString();
         }
 
+        internal void RefreshSelection(FacilityData facility)
+            => selectionFrame?.SetActive(_occupied && (_isBaseCell ? facility == null : _facility == facility));
+
         public void OnPointerClick(PointerEventData eventData)
         {
-            if (_locked || !_occupied)
+            if (UIFocusUtility.IsGameplayInputBlocked || _locked || !_occupied)
                 return;
             if (_isBaseCell)
                 _modal?.ShowBaseSummary();

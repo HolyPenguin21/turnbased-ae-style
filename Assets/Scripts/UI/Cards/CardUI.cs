@@ -75,6 +75,7 @@ namespace Game.UI
         private float _dragHoverShrink = 0.5f;
 
         public CardData Data { get; private set; }
+        internal Sprite PlacementArt => artImage != null ? artImage.overrideSprite : null;
         public bool IsDragging { get; private set; }
         // Pointer is over the card and it's raised to hover size (see Retarget).
         public bool IsHovered => _isHovered;

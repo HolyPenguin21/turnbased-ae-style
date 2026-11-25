@@ -89,11 +89,16 @@ namespace Game.UI
         public static int OffsetToReveal(int offset, int index, int visibleCount) => index < 0 ? offset
             : Mathf.Clamp(offset, Mathf.Max(0, index - visibleCount + 1), index);
 
-        public static void DestroyAndClear<T>(List<T> items) where T : Component
+        public static void DestroyAndClear<T>(List<T> items, bool deactivate = false) where T : Component
         {
             foreach (T item in items)
-                if (item != null)
-                    Object.Destroy(item.gameObject);
+            {
+                if (item == null) continue;
+                GameObject child = item.gameObject;
+                // Deferred Destroy can leave an outgoing view in layout and raycasts.
+                if (deactivate && child.activeSelf) child.SetActive(false);
+                Object.Destroy(child);
+            }
             items.Clear();
         }
 

@@ -210,8 +210,9 @@ namespace Game.UI
             if (!busy)
             {
                 _cards = DeckRules.OrderCards(ResearchProductionSystem.OfferedCards(catalog, _mode, _player), c => c).ToList();
-                if (!_cards.Contains(_selected)) _selected = null;
-                _page = Mathf.Min(_page, PageCount - 1);
+                int selectedIndex = _selected != null ? _cards.IndexOf(_selected) : -1;
+                if (selectedIndex < 0) _selected = null;
+                _page = selectedIndex >= 0 ? selectedIndex / PageSize : Mathf.Min(_page, PageCount - 1);
                 RefreshGrid();
             }
             if (closeButton != null)
@@ -272,7 +273,7 @@ namespace Game.UI
             RefreshPageButtons();
         }
 
-        private void ClearGrid() => UIUtility.DestroyAndClear(_cardViews);
+        private void ClearGrid() => UIUtility.DestroyAndClear(_cardViews, deactivate: true);
 
         private void RefreshPageButtons()
         {
@@ -345,6 +346,8 @@ namespace Game.UI
 
         private void RefreshResultPanel()
         {
+            foreach (var card in _cardViews)
+                if (card != null) card.RefreshPreviewSelection(_selected);
             if (detailArtResult != null)
             {
                 Sprite sprite = _selected != null

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using Game.Cards;
 using Game.Core;
 using Game.Styles;
@@ -21,11 +22,8 @@ namespace Game.UI
     // rows to swap places. Unlike ArmyUnitCardUI's capacity grid, this grid's cells stay fixed
     // in their GridLayoutGroup slots — dragging only shows a small floating "ghost" icon that
     // follows the pointer (see OnBeginDrag); the actual swap happens in the BattleGrid model on
-    // drop (BattleScreenUI.TryDropOnCell), then the whole grid is rebuilt from scratch the same
-    // way RefreshTurnOrder's icon strip always has been, rather than animating cards into place.
-    // The Round phase's own move action instead moves the real card itself (see AnimateMoveTo,
-    // called by BattleScreenUI.AnimateThenMove) — a quick slide from source to destination cell
-    // before the grid rebuild, rather than an instant teleport.
+    // drop (BattleScreenUI.TryDropOnCell), then the existing cells display their new occupants.
+    // A move during a round temporarily slides the source card before the model move commits.
     public class BattleGridCellUI : MonoBehaviour, IPointerClickHandler, IPointerExitHandler,
         IBeginDragHandler, IDragHandler, IEndDragHandler
     {
@@ -79,11 +77,21 @@ namespace Game.UI
         public int Col { get; private set; }
         public bool IsDragging { get; private set; }
         public RectTransform RectTransform => rectTransform;
+        internal Image CardArt => artImage;
 
         private BattleScreenUI _screen;
         private bool _draggable;
         private Canvas _rootCanvas;
         private RectTransform _ghost;
+        private bool _hasBinding;
+        private (Sprite Art, string Name, CardDefinition Equipment, CardDefinition Mutator, bool IsHero) _face;
+        private HashSet<string> _abilities;
+        private bool _isAviation;
+        private (int Attack, int Defense, int Hp, int MaxHp, int Move, int Range)? _shownStats;
+        private (bool Draggable, bool Acting, bool Move, bool Attack)? _interaction;
+        private bool _hasMovePose;
+        private int _moveSiblingIndex;
+        private Vector3 _movePosition;
 
         private void Awake()
         {
@@ -94,77 +102,110 @@ namespace Game.UI
         public void Setup(BattleScreenUI screen, UnitData unit, int row, int col, bool draggable,
             bool isActingUnit = false, bool isLegalMoveTarget = false, bool isLegalAttackTarget = false)
         {
-            equipmentArtToggle?.Revert();
-            mutatorArtToggle?.Revert();
             _screen = screen;
-            Unit = unit;
             Row = row;
             Col = col;
-            _draggable = draggable;
-
-            if (artImage != null)
-            {
-                artImage.sprite = unit != null ? unit.Art : null;
-                artImage.gameObject.SetActive(unit != null);
-            }
             equipmentArtToggle?.SetPeer(mutatorArtToggle);
             mutatorArtToggle?.SetPeer(equipmentArtToggle);
-            equipmentArtToggle?.Configure(unit?.Equipment, _screen != null ? _screen.GameConfig : null,
-                unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
-            mutatorArtToggle?.Configure(unit?.Mutator, _screen != null ? _screen.GameConfig : null,
-                unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
-            if (nameText != null)
-            {
-                nameText.text = unit != null ? unit.Name : string.Empty;
-                // Hide the whole Title bar (TitleText's parent), not just the text, so an empty
-                // cell doesn't keep an empty header strip.
-                Transform title = nameText.transform.parent;
-                GameObject titleObj = title != null && title != transform ? title.gameObject : nameText.gameObject;
-                titleObj.SetActive(unit != null);
-            }
-            RefreshSkillsText(unit);
-            if (background != null)
-                background.color = isLegalAttackTarget ? LegalAttackColor : isLegalMoveTarget ? LegalMoveColor : CellColor;
-            if (attackIcon != null)
-                attackIcon.SetActive(isLegalAttackTarget);
-
-            RefreshStatsRow(unit);
-            RefreshActingHighlight(isActingUnit);
+            Refresh(unit, draggable, isActingUnit, isLegalMoveTarget, isLegalAttackTarget);
         }
 
-        public void RefreshCombatStats() => RefreshStatsRow(Unit);
-
-        private void RefreshSkillsText(UnitData unit)
+        internal void Refresh(UnitData unit, bool draggable, bool acting, bool move, bool attack)
         {
-            if (skillsText == null)
-                return;
+            bool occupantChanged = !_hasBinding || Unit != unit;
+            var face = (unit?.Art, unit?.Name, unit?.Equipment, unit?.Mutator, unit?.IsHero == true);
+            if (occupantChanged)
+            {
+                ClearDrag();
+                if (Unit != null)
+                {
+                    BattleSkillEffect.Clear(transform, BattleSkillEffect.Kind.Heal);
+                    BattleSkillEffect.Clear(transform, BattleSkillEffect.Kind.Drill);
+                }
+                Unit = unit;
+            }
+            if (occupantChanged || _face != face)
+            {
+                _face = face;
+                BindFace(unit);
+            }
+            RefreshSkillsText(unit, occupantChanged);
+            RefreshCombatStats();
+            RefreshInteraction(draggable, acting, move, attack);
+            _hasBinding = true;
+        }
+
+        private void BindFace(UnitData unit)
+        {
+            RevertEquipmentPreview();
+            if (artImage != null)
+            {
+                artImage.sprite = _face.Art;
+                SetVisible(artImage.gameObject, unit != null);
+            }
+            CardType? hostType = unit == null ? (CardType?)null : _face.IsHero ? CardType.Hero : CardType.Unit;
+            equipmentArtToggle?.Configure(_face.Equipment, _screen?.GameConfig, hostType);
+            mutatorArtToggle?.Configure(_face.Mutator, _screen?.GameConfig, hostType);
+            if (nameText == null) return;
+
+            nameText.text = _face.Name ?? string.Empty;
+            Transform title = nameText.transform.parent;
+            SetVisible(title != null && title != transform ? title.gameObject : nameText.gameObject, unit != null);
+        }
+
+        private void RefreshSkillsText(UnitData unit, bool occupantChanged)
+        {
+            if (skillsText == null) return;
             if (unit == null)
             {
-                skillsText.text = string.Empty;
-                skillsText.gameObject.SetActive(false);
+                if (occupantChanged)
+                {
+                    _abilities?.Clear();
+                    skillsText.text = string.Empty;
+                    SetVisible(skillsText.gameObject, false);
+                }
                 return;
             }
 
-            GameConfig config = _screen != null ? _screen.GameConfig : null;
-            string text = config != null ? config.FormatUnitFace(unit.Abilities, unit.IsAviation) : string.Empty;
-            skillsText.text = text ?? string.Empty;
-            skillsText.gameObject.SetActive(!string.IsNullOrEmpty(text));
+            _abilities ??= new HashSet<string>();
+            if (!occupantChanged && _isAviation == unit.IsAviation && _abilities.SetEquals(unit.Abilities)) return;
+            RevertEquipmentPreview();
+            _isAviation = unit.IsAviation;
+            _abilities.Clear();
+            _abilities.UnionWith(unit.Abilities);
+            string text = _screen?.GameConfig?.FormatUnitFace(unit.Abilities, unit.IsAviation) ?? string.Empty;
+            skillsText.text = text;
+            SetVisible(skillsText.gameObject, text.Length != 0);
         }
 
-        private void RefreshActingHighlight(bool isActingUnit)
+        private void RefreshInteraction(bool draggable, bool acting, bool move, bool attack)
         {
-            if (actingHighlight != null)
-                actingHighlight.SetActive(isActingUnit);
+            var state = (draggable, acting, move, attack);
+            if (_interaction == state) return;
+            _interaction = state;
+            if (!draggable) ClearDrag();
+            _draggable = draggable;
+            Color color = attack ? LegalAttackColor : move ? LegalMoveColor : CellColor;
+            if (background != null && background.color != color) background.color = color;
+            SetVisible(attackIcon, attack);
+            SetVisible(actingHighlight, acting);
         }
 
-        private void RefreshStatsRow(UnitData unit)
+        private static void SetVisible(GameObject visual, bool visible)
         {
-            if (statsRow == null)
-                return;
+            if (visual != null && visual.activeSelf != visible) visual.SetActive(visible);
+        }
 
-            statsRow.SetActive(unit != null);
+        public void RefreshCombatStats()
+        {
+            if (statsRow == null) return;
+            UnitData unit = Unit;
+            SetVisible(statsRow, unit != null);
             if (unit == null)
+            {
+                _shownStats = null;
                 return;
+            }
 
             int slot1, slot2, slot5;
             if (unit.IsHero)
@@ -187,11 +228,18 @@ namespace Game.UI
                 slot5 = _screen != null ? _screen.GetDisplayedAttackRange(unit) : unit.Range;
             }
 
-            if (attackStatText != null) attackStatText.text = slot1.ToString();
-            if (defenseStatText != null) defenseStatText.text = slot2.ToString();
-            if (hpStatText != null) hpStatText.text = $"{unit.HitPointsCurrent}/{unit.HitPointsMax}";
-            if (moveStatText != null) moveStatText.text = unit.MoveMax.ToString();
-            if (rangeStatText != null) rangeStatText.text = slot5.ToString();
+            var stats = (Attack: slot1, Defense: slot2, Hp: unit.HitPointsCurrent,
+                MaxHp: unit.HitPointsMax, Move: unit.MoveMax, Range: slot5);
+            var old = _shownStats;
+            if (old == stats) return;
+            RevertEquipmentPreview();
+            _shownStats = stats;
+            if (attackStatText != null && old?.Attack != stats.Attack) attackStatText.text = stats.Attack.ToString();
+            if (defenseStatText != null && old?.Defense != stats.Defense) defenseStatText.text = stats.Defense.ToString();
+            if (hpStatText != null && (old?.Hp != stats.Hp || old?.MaxHp != stats.MaxHp))
+                hpStatText.text = $"{stats.Hp}/{stats.MaxHp}";
+            if (moveStatText != null && old?.Move != stats.Move) moveStatText.text = stats.Move.ToString();
+            if (rangeStatText != null && old?.Range != stats.Range) rangeStatText.text = stats.Range.ToString();
         }
 
         // Same split as the strategic map (HexSelectionController): left click only ever
@@ -202,7 +250,7 @@ namespace Game.UI
         // been harmless.
         public void OnPointerClick(PointerEventData eventData)
         {
-            if (UIFocusUtility.IsGameplayInputBlocked) return;
+            if (UIFocusUtility.IsGameplayInputBlocked || (Unit != null && Unit.HitPointsCurrent <= 0)) return;
             if (eventData.button == PointerEventData.InputButton.Right)
             {
                 _screen?.OnCellClicked(this);
@@ -214,15 +262,15 @@ namespace Game.UI
 
         // Restore the portrait if the pointer leaves the cell mid press-and-hold of the
         // equipment-art toggle (per the spec — reverts on leaving the card, not only on release).
-        public void OnPointerExit(PointerEventData eventData)
+        public void OnPointerExit(PointerEventData eventData) => RevertEquipmentPreview();
+
+        private void RevertEquipmentPreview()
         {
             equipmentArtToggle?.Revert();
             mutatorArtToggle?.Revert();
         }
 
-        // Shared by the drag-ghost (OnBeginDrag, follows the pointer) and the move-animation
-        // ghost (AnimateMoveTo, slides to a fixed destination) — same floating, half-transparent,
-        // always-on-top Image, just driven differently afterward.
+        // The arrangement drag ghost follows the pointer above the board.
         private RectTransform CreateGhost()
         {
             if (artImage == null)
@@ -251,7 +299,7 @@ namespace Game.UI
         public void OnBeginDrag(PointerEventData eventData)
         {
             if (UIFocusUtility.IsGameplayInputBlocked) return;
-            if (!_draggable || Unit == null)
+            if (IsDragging || !_draggable || Unit == null)
                 return;
             _ghost = CreateGhost();
             if (_ghost == null)
@@ -275,27 +323,31 @@ namespace Game.UI
         {
             if (!IsDragging)
                 return;
-            IsDragging = false;
-            if (_ghost != null)
-                Destroy(_ghost.gameObject);
-            _ghost = null;
+            ClearDrag();
             if (!UIFocusUtility.IsGameplayInputBlocked)
                 _screen?.TryDropOnCell(this, eventData.position);
         }
 
-        // A quick slide from this cell's own position to `destination` — used for the Round
-        // phase's move action (see BattleScreenUI.AnimateThenMove), called BEFORE the actual
-        // BattleGrid.Swap/RefreshGrid, purely a visual cue. Moves this cell's own RectTransform
-        // (full card — art, name, stats, everything — at full opacity), not a translucent ghost
-        // clone: a clone at a different pivot was what caused an earlier version's ~50%-of-cell
-        // vertical offset (a freshly created GameObject defaults to a centre pivot, which never
-        // matched this cell's own top-centre one). Stays parented to gridContainer the whole
-        // time — reparenting out (an even earlier version's approach) removed it from the
-        // GridLayoutGroup's child list, which reflowed every OTHER cell into the gap for the
-        // animation's duration (the "neighbours jump" bug). The caller disables that
-        // GridLayoutGroup for the duration instead (see AnimateThenMove), so this can freely
-        // move the RectTransform without the layout fighting it or any sibling reflowing; the
-        // object is destroyed a moment later anyway by RefreshGrid's own full rebuild.
+        private void ClearDrag()
+        {
+            IsDragging = false;
+            if (_ghost != null)
+            {
+                _ghost.gameObject.SetActive(false);
+                Destroy(_ghost.gameObject);
+            }
+            _ghost = null;
+        }
+
+        private void OnDisable()
+        {
+            ClearDrag();
+            RestoreMovePose();
+            RevertEquipmentPreview();
+        }
+
+        // The screen suspends layout during the slide. Restore this fixed slot on completion
+        // or cancellation, before the screen applies the new occupants and resumes layout.
         public IEnumerator AnimateMoveTo(RectTransform destination, float duration)
         {
             if (Unit == null || destination == null)
@@ -303,6 +355,9 @@ namespace Game.UI
 
             Vector3 startPos = rectTransform.position;
             Vector3 endPos = destination.position;
+            _movePosition = rectTransform.anchoredPosition3D;
+            _moveSiblingIndex = rectTransform.GetSiblingIndex();
+            _hasMovePose = true;
             rectTransform.SetAsLastSibling();
 
             float t = 0f;
@@ -313,6 +368,14 @@ namespace Game.UI
                 yield return null;
             }
             rectTransform.position = endPos;
+        }
+
+        internal void RestoreMovePose()
+        {
+            if (!_hasMovePose) return;
+            _hasMovePose = false;
+            rectTransform.SetSiblingIndex(_moveSiblingIndex);
+            rectTransform.anchoredPosition3D = _movePosition;
         }
     }
 }
