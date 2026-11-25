@@ -1,5 +1,10 @@
 // Test-run only (net472 under Mono). Never part of the Unity project.
-public static class Net472Compat { public static int SingleToInt32Bits(float v) { unsafe { return *(int*)&v; } } }
+public static class Net472Compat
+{
+    public static int SingleToInt32Bits(float v) { unsafe { return *(int*)&v; } }
+    // net472 has no per-thread allocation counter; the editor tools only report it as a diagnostic.
+    public static long GetAllocatedBytesForCurrentThread() => System.GC.GetTotalMemory(false);
+}
 #if !AI_VERIFY_REAL_UNITY
 // Stub mode only: a managed Mathf in the GLOBAL namespace shadows the reference DLL's UnityEngine.Mathf
 // (whose bodies throw) for every `using UnityEngine;` file. Same semantics as Unity. The real

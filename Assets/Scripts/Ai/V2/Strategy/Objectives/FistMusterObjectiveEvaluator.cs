@@ -162,6 +162,12 @@ namespace Game.Ai.V2
                     || a.ReachableOwnBaseHexes == null || !a.ReachableOwnBaseHexes.Contains(staging))
                     continue;
                 float share = Share(a.EffectiveArmyPower, a.HasHero ? a.Capacity : 0);
+                if (share <= AiConfigV2.allocatorSliceEpsilon)
+                    continue;
+                // 2026-11-25 — the walk to the staging Base owes the Attack home proof, as the
+                // preparation's MoveHost does (AttackMarchPolicy.PreparationWalkReason).
+                if (AttackMarchPolicy.PreparationWalkReason(snap, objective.Target, a, staging) != null)
+                    continue;
                 int eta = ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, a, staging);
                 if (share <= AiConfigV2.allocatorSliceEpsilon || eta == int.MaxValue)
                     continue;

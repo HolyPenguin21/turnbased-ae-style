@@ -40,6 +40,7 @@ mirror_assets() {
 patch_for_net472() {
   local src="$1"
   find "$src" -name "*.cs" -exec sed -i 's/\(System\.\)\?BitConverter\.SingleToInt32Bits(/global::Net472Compat.SingleToInt32Bits(/g' {} +
+  find "$src" -name "*.cs" -exec sed -i 's/\(System\.\)\?GC\.GetAllocatedBytesForCurrentThread(/global::Net472Compat.GetAllocatedBytesForCurrentThread(/g' {} +
   local f="$src/Assets/Scripts/Ai/V2/State/ReconIntelSnapshotRegistry.cs"
   [ -f "$f" ] && sed -i 's/new Dictionary<HexCoord, int>(lastObserved)/System.Linq.Enumerable.ToDictionary(lastObserved, kv => kv.Key, kv => kv.Value)/' "$f"
   return 0

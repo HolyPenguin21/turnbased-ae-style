@@ -104,6 +104,14 @@ namespace Game.Ai.V2
                     && d.DesiredAmount > AiConfigV2.allocatorSliceEpsilon)).Distinct();
             foreach (AxisDemand demand in demands)
             {
+                // 2026-11-25 (match Grimm/Brynn/Halden, Brynn T32: 4.5 s for 45 calls) — when nothing
+                // reads the witnessed workload, only the Aggression/Recon calls still have a consumer
+                // (their resourceBlocked starvation records below); every other plan list was built
+                // and thrown away.
+                bool recordsStarvation = demand.RequestingAxis == DesireAxis.Aggression
+                    || demand.RequestingAxis == DesireAxis.Recon;
+                if (!needsWitnessedWorkload && !recordsStarvation)
+                    continue;
                 if (pacer != null) yield return pacer.Checkpoint();
                 List<(MaterializationPlan plan, float followupAp)> feas;
                 using (new Game.Core.ProfileScope("AI/PhaseA.AllFeasiblePlans"))

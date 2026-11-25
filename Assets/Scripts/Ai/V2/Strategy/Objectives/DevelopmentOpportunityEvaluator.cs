@@ -1544,8 +1544,25 @@ namespace Game.Ai.V2
                     inAdvance.Add(opportunity);
             }
 
-            foreach (var (c, u, army) in Recipients(cardsInHand, player))
+            // 2026-11-25 (match Grimm/Brynn/Halden: AI/Dev.RecipientVerdict 36-40k misses a turn) —
+            // the P6a order below drops every in-advance recipient once a required one is accepted,
+            // and a recipient's purpose needs no delta (EquipmentPurposeLabel). So the required
+            // recipients are priced first and the in-advance ones only when none of them is
+            // accepted: the same result without pricing what is thrown away.
+            var recipients = Recipients(cardsInHand, player).ToList();
+            var inAdvanceRecipients = new bool[recipients.Count];
+            for (int i = 0; i < recipients.Count; i++)
+                inAdvanceRecipients[i] = EquipmentUpgradeValuation.EquipmentPurposeLabel(snap,
+                    recipients[i].Card, recipients[i].Unit) == EquipmentUpgradeValuation.InAdvancePurpose;
+            bool requiredAccepted = false;
+            for (int pass = 0; pass < 2; pass++)
+            for (int i = 0; i < recipients.Count; i++)
             {
+                if (pass == 1 && i == 0)
+                    requiredAccepted = result.Count > 0;
+                if (inAdvanceRecipients[i] != (pass == 1) || requiredAccepted)
+                    continue;
+                var (c, u, army) = recipients[i];
                 if (c != null)
                 {
                     handChecked++;

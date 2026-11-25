@@ -129,6 +129,41 @@ namespace Game.EditorTests
             Assert.That(eligible.Contains(19), Is.False);
         }
 
+        // 2026-11-25 (match Grimm/Brynn/Halden, Brynn T23/T31) — an enemy two turns from the own
+        // Citadel does not pin the generic way (IsPinnedStrongholdDefender reads ETA <= 1), but the
+        // Attack home proof (Assess) keeps the army: the preparation walk and the host choice read
+        // that proof, so the host is neither walked off the Citadel nor charged for elsewhere.
+        [Test]
+        public void PreparationHost_AnArmyItsCitadelNeedsInTwoTurns_NeitherWalksNorHosts()
+        {
+            ArmySnapshot host = Army(7, OurBase, Strong());
+            ArmySnapshot guard = Army(33, OurBase, Weak());
+            guard.IsGarrison = true;
+            guard.IsStructuralRaidActor = false;
+            WorldSnapshot snap = DefendedSite(new[] { host, guard }, new[] { OurBase, AltBase },
+                alsoOwnBuilding: true);
+            ArmySnapshot enemy = Army(60, new HexCoord(-2, 0), SiteDefenders());
+            enemy.Owner = Red;
+            var contact = new EnemyContactSnapshot { Army = enemy, Position = enemy.Hex,
+                Knowledge = ContactKnowledge.Exact, Confidence = 1f, LastObservedTurn = snap.TurnNumber };
+            snap.Threat.Contacts = new[] { contact };
+            snap.Threat.Threats = new[] { new AssetThreatSnapshot { Contact = contact, CanDamage = true,
+                EnemyEta = 2, Confidence = 1f, Asset = new StrategicAssetSnapshot {
+                    Kind = AssetKind.Citadel, Hex = OurBase, Value = 10f } } };
+            AttackTargetRef target = AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base);
+
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, host), Is.False,
+                "the generic pin reads ETA <= 1 only");
+            Assert.That(AttackMarchPolicy.PreparationWalkReason(snap, target, host, AltBase),
+                Does.StartWith("home_needs_the_army"), "the walk to another staging Base is refused");
+            Assert.That(AttackMarchPolicy.PreparationWalkReason(snap, target, host, OurBase), Is.Null,
+                "staging on the home that needs it: the host gathers where it stands");
+            Assert.That(AggressionMissionLayer.PreparationFieldHost(snap, new HashSet<int>(), AltBase,
+                target: target), Is.Null, "no future host to charge an Intercept for");
+            Assert.That(AggressionMissionLayer.PreparationFieldHost(snap, new HashSet<int>(), OurBase,
+                target: target)?.ArmyId, Is.EqualTo(7));
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void ReadyGather_DoesNotBypassTheExistingHomeDeparturePolicy(bool preparation)
@@ -1415,6 +1450,14 @@ namespace Game.EditorTests
             Assert.That(now.Attack.Preparation, Is.True);
             Assert.That(now.Attack.PrimaryArmyId, Is.EqualTo(17), "the preparation host owns the operation");
             Assert.That(now.Attack.StagingHex, Is.EqualTo(OurBase));
+            // 2026-11-25 (owner, variant 2) — the superseded walk home continues as an ActiveDefence
+            // Return of #35 to its recovery base (its own key), not a free army mid-route.
+            MissionIntent walk = MissionIntentRegistry.GetOrCreate(Us).All.SingleOrDefault(i =>
+                i?.ActiveDefence != null && i.ActiveDefence.PrimaryArmyId == 35);
+            Assert.That(walk, Is.Not.Null);
+            Assert.That(walk.ActiveDefence.Phase, Is.EqualTo(ActiveDefencePhase.Return));
+            Assert.That(walk.ActiveDefence.ReturnPurpose, Is.EqualTo(ActiveDefenceReturnPurpose.SafeWithdrawal));
+            Assert.That(walk.ActiveDefence.ReturnHex, Is.EqualTo(OurBase));
         }
 
         // A preparation step that did not start the new operation is no step of the recovering one.

@@ -112,7 +112,15 @@ namespace Game.Ai.V2
                     ? SafeStepPathing.FindNextSafeStep(ctx.Map, liveHost, staging.Value,
                         profile: SafeRouteProfile.Combat).HasValue
                     : host.CurrentMovement > 0;
-                if (canStepNow && !walkDetour)
+                // 2026-11-25 — the walk owes the Attack home proof (AttackMarchPolicy.PreparationWalkReason);
+                // Continuity (ResolveAttackPreparation) retires or holds the operation on the same reason.
+                string walkWhy = canStepNow && !walkDetour
+                    ? AttackMarchPolicy.PreparationWalkReason(snap, a.Target, host, staging) : null;
+                if (walkWhy != null)
+                    AiDebugLog.WriteDeduped(intent.IntentKey + "#walk-home",
+                        $"[AI][V2][Attack][Mobilization] {intent.IntentKey} decision=HOLD step=MoveHost "
+                        + $"host=#{host.ArmyId} reason=host_needed_home:{walkWhy}");
+                if (canStepNow && !walkDetour && walkWhy == null)
                 {
                     AttackObjective tracked = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target)
                         ?? new AttackObjective { Target = a.Target };

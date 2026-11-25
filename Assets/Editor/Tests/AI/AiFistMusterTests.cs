@@ -322,6 +322,60 @@ namespace Game.EditorTests
                 "an own garrison's floor keeps ignoring enemy garrisons");
         }
 
+        // 2026-11-25 (match Grimm/Brynn/Halden) — an enemy garrison unseen for six turns "could stand"
+        // anywhere within MaxMovement x 6 under the mobile-army model, so every unseen Base site read
+        // its power at ETA 0. A garrison container stays on its Base; a field army keeps the model.
+        [Test]
+        public void FoundingSiteThreat_AnUnseenGarrisonStaysOnItsBase_AnUnseenFieldArmyDrifts()
+        {
+            var site = new HexCoord(-6, 0);   // 6 hexes from the enemy Base, beyond a 2-turn sortie (2 x 2)
+            var defenders = new[] { new WorthIt.DefenderProfile(5f, false, attack: 8f, hitPoints: 8f) };
+            var garrison = new AiMapMemory.KnownEnemySighting(new HexCoord(0, 0), new PlayerSetupData(), "garrison",
+                7, 20f, 40f, defenders, armyId: 12, isGarrison: true, maxMovement: 2);
+            var field = new AiMapMemory.KnownEnemySighting(new HexCoord(0, 0), new PlayerSetupData(), "field",
+                7, 20f, 40f, defenders, armyId: 13, maxMovement: 2);
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(new[] { (garrison, 6) }, new[] { site }, site, true,
+                out _, includeGarrisons: true), Is.Zero);
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(new[] { (field, 6) }, new[] { site }, site, true,
+                out int eta, includeGarrisons: true), Is.GreaterThan(0f));
+            Assert.That(eta, Is.Zero, "the unseen field army keeps the worst-case reach");
+        }
+
+        // 2026-11-25 (P4) — the pass facts (contacts + memoised own-Base floors) give every site the
+        // same assessment as the per-site computation they replace.
+        [Test]
+        public void FoundingDefence_PassFacts_GiveTheSameAssessmentAsThePerSitePath()
+        {
+            var us = new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
+            var them = new PlayerSetupData { Nickname = "Them", ColorIndex = 4 };
+            var citadel = new HexCoord(0, 0);
+            var fistBase = new HexCoord(3, 0);
+            Army(us, citadel, true, Body(us, "G", 2));
+            Army(us, fistBase, true, Body(us, "H", 2));
+            Army(us, fistBase, false, Enumerable.Range(0, 4).Select(i => Body(us, "F" + i, 6)).ToArray());
+            var enemyBodies = new[] { new WorthIt.DefenderProfile(3f, false, attack: 6f, hitPoints: 6f),
+                new WorthIt.DefenderProfile(3f, false, attack: 6f, hitPoints: 6f) };
+            AiMapMemory.RememberForTest(us, new AiMapMemory.KnownEnemySighting(new HexCoord(-3, 2), them,
+                "raider", 2, 6f, 12f, enemyBodies, seenTurn: 10, armyId: 31, maxMovement: 3));
+            AiMapMemory.RememberForTest(us, new AiMapMemory.KnownEnemySighting(new HexCoord(5, -3), them,
+                "garrison", 2, 6f, 12f, enemyBodies, seenTurn: 10, armyId: 32, isGarrison: true, maxMovement: 2));
+            var snap = new WorldSnapshot { Observer = us, Self = new SelfSnapshot() };
+            var facts = new FoundingSiteDefence.PassFacts(us);
+            bool anyThreat = false, anyReserve = false;
+            foreach (HexCoord site in new[] { new HexCoord(-2, 1), new HexCoord(1, 1), new HexCoord(4, -2),
+                         new HexCoord(-4, 4), new HexCoord(2, -1) })
+            {
+                FoundingSiteDefence.Assessment plain = FoundingSiteDefence.Assess(snap, site, 5f, 1);
+                FoundingSiteDefence.Assessment pass = FoundingSiteDefence.Assess(snap, site, 5f, 1, facts);
+                Assert.That(pass.Threat, Is.EqualTo(plain.Threat).Within(1e-4f), site.ToString());
+                Assert.That(pass.EnemyEta, Is.EqualTo(plain.EnemyEta), site.ToString());
+                Assert.That(pass.Reserve, Is.EqualTo(plain.Reserve).Within(1e-4f), site.ToString());
+                Assert.That(pass.ShortfallShare, Is.EqualTo(plain.ShortfallShare).Within(1e-4f), site.ToString());
+                anyThreat |= plain.Threat > 0f; anyReserve |= plain.Reserve > 0f;
+            }
+            Assert.That(anyThreat && anyReserve, Is.True, "the fixture must exercise threat and reserve");
+        }
+
         [Test]
         public void FoundingDefence_ShortfallIsTheSiteRisk()
         {

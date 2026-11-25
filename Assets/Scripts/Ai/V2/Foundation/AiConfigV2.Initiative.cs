@@ -30,6 +30,12 @@ namespace Game.Ai.V2
         public const float initiativeApPressureHistoryWeight = 0.45f;
         // TurnOrderPressure = CurrentApPressure * this — tempo stays a discounted secondary benefit.
         public const float initiativeTurnOrderPressureScale = 0.60f;
+        // 2026-11-25 (owner, match Grimm/Brynn/Halden: Halden moved last in R33 and first in R34 and
+        // took Brynn's Citadel before Brynn moved again) — the will to win the turn order when a
+        // known enemy reaches an own stronghold within activeDefenceWithdrawMaxEnemyEta turns
+        // (AiArmyRoles.GarrisonThreatFloor). TurnOrderPressure is at least this much then.
+        public const float initiativeCitadelThreatTurnOrderPressure = 1.0f;
+        public const float initiativeBaseThreatTurnOrderPressure = 0.6f;
 
         // Marginal resource opportunity-cost model (PreTurnCapacityAnalysis.MarginalCostAt).
         public const float initiativeDeckDemandWeight = 0.50f;   // fraction of remaining-deck appetite that counts as "future demand"
