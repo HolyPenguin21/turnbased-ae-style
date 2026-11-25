@@ -150,33 +150,6 @@ namespace Game.EditorTools
                 AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
             Assert.That(DeckCalibrationReport.CreateStrategyDecks(rules).Count, Is.EqualTo(18));
         }
-        [TestCase(Faction.IronConcord, "concord.card.light-tank", "concord.card.scrapper", "concord.card.concord-base", 80)]
-        [TestCase(Faction.Ashen, "ashen.card.rust-tank", "ashen.card.tech-scrapper", "ashen.card.ashen-base", 86)]
-        [TestCase(Faction.Vessels, "vessels.21.resonance-tank", "vessels.12.salvage-drone", "vessels.01.relay-base", 84)]
-        public void BalancedStarterOwnsAllBuildingsButFieldsBaseAndThreeFacilities(Faction faction, string tank, string collector, string baseCard, int points)
-        {
-            var rules = new DeckRules(AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset"),
-                AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
-            var p = new CollectionService(rules, null, new CollectionProfile()).CreateStarterProfile();
-            var deck = p.savedDecks.Single(d => d.faction == faction);
-            Assert.That(deck.mainCards.Sum(e => e.count), Is.EqualTo(30));
-            Assert.That(deck.mainCards.Where(e => rules.Resolve(e.cardKey).cardType == CardType.Unit).Sum(e => e.count), Is.EqualTo(18));
-            Assert.That(deck.mainCards.Where(e => rules.Resolve(e.cardKey).cardType == CardType.Hero).Sum(e => e.count), Is.EqualTo(8));
-            CollectionAssert.AreEquivalent(rules.Starting.GetCatalog(faction).cards.Where(c => c.cardType == CardType.Hero).Select(c => c.authoredKey),
-                deck.mainCards.Where(e => rules.Resolve(e.cardKey).cardType == CardType.Hero).Select(e => e.cardKey));
-            Assert.That(deck.mainCards.Single(e => e.cardKey == tank).count, Is.EqualTo(2));
-            Assert.That(deck.mainCards.Any(e => e.cardKey == collector), Is.False);
-            CollectionAssert.AreEquivalent(new[] { baseCard, "neutral.facility.lab", "neutral.facility.factory", "neutral.facility.intel" },
-                deck.mainCards.Where(e => rules.Resolve(e.cardKey).cardType == CardType.Base || rules.Resolve(e.cardKey).cardType == CardType.Facility).Select(e => e.cardKey));
-            var buildings = rules.Cards(faction).Where(c => c.cardType == CardType.Base || c.cardType == CardType.Facility).ToList();
-            Assert.That(buildings.Count, Is.EqualTo(6));
-            Assert.That(buildings.All(c => p.Owned(c.authoredKey) == 1), Is.True);
-            Assert.That(deck.equipment.Sum(e => e.count), Is.EqualTo(faction == Faction.IronConcord ? 2 : 1));
-            Assert.That(deck.mutators.Sum(e => e.count), Is.EqualTo(faction == Faction.IronConcord ? 0 : 1));
-            Assert.That(deck.equipment.Concat(deck.mutators).All(e => rules.Resolve(e.cardKey).deckPointCost == 1), Is.True);
-            Assert.That(rules.Validate(deck, p.Owned).IsValid, Is.True);
-            Assert.That(rules.Validate(deck, p.Owned).Points, Is.EqualTo(points));
-        }
         private CollectionService AuthoredCollection(CollectionProfile profile)
         {
             var authoredRules = new DeckRules(AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset"),

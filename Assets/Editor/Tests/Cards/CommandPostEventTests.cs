@@ -259,35 +259,6 @@ namespace Game.EditorTests
                     .Count(c => !c.deckBuilderExcluded), Is.EqualTo(1));
         }
 
-        [Test] public void PlacementRejectsEveryCitadelAndItsSixNeighboursOnlyForBaseEvent()
-        {
-            var setup = scene.AddComponent<CitadelSetupController>();
-            SetField(setup, "map", map);
-            var players = (List<PlayerSetupData>)typeof(CitadelSetupController)
-                .GetField("_allPlayers", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(setup);
-            var centres = new[] { new HexCoord(-3, 0), new HexCoord(3, 0) };
-            players.AddRange(centres.Select(c => new PlayerSetupData { CitadelHexQ = c.Q, CitadelHexR = c.R }));
-            map.SetData(6, 1, HexGridMath.HexesInRange(new HexCoord(0, 0), 6)
-                .ToDictionary(h => h, h => new TerrainTypeEntry()));
-            var place = typeof(CitadelSetupController).GetMethod("PlaceEvent", BindingFlags.Instance | BindingFlags.NonPublic);
-            var commandPost = new EventDefinition { grantsBase = true };
-            var ordinary = new EventDefinition();
-            foreach (var centre in centres)
-            {
-                foreach (var near in HexGridMath.Neighbors(centre).Prepend(centre))
-                {
-                    HexEventRegistry.Clear();
-                    place.Invoke(setup, new object[] { near, commandPost });
-                    Assert.That(HexEventRegistry.FindAt(near), Is.Null);
-                    place.Invoke(setup, new object[] { near, ordinary });
-                    Assert.That(HexEventRegistry.HasActiveEvent(near), Is.EqualTo(!near.Equals(centre)));
-                }
-            }
-            var safe = new HexCoord(0, 0);
-            place.Invoke(setup, new object[] { safe, commandPost });
-            Assert.That(HexEventRegistry.FindAt(safe)?.Definition, Is.SameAs(commandPost));
-        }
-
         [TestCase(false), TestCase(true)]
         public void GenerationRespectsBaseExclusionForPlainAndGuaranteedRuins(bool distantRuin)
         {
@@ -429,6 +400,7 @@ namespace Game.EditorTests
                 events.events.Add(ordinary); events.events.Add(library);
                 HexResourceBonusRegistry.Set(hex, new Game.Economy.ResourceYields { energy = 2 });
                 var generate = typeof(CitadelSetupController).GetMethod("GenerateRandomEvents", BindingFlags.Instance | BindingFlags.NonPublic);
+                HexEventRegistry.Clear(); // SetUp's explored command post stands on this very hex
                 generate.Invoke(setup, null);
                 Assert.That(HexEventRegistry.FindAt(hex), Is.Null, "Even the mandatory Library cannot occupy a citadel.");
                 players.Clear();

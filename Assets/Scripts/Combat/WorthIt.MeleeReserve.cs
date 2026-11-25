@@ -8,7 +8,7 @@ namespace Game.Combat
         // BattleGrid.Columns cells wide. Only melee bodies (NeedsApproach) must stand in it to fight;
         // a melee body beyond the fifth waits in the back row until a front cell is freed, and then
         // spends a turn stepping up. Playing every body from round one made a 6-7 body melee side look
-        // far stronger than on the grid (GridVsForecastCalibration, 2026-11-18: 7 melee vs 5 ranged,
+        // far stronger than on the grid (calibration probe of 2026-11-18, in git 665f1ee8: 7 melee vs 5 ranged,
         // real 0.46, forecast 0.92). Ranged bodies and rosters of unknown range (-1) are unaffected.
         private static class MeleeReserve
         {

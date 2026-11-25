@@ -13,10 +13,6 @@ MonoBehaviour:
   m_Name: UnitAbilityCatalog
   m_EditorClassIdentifier: 
   knownAbilities:
-  - tag: Trade
-    title: Trade
-    abbreviation: Trade
-    description: "Unlocks resource exchange while in play. Starts at 2:1; each exchange increases the price by 1. An idle turn lowers it by 1, minimum 2:1. Costs no AP."
   - tag: AA
     title: 'AA'
     abbreviation: ''
@@ -193,6 +189,10 @@ MonoBehaviour:
     title: 'Tactical Intelligence'
     abbreviation: 'Intel'
     description: 'Unlocks opponent intelligence while in play. Ground armies closer to an enemy citadel reveal more fields; fields change each turn.'
+  - tag: Trade
+    title: Trade
+    abbreviation: Trade
+    description: "Unlocks resource exchange while in play. Starts at 2:1; each exchange increases the price by 1. An idle turn lowers it by 1, minimum 2:1. Costs no AP."
   - tag: Transport
     title: 'Transport'
     abbreviation: ''

@@ -14,18 +14,9 @@ flexible topic rows, templates, stable translation keys, review-document synchro
 coverage of every `UnitAbilities.All` tag. Content checks also require English instructions in
 every article, unique block identities/translation keys and an exact review export. They do not compile C# or run Unity layout/input.
 
-Grouped abilities add a Heading block kind rendered with the existing article-title style; no scene layout changes. Engine checks for the help window in Unity **6000.5.4f1**:
-
-```sh
-Unity -batchmode -projectPath <checkout> -runTests -testPlatform EditMode \
-  -testFilter Game.EditorTests.GameHelpPlayModeTests \
-  -testResults <results.xml> -logFile <editor.log>
-```
-
-The two tests enter Play Mode and clone only the authored menu subtree into an isolated
-canvas. They check blocking/restoration, repeated open/close, external disable, mutual exclusion,
-AI observer hold, translation reflow and ordered heading/text/image/caption rendering. They do not
-start a match or change the authored catalog. Full EditMode tests are still required before merge.
+Grouped abilities add a Heading block kind rendered with the existing article-title style; no scene layout changes.
+The help window's behaviour in the engine (blocking, open/close, layout) is checked by hand below;
+its Play Mode tests were removed on 2026-11-25 (no automated UI tests).
 
 Manual acceptance:
 

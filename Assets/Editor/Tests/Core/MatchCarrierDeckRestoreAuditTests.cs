@@ -100,6 +100,8 @@ namespace Game.EditorTests
                 map.SetData(0, 1f, new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>
                     { [host.Hex] = new Game.Terrain.TerrainTypeEntry() });
                 graph.RestoreWorld(map);
+                // Controllers belong to the presentation stage of a restore (markers on the map).
+                using (MatchRestoreScope.Begin()) graph.BindPresentation(map);
                 var ready = graph.Army(deck.Id);
                 Assert.That(ready.Controller, Is.Not.Null,
                     "SelectArmyForOrders refuses a ready wing without its ArmyController.");

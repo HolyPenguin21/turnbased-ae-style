@@ -197,9 +197,16 @@ namespace Game.EditorTests
         [Test]
         public void MatchPreparation_ClearsAnExistingPlayersTacticInventory()
         {
+            // The match plays copies of the setup drafts: the copies start without tactics and the
+            // draft itself is left as it was.
             var owner = new PlayerSetupData(); owner.Tactics.Add(Card(TacticEffect.AddSuccess));
-            Assert.That(Game.Core.GameSession.TryPrepareMatch(new List<PlayerSetupData> { owner }, null, out _), Is.True);
-            Assert.That(owner.Tactics.Cards, Is.Empty);
+            try
+            {
+                Assert.That(Game.Core.GameSession.TryPrepareMatch(new List<PlayerSetupData> { owner }, null, out _), Is.True);
+                Assert.That(Game.Core.GameSession.Players.Single().Tactics.Cards, Is.Empty);
+                Assert.That(owner.Tactics.Cards, Has.Count.EqualTo(1));
+            }
+            finally { Game.Core.GameSession.ClearMatch(); }
         }
 
 #endif
@@ -234,10 +241,7 @@ namespace Game.EditorTests
         [TestCase(CardType.Tactic)]
         public void EventRewardResolution_PreservesSupportedCardRewardsIncludingTactics(CardType type)
         {
-            MethodInfo method = typeof(Game.Setup.CitadelSetupController).GetMethod("IsEventCardReward",
-                BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.That(method, Is.Not.Null);
-            Assert.That((bool)method.Invoke(null, new object[] { new CardDefinition { cardType = type } }), Is.True);
+            Assert.That(EventCatalog.CanGrantCard(new CardDefinition { cardType = type }), Is.True);
         }
 
         [TestCase(false, 0)]

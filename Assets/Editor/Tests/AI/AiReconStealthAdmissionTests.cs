@@ -83,14 +83,11 @@ namespace Game.EditorTests
             _selectorObject = new GameObject("inactive recon selector");
             _selectorObject.SetActive(false);
             HexSelectionController selector = _selectorObject.AddComponent<HexSelectionController>();
-            _popupObject = new GameObject("inactive battle popup");
-            _popupObject.SetActive(false);
-            BattleContactPopupUI popup = _popupObject.AddComponent<BattleContactPopupUI>();
-            _panelObject = new GameObject("visible battle panel");
-            typeof(BattleContactPopupUI).GetField("panelRoot",
-                BindingFlags.NonPublic | BindingFlags.Instance).SetValue(popup, _panelObject);
-            typeof(HexSelectionController).GetField("battleContactPopup",
-                BindingFlags.NonPublic | BindingFlags.Instance).SetValue(selector, popup);
+            // The combat lock is an authoritative fact (IsBattleActive), not a visible panel: an
+            // unresolved revealed contact.
+            var contacts = (System.Collections.Generic.List<(ArmyData Army, HexCoord Hex)>)typeof(HexSelectionController)
+                .GetField("_revealedArmyContacts", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(selector);
+            contacts.Add((_army, _army.Hex));
             Assert.That(selector.IsBattleActive, Is.True, "The test must actually represent a combat lock.");
 
             ExecutionResult result = RunRejectedAdmission(selector);

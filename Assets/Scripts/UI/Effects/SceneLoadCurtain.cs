@@ -71,7 +71,8 @@ namespace Game.UI
         {
             var root = new GameObject(nameof(SceneLoadCurtain), typeof(RectTransform), typeof(Canvas),
                 typeof(CanvasGroup), typeof(GraphicRaycaster));
-            DontDestroyOnLoad(root);
+            // Edit mode (EditMode tests driving a save/restore) forbids DontDestroyOnLoad.
+            if (Application.isPlaying) DontDestroyOnLoad(root);
             var canvas = root.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = CurtainSortingOrder;
