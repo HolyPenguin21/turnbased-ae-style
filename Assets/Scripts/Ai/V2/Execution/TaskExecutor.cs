@@ -37,6 +37,12 @@ namespace Game.Ai.V2
 
     public sealed class ExecutionResult : IV2ActionResult
     {
+        // The AP a step spent is the turn pool's physical loss across it (never negative).
+        // TaskExecutor.FinishStep settles it for every step; a lane whose own log line reports
+        // the AP settles it there first (the same value).
+        internal void SettleAp(int apBefore, PlayerRoot root) =>
+            ApSpent = UnityEngine.Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+
         public StableMissionKey Key;
         public HexCoord StartHex;
         public HexCoord FinalHex;
@@ -200,7 +206,6 @@ namespace Game.Ai.V2
             result.StopReason = ExecutionStopReason.MoverLost;
             result.ApSpent = 0f;
             result.NeedsReplan = true;
-            ApCheck(pm, apBefore, root, result);
             CompleteResult(result, root);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
@@ -232,7 +237,6 @@ namespace Game.Ai.V2
                     ? ExecutionStopReason.ReachedGoal
                     : ExecutionStopReason.TargetInvalidated;
             result.NeedsReplan = validity != MissionValidity.StaleGoalMet;
-            ApCheck(pm, apBefore, root, result);
             CompleteResult(result, root);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
@@ -270,7 +274,6 @@ namespace Game.Ai.V2
                 || AttackExecutor.TryMaterializeSortie(player, root, ctx, pm, result, snapshot)
                 || AttackExecutor.TryRunPreparationStep(player, ctx, pm, result, snapshot))
             {
-                result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
                 FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
@@ -324,9 +327,6 @@ namespace Game.Ai.V2
             if (pm.Kind == MissionKind.Attack)
             {
                 yield return AttackExecutor.RunStep(player, root, ctx, pm, result, snapshot);
-                // §2.1 — same physical turn-pool delta every other executor reports (activation
-                // AP is spent inside the move routine; RunStep never reported it).
-                result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
                 FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
@@ -352,7 +352,6 @@ namespace Game.Ai.V2
             result.StopReason = ExecutionStopReason.TargetInvalidated;
             result.NeedsReplan = true;
             result.ApSpent = 0f;
-            ApCheck(pm, apBefore, root, result);
             CompleteResult(result, root);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
@@ -388,17 +387,11 @@ namespace Game.Ai.V2
         private static void FinishStep(ProvisionedMission pm, int apBefore, PlayerRoot root,
             ExecutionResult result, List<ExecutionResult> results)
         {
-            ApCheck(pm, apBefore, root, result);
+            result.SettleAp(apBefore, root);
             StampVersion(result);
             CompleteResult(result, root);
             results.Add(result);
         }
-
-        private static void ApCheck(ProvisionedMission pm, int apBefore, PlayerRoot root,
-            ExecutionResult result) =>
-            AiV2Trace.CheckExecutionAp(pm?.Mission?.AttemptId, apBefore,
-                root != null ? root.ActionPoints : apBefore,
-                result != null ? result.ApSpent : 0f);
 
         // ARCH-02 §36 — bump the shared state version iff this mission execution actually moved the
         // world (a real step or a stealth entry), then stamp it onto the result.

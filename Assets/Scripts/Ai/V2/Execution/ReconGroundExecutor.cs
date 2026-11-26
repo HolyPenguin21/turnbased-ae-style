@@ -508,7 +508,7 @@ namespace Game.Ai.V2
             if (result == null) return;
             result.FinalHex = AiV2Util.ResolveArmy(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
             result.StopReason = stop;
-            result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            result.SettleAp(apBefore, root);
             AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm?.Mission?.AttemptId}] {pm?.Key} actor=#{pm?.MoverArmyId ?? -1} "
                 + $"kind={(pm != null ? ReconScoutKinds.Name(pm.ScoutKind) : "-")} "
                 + $"({result.StartHex.Q},{result.StartHex.R})→({result.FinalHex.Q},{result.FinalHex.R}) "

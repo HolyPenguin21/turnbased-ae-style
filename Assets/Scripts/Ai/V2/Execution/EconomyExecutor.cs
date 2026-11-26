@@ -31,7 +31,6 @@ namespace Game.Ai.V2
 
             bool materialized = ApplyPreparation(player, root, ctx, pm, result, apBefore, snapshot);
             result.StartHex = pm.ExecutionHex;
-            result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             if (!materialized)
             {
                 result.FinalHex = pm.ExecutionHex;
@@ -274,12 +273,6 @@ namespace Game.Ai.V2
                     : ExecutionStopReason.StepCompleted;
                 result.NeedsReplan = false;
                 result.FinalHex = army.Hex;
-                // A deferred mission that materializes directly
-                // onto its target hex (garrison.Hex == target.TargetHex — e.g. an in-place base)
-                // reaches this branch having already spent real AP (CreateArmy / an activation
-                // charge / lightening) with zero StepsMoved; ApCheck's live-pool-delta invariant
-                // (spec §2.1) would otherwise flag every one of those turns as a reporting mismatch.
-                result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
                 if (result.ReachedGoal)
                     AiDebugLog.Write($"[AI][V2][Economy][Recovery] builder #{army.Id} protected at "
                         + $"({army.Hex.Q},{army.Hex.R})");
@@ -390,7 +383,6 @@ namespace Game.Ai.V2
                     : result.StepsMoved > 0
                             ? ExecutionStopReason.StepCompleted : ExecutionStopReason.MoveRejected;
             result.NeedsReplan = army == null || result.StepsMoved == 0;
-            result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             if (AiDebugLog.Verbose)
                 AiDebugLog.Write($"[AI][V2] {label} move {pm.Key} "
                     + $"({before.Q},{before.R})->({after.Q},{after.R})");

@@ -51,15 +51,12 @@ namespace Game.EditorTests
             // checks the same base + immediate defender against owner-aware spendability first.
             ["Execution/BuildingPlayExecutor.cs"] = 2,
             ["Execution/ReconAirExecutor.cs"] = 10,
-            ["Execution/ReconGroundExecutor.cs"] = 2,
-            // +1 (T01): the preparation step measures its physical AP delta like every lane;
-            // +1: the same physical after-read in that step's log line.
-            ["Execution/ActiveDefenceExecutor.cs"] = 2,
-            ["Execution/RaidExecutor.cs"] = 1,
-            // Moved, not new: the Economy / Development step bodies left TaskExecutor (10 -> 4 + 5 + 1).
-            ["Execution/TaskExecutor.cs"] = 4,
-            ["Execution/EconomyExecutor.cs"] = 5,
-            ["Execution/DevelopmentExecutor.cs"] = 1,
+            ["Execution/ReconGroundExecutor.cs"] = 1,
+            // The physical AP after-read in the step's log line (the delta is ExecutionResult.SettleAp).
+            ["Execution/ActiveDefenceExecutor.cs"] = 1,
+            // The Economy / Development step bodies left TaskExecutor; one AP rule (ExecutionResult.SettleAp).
+            ["Execution/TaskExecutor.cs"] = 2,
+            ["Execution/EconomyExecutor.cs"] = 2,
             ["Housekeeping/HousekeepingManager.cs"] = 3,
             ["Initiative/PreTurnCapacityAnalysis.cs"] = 1,
             // Physical before/after accounting, including AP spent by the local-refit handoff.

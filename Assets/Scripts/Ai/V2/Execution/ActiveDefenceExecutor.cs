@@ -375,7 +375,7 @@ namespace Game.Ai.V2
             ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
             result.FinalHex = AiV2Util.ResolveArmy(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
-            result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            result.SettleAp(apBefore, root);
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Execution] enemy={pm?.ActiveDefenceTarget.EnemyArmyId} "
                 + $"actor={pm?.MoverArmyId} phase={pm?.ActiveDefenceTarget.Phase} "
                 // The purpose that applies to this leg's phase: an Intercept has no return purpose

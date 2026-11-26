@@ -275,19 +275,6 @@ namespace Game.Ai.V2
             [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0) =>
             Check("ERROR", corrId, tag, detail, cf, cm, cl);
 
-        // §2.1 — the real AP delta at execution must equal ExecutionResult.ApSpent.
-        public static void CheckExecutionAp(string attemptId, int apBefore, int apAfter, float reportedSpent,
-            [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0)
-        {
-            float physicalDelta = apBefore - apAfter;
-            string detail = $"before={apBefore} after={apAfter} "
-                + $"physicalDelta={Num(physicalDelta)} reported={Num(reportedSpent)}";
-            if (Mathf.Abs(physicalDelta - reportedSpent) > Eps)
-                Check("ERROR", attemptId, "ExecutionAPMismatch", detail, cf, cm, cl);
-            else
-                Check("OK", attemptId, "ExecutionAP", detail, cf, cm, cl);
-        }
-
         // §2.2 — a provisioned claim must land inside its funded envelope.
         public static void CheckProvisionEnvelope(string attemptId, float claimedAp, float grantedAp,
             [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0)

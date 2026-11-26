@@ -64,7 +64,6 @@ namespace Game.Ai.V2
             result.StopReason = extracted == null
                 ? ExecutionStopReason.TargetInvalidated : ExecutionStopReason.StepCompleted;
             result.NeedsReplan = extracted == null;
-            result.ApSpent = Mathf.Max(0f, apBefore - root.ActionPoints);
             if (extracted != null)
             {
                 pm.MoverArmyId = extracted.Id;
