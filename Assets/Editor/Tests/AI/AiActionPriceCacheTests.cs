@@ -146,7 +146,7 @@ namespace Game.EditorTests
                     {
                         Owner = "price-test",
                         Resource = StrategicReservedResource.Human, Amount = amount,
-                        Reason = StrategicReservationReason.StrategicReactionPass,
+                        Reason = StrategicReservationReason.EconomyBuildCompletion,
                         ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });
                 Hold(.0001f);

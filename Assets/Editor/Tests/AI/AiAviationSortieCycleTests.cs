@@ -1235,9 +1235,9 @@ namespace Game.EditorTests
                 Assert.That(before, Is.SameAs(recon));
                 Root().ActionPoints = 1; _root.AddResource(ResourceType.Energy, 1);
                 MissionLeaseBook.Upsert(_owner, 1, new StrategicResourceReservation {
-                    Identity = ReservationOwner.ForPass("other-reaction"), Reason = StrategicReservationReason.StrategicReactionPass,
+                    Identity = ReservationOwner.ForPass("other-reaction"), Reason = StrategicReservationReason.EconomyBuildCompletion,
                     Resource = StrategicReservedResource.Energy, Amount = 1,
-                    ExpirationStage = StrategicReservationExpiry.EndOfReaction });
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn });
                 Assert.That(Probe(out _), Is.EqualTo(launchPaid), "other owner's energy hold remains protected");
                 MissionLeaseBook.ReleaseByOwner(_owner, 1, "other-reaction");
                 Assert.That(Probe(out HexCoord landing), Is.True, "released hold is visible immediately");
@@ -1266,7 +1266,7 @@ namespace Game.EditorTests
             }
             finally
             {
-                MissionLeaseBook.ExpireStage(_owner, 1, StrategicReservationExpiry.EndOfReaction);
+                MissionLeaseBook.ExpireStage(_owner, 1, StrategicReservationExpiry.EndOfTurn);
                 ReconAirSortieRegistry.ClearAll(); ReconPatrolStateRegistry.ClearAll();
                 AiMapMemory.Clear(); AiReconIntelMemory.Clear(); ReconIntelSnapshotRegistry.Clear();
                 Object.DestroyImmediate(actorObject); Object.DestroyImmediate(mapObject);

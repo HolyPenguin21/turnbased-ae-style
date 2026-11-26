@@ -142,7 +142,7 @@ namespace Game.EditorTests
             StrategicResourceReservationLedger.Upsert(player, 8, new StrategicResourceReservation
             {
                 Owner = "exit-test", Resource = StrategicReservedResource.Materials, Amount = 3,
-                Reason = StrategicReservationReason.StrategicReactionPass,
+                Reason = StrategicReservationReason.EconomyBuildCompletion,
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn,
             });
             Assert.That(StrategicResourceReservationLedger.HasAny(player, 8), Is.True);

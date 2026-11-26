@@ -81,7 +81,7 @@ namespace Game.EditorTests
             {
                 Identity = ReservationOwner.ForPass("other-action"),
                 Resource = StrategicReservedResource.Materials, Amount = 9,
-                Reason = StrategicReservationReason.StrategicReactionPass,
+                Reason = StrategicReservationReason.EconomyBuildCompletion,
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn,
             });
             Assert.That(TradeFunding.TryPlan(player, root, context, new ResourceCost(tech: 1), out _), Is.False);
@@ -168,7 +168,7 @@ namespace Game.EditorTests
             void Hold(string owner) => MissionLeaseBook.Upsert(player, context.TurnNumber,
                 new StrategicResourceReservation { Identity = ReservationOwner.ForPass(owner),
                     Resource = StrategicReservedResource.Materials, Amount = 1,
-                    Reason = StrategicReservationReason.StrategicReactionPass,
+                    Reason = StrategicReservationReason.EconomyBuildCompletion,
                     ExpirationStage = StrategicReservationExpiry.EndOfTurn });
             Hold("own");
             var cost = new ResourceCost(human: 1, energy: 1, materials: 1, tech: 1);

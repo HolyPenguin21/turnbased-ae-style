@@ -114,7 +114,7 @@ namespace Game.EditorTests
             var candidate = StrategicMaintenancePolicy.EnumerateCandidates(_owner, _root, hand, ctx, snap)
                 .Single(c => c.StableKey == "repair:" + _unit.RuntimeId);
             StrategicResourceReservationLedger.Upsert(_owner, 3, new StrategicResourceReservation {
-                Owner = "other-work", Reason = StrategicReservationReason.StrategicReactionPass,
+                Owner = "other-work", Reason = StrategicReservationReason.EconomyBuildCompletion,
                 Resource = reserveAp ? StrategicReservedResource.ActionPoints : StrategicReservedResource.Materials,
                 Amount = 5, ExpirationStage = StrategicReservationExpiry.EndOfTurn });
             Assert.That(candidate.Execute(_owner, _root, ctx, out bool changed, out bool progressed), Is.False);

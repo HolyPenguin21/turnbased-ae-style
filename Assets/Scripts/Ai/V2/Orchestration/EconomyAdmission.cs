@@ -84,8 +84,6 @@ namespace Game.Ai.V2
                 + "|homes=" + string.Join(";", (snapshot?.Self?.BaseHexes ?? System.Array.Empty<Game.HexGrid.HexCoord>())
                     .OrderBy(h => h.Q).ThenBy(h => h.R).Select(h => $"{h.Q},{h.R}"))
                 + $"|res={resources}|hand={hand?.MutationVersion ?? -1}"
-                + "|held=" + StrategicResourceReservationLedger.ReasonDigest(player,
-                    ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass)
                 + $"|armies={armies}|claims={claims}"
                 + economyFacts;
         }

@@ -23,8 +23,8 @@ namespace Game.Ai.V2
     //  reads these rows as claims.
     //
     //  Works for every strategic resource, not only AP (spec §6). Reservations are IDEMPOTENT by
-    //  (Owner, Reason, Resource): a repeated Phase-B / reaction pass upserts the same row instead
-    //  of stacking duplicates (spec §8).
+    //  (Owner, Reason, Resource): a repeated pass upserts the same row instead of stacking
+    //  duplicates (spec §8).
     //
     //  Lifecycle rule (spec §7): if the pass that owns a reservation is Suppressed / NoAction /
     //  Invalidated / Skipped, the reservation is released IMMEDIATELY (regardless of its nominal
@@ -38,13 +38,12 @@ namespace Game.Ai.V2
     // a provisioned completion, so changing sites cannot stack alternatives or erase committed AP.
     public enum StrategicReservationReason
     {
-        StrategicReactionPass,
         EconomyDeferredBuild,
         EconomyBuildCompletion,
     }
 
     // The stage by which the reservation is guaranteed gone in the normal (non-aborted) flow.
-    public enum StrategicReservationExpiry { EndOfReaction, EndOfTurn }
+    public enum StrategicReservationExpiry { EndOfTurn }
 
     public sealed class StrategicResourceReservation
     {
@@ -318,17 +317,6 @@ namespace Game.Ai.V2
                 ReservationInvariants.RecordLeakAtTurnEnd(player, turn, DebugLine(player, turn));
                 e.Reservations.Clear();
             }
-        }
-
-        // Order-stable key of every row held for one reason — an admission-fingerprint input
-        // (see Pipeline's Economy fingerprint), not a spend query.
-        internal static string ReasonDigest(PlayerSetupData player, int turn,
-            StrategicReservationReason reason)
-        {
-            if (!(ByPlayer.Peek(player, turn) is Entry e))
-                return string.Empty;
-            return string.Join(";", e.Reservations.Where(r => r.Reason == reason)
-                .Select(r => r.ToString()).OrderBy(x => x, System.StringComparer.Ordinal));
         }
 
         private static void LogChange(PlayerSetupData player, int turn, string compact,

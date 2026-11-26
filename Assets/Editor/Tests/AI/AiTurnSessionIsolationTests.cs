@@ -178,7 +178,7 @@ namespace Game.EditorTests
 
         private static void Reserve(PlayerSetupData p, int turn) => StrategicResourceReservationLedger.Upsert(p, turn,
             new StrategicResourceReservation { Owner = "test", Resource = StrategicReservedResource.ActionPoints,
-                Reason = StrategicReservationReason.StrategicReactionPass, Amount = 1,
+                Reason = StrategicReservationReason.EconomyBuildCompletion, Amount = 1,
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn });
     }
 }

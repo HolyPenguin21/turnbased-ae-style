@@ -586,7 +586,7 @@ namespace Game.EditorTests
                 StrategicResourceReservationLedger.Upsert(owner, ctx.TurnNumber,
                     new StrategicResourceReservation
                     {
-                        Owner = "Reaction:guard", Reason = StrategicReservationReason.StrategicReactionPass,
+                        Owner = "Reaction:guard", Reason = StrategicReservationReason.EconomyBuildCompletion,
                         Resource = StrategicReservedResource.ActionPoints, Amount = 2f,
                         ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });
@@ -597,7 +597,7 @@ namespace Game.EditorTests
                     Is.False);
                 Assert.That(root.ActionPoints, Is.EqualTo(2));
                 StrategicResourceReservationLedger.ReleaseByReason(owner, ctx.TurnNumber,
-                    StrategicReservationReason.StrategicReactionPass);
+                    StrategicReservationReason.EconomyBuildCompletion);
 
                 root.ActionPoints = 0;
                 Assert.That(AviationRebasePlanner.BuildPlan(

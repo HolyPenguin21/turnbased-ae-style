@@ -235,7 +235,7 @@ namespace Game.EditorTests
             AirSortieRegistry.Add(owner, sortie);
             StrategicResourceReservationLedger.BeginTurn(owner, 10);
             StrategicResourceReservationLedger.Upsert(owner, 10, new StrategicResourceReservation {
-                Owner = "existing-operation", Reason = StrategicReservationReason.StrategicReactionPass,
+                Owner = "existing-operation", Reason = StrategicReservationReason.EconomyBuildCompletion,
                 Resource = StrategicReservedResource.Energy, Amount = 7,
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn });
             int version = WorldDeltaLifecycle.Current;
@@ -717,7 +717,7 @@ namespace Game.EditorTests
             StrategicResourceReservationLedger.BeginTurn(owner, 10);
             StrategicResourceReservationLedger.Upsert(owner, 10, new StrategicResourceReservation {
                 Owner = "other-operation", Resource = StrategicReservedResource.Energy,
-                Amount = world.Root.GetResource(ResourceType.Energy), Reason = StrategicReservationReason.StrategicReactionPass,
+                Amount = world.Root.GetResource(ResourceType.Energy), Reason = StrategicReservationReason.EconomyBuildCompletion,
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn });
             Assert.That(ActiveDefenceProvisioner.Provision(owner, world.Root, world.Context, session, funded).Success, Is.False);
             StrategicResourceReservationLedger.ClearAll();
@@ -853,7 +853,7 @@ namespace Game.EditorTests
             Assert.That(plan.ActivationAp, Is.EqualTo(1)); Assert.That(plan.EnergyCost, Is.EqualTo(1));
             StrategicResourceReservationLedger.BeginTurn(owner, 10);
             StrategicResourceReservationLedger.Upsert(owner, 10, new StrategicResourceReservation {
-                Owner = "other-launch", Reason = StrategicReservationReason.StrategicReactionPass,
+                Owner = "other-launch", Reason = StrategicReservationReason.EconomyBuildCompletion,
                 Resource = StrategicReservedResource.Energy, Amount = world.Root.GetResource(ResourceType.Energy),
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn });
             Assert.That(AviationRebasePlanner.BuildPlan(snap, owner, world.Root, world.Context, Array.Empty<ReconObjective>()), Is.Null);
@@ -881,7 +881,7 @@ namespace Game.EditorTests
                 ResCost = blueprint.resourceCost };
             StrategicResourceReservationLedger.BeginTurn(owner, 10);
             StrategicResourceReservationLedger.Upsert(owner, 10, new StrategicResourceReservation {
-                Owner = "other-task", Reason = StrategicReservationReason.StrategicReactionPass,
+                Owner = "other-task", Reason = StrategicReservationReason.EconomyBuildCompletion,
                 Resource = resource, Amount = resource == StrategicReservedResource.ActionPoints ? 14 : 50,
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn });
             Assert.That(GenerationSource.FitsReservedAffordability(world.Root, owner, world.Context, blueprint),
@@ -927,7 +927,7 @@ namespace Game.EditorTests
                 {
                     if (hand.Hand.Count == 1)
                         StrategicResourceReservationLedger.Upsert(owner, 10, new StrategicResourceReservation {
-                            Owner = "mint-event-operation", Reason = StrategicReservationReason.StrategicReactionPass,
+                            Owner = "mint-event-operation", Reason = StrategicReservationReason.EconomyBuildCompletion,
                             Resource = StrategicReservedResource.ActionPoints, Amount = world.Root.ActionPoints,
                             ExpirationStage = StrategicReservationExpiry.EndOfTurn });
                 };

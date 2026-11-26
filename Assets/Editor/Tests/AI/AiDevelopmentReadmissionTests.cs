@@ -42,9 +42,9 @@ namespace Game.EditorTests
             {
                 StrategicResourceReservationLedger.Upsert(player, turn, new StrategicResourceReservation
                 {
-                    Owner = "reaction", Reason = StrategicReservationReason.StrategicReactionPass,
+                    Owner = "reaction", Reason = StrategicReservationReason.EconomyBuildCompletion,
                     Resource = StrategicReservedResource.ActionPoints, Amount = 3,
-                    ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                 });
                 string Key() => DevelopmentAdmission.ApAffordability(snapshot, null, physicalAp,
                     TurnResourceBook.Free(physicalAp, TurnResourceBook.LedgerClaims(player, turn),

@@ -120,9 +120,9 @@ namespace Game.EditorTests
                 void Hold(float amount) => StrategicResourceReservationLedger.Upsert(player, 5,
                     new StrategicResourceReservation
                     {
-                        Owner = "reaction", Reason = StrategicReservationReason.StrategicReactionPass,
+                        Owner = "reaction", Reason = StrategicReservationReason.EconomyBuildCompletion,
                         Resource = StrategicReservedResource.ActionPoints, Amount = amount,
-                        ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });
                 var feasible = new List<(MaterializationPlan plan, float followupAp, TraitPreference proj)>();
                 Hold(2);

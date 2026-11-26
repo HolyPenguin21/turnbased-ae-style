@@ -22,7 +22,7 @@ namespace Game.EditorTests
             Claim("buildA", ResourceClaimKind.EconomyDeferred, Materials, 3f),
             Claim("buildB", ResourceClaimKind.EconomyCompletion, Materials, 2f),
             Claim("buildB", ResourceClaimKind.EconomyCompletion, Ap, 2f),
-            Claim("reaction", ResourceClaimKind.Reaction, Ap, 1f),
+            Claim("reaction", ResourceClaimKind.EconomyCompletion, Ap, 1f),
             Claim(TurnResourceBook.OperationContinuationOwner,
                 ResourceClaimKind.OperationContinuation, Ap, 2f),
         };
@@ -42,7 +42,7 @@ namespace Game.EditorTests
                     foreach (var row in new[] {
                         ("own", StrategicReservationReason.EconomyBuildCompletion, .375f),
                         ("other", StrategicReservationReason.EconomyDeferredBuild, 2.125f),
-                        ("other", StrategicReservationReason.StrategicReactionPass, .25f),
+                        ("other", StrategicReservationReason.EconomyBuildCompletion, .25f),
                     })
                         StrategicResourceReservationLedger.Upsert(player, 1, new StrategicResourceReservation
                         {
@@ -139,9 +139,9 @@ namespace Game.EditorTests
             {
                 StrategicResourceReservation Row(string owner, float amount) => new StrategicResourceReservation
                 {
-                    Owner = owner, Reason = StrategicReservationReason.StrategicReactionPass,
+                    Owner = owner, Reason = StrategicReservationReason.EconomyBuildCompletion,
                     Resource = Materials, Amount = amount,
-                    ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                 };
                 StrategicResourceReservationLedger.Upsert(a, turn, Row("one", 2f));
                 StrategicResourceReservationLedger.Upsert(a, turn, Row("one", 3f));
@@ -153,7 +153,7 @@ namespace Game.EditorTests
                 Assert.That(StrategicResourceReservationLedger.Active(a, turn, Materials), Is.EqualTo(4f));
                 Assert.That(StrategicResourceReservationLedger.Active(b, turn, Materials), Is.EqualTo(5f));
                 Assert.That(StrategicResourceReservationLedger.Active(a, turn + 1, Materials), Is.Zero);
-                StrategicResourceReservationLedger.ExpireStage(a, turn, StrategicReservationExpiry.EndOfReaction);
+                StrategicResourceReservationLedger.ExpireStage(a, turn, StrategicReservationExpiry.EndOfTurn);
                 Assert.That(StrategicResourceReservationLedger.Active(a, turn, Materials), Is.Zero);
                 Assert.That(StrategicResourceReservationLedger.Active(b, turn, Materials), Is.EqualTo(5f));
             }
@@ -161,9 +161,9 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void OptionalStealthCannotUseReactionApButCanUseReleasedAp()
+        public void OptionalStealthCannotUseAnotherOwnersApButCanUseReleasedAp()
         {
-            var claims = new[] { Claim("reaction", ResourceClaimKind.Reaction, Ap, 2f) };
+            var claims = new[] { Claim("reaction", ResourceClaimKind.EconomyCompletion, Ap, 2f) };
             var input = new OptionalStealthInputs
             {
                 ApRemaining = (int)TurnResourceBook.Free(3f, claims, Ap, default),
@@ -205,7 +205,7 @@ namespace Game.EditorTests
             var claims = new[] {
                 Claim("base", ResourceClaimKind.EconomyCompletion, resource, 2f),
                 Claim("other", ResourceClaimKind.EconomyCompletion, resource, 3f),
-                Claim("reaction", ResourceClaimKind.Reaction, resource, 1f),
+                Claim("reaction", ResourceClaimKind.EconomyCompletion, resource, 1f),
             };
             var authority = new SpendAuthority("base", economyCompletesNow: true);
             const float baseCost = 5f, guardCost = 2f;
@@ -285,7 +285,7 @@ namespace Game.EditorTests
             var claims = new[]
             {
                 Claim("buildA", ResourceClaimKind.EconomyCompletion, Materials, 3f),
-                Claim("reaction", ResourceClaimKind.Reaction, Materials, 2f),
+                Claim("reaction", ResourceClaimKind.EconomyCompletion, Materials, 2f),
             };
             var draws = new System.Collections.Generic.Dictionary<string, float> { ["buildB"] = 4f };
 
@@ -299,8 +299,6 @@ namespace Game.EditorTests
                 Is.EqualTo(ResourceClaimKind.EconomyDeferred));
             Assert.That(TurnResourceBook.KindOf(StrategicReservationReason.EconomyBuildCompletion),
                 Is.EqualTo(ResourceClaimKind.EconomyCompletion));
-            Assert.That(TurnResourceBook.KindOf(StrategicReservationReason.StrategicReactionPass),
-                Is.EqualTo(ResourceClaimKind.Reaction));
         }
 
         [Test]

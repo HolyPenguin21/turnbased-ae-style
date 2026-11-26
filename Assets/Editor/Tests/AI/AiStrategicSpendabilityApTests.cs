@@ -198,7 +198,6 @@ namespace Game.EditorTests
         }
 
         [TestCase(StrategicReservationReason.EconomyBuildCompletion)]
-        [TestCase(StrategicReservationReason.StrategicReactionPass)]
         public void OtherOwnerApHold_BlocksMissionAtAllocatorAdmission(
             StrategicReservationReason reason)
         {
@@ -212,9 +211,7 @@ namespace Game.EditorTests
                     Reason = reason,
                     Resource = StrategicReservedResource.ActionPoints,
                     Amount = 4f,
-                    ExpirationStage = reason == StrategicReservationReason.StrategicReactionPass
-                        ? StrategicReservationExpiry.EndOfReaction
-                        : StrategicReservationExpiry.EndOfTurn,
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                 });
 
             var scout = new MissionProposal
@@ -561,58 +558,6 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ReactionRoundRelease_OpensItsBudgetWithoutReleasingEconomyCompletion()
-        {
-            var player = new PlayerSetupData();
-            const int turn = 16;
-            StrategicResourceReservationLedger.BeginTurn(player, turn);
-            StrategicResourceReservationLedger.Upsert(player, turn,
-                new StrategicResourceReservation
-                {
-                    Owner = "reaction:round",
-                    Reason = StrategicReservationReason.StrategicReactionPass,
-                    Resource = StrategicReservedResource.ActionPoints,
-                    Amount = 3f,
-                    ExpirationStage = StrategicReservationExpiry.EndOfReaction,
-                });
-            StrategicResourceReservationLedger.Upsert(player, turn,
-                new StrategicResourceReservation
-                {
-                    Owner = "Economy:build",
-                    Reason = StrategicReservationReason.EconomyBuildCompletion,
-                    Resource = StrategicReservedResource.ActionPoints,
-                    Amount = 2f,
-                    ExpirationStage = StrategicReservationExpiry.EndOfTurn,
-                });
-            var scout = new MissionProposal
-            {
-                Kind = MissionKind.Scout,
-                Target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore },
-                BaseValue = 10f,
-                EffectiveValue = 10f,
-                Requirements = new MissionRequirements
-                    { ApMinimum = 3f, ApDesired = 3f, ApMaximum = 3f },
-            };
-            scout.Axes.Value[DesireAxis.Recon] = 1f;
-            var snap = new WorldSnapshot
-                { TurnNumber = turn, Self = new SelfSnapshot { ActionPoints = 5 } };
-
-            TentativeAllocation before = ResourceAllocator.BeginTurn(snap, Radar.Even(),
-                new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
-            Assert.That(before.Funded, Is.Empty);
-
-            // ReactionRoundExecutor releases this reason before its Phase A and mission pass.
-            StrategicResourceReservationLedger.ReleaseByReason(player, turn,
-                StrategicReservationReason.StrategicReactionPass);
-            TentativeAllocation during = ResourceAllocator.BeginTurn(snap, Radar.Even(),
-                new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
-            Assert.That(during.Funded.Select(f => f.Mission), Has.Member(scout));
-            Assert.That(TurnResourceBook.Free(5f, TurnResourceBook.LedgerClaims(player, turn),
-                StrategicReservedResource.ActionPoints, default),
-                Is.EqualTo(3f), "the Economy owner's two AP remain protected");
-        }
-
-        [Test]
         public void MaterializationGuard_UsesSpendableApAndReleasesItWhenReservationEnds()
         {
             var owner = new PlayerSetupData();
@@ -628,10 +573,10 @@ namespace Game.EditorTests
                     new StrategicResourceReservation
                     {
                         Owner = "other-operation",
-                        Reason = StrategicReservationReason.StrategicReactionPass,
+                        Reason = StrategicReservationReason.EconomyBuildCompletion,
                         Resource = StrategicReservedResource.ActionPoints,
                         Amount = 4f,
-                        ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });
 
                 Assert.That(StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, owner), Is.False,

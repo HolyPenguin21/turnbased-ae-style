@@ -38,12 +38,12 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void CompletionAndReactionHoldsBeyondStock_AreUncovered()
+        public void CompletionHoldsOfTwoOwnersBeyondStock_AreUncovered()
         {
             var claims = new[]
             {
                 Claim(ResourceClaimKind.EconomyCompletion, StrategicReservedResource.ActionPoints, 3f, "build"),
-                Claim(ResourceClaimKind.Reaction, StrategicReservedResource.ActionPoints, 2f, "reaction"),
+                Claim(ResourceClaimKind.EconomyCompletion, StrategicReservedResource.ActionPoints, 2f, "reaction"),
             };
 
             float[] held = ReservationInvariants.CommittedHeld(claims);
@@ -91,7 +91,7 @@ namespace Game.EditorTests
             {
                 Row(StrategicReservationReason.EconomyDeferredBuild,
                     StrategicReservedResource.ActionPoints, 2f, "a"),
-                Row(StrategicReservationReason.StrategicReactionPass,
+                Row(StrategicReservationReason.EconomyBuildCompletion,
                     StrategicReservedResource.Human, 0f, "b"),
                 Row(StrategicReservationReason.EconomyDeferredBuild,
                     StrategicReservedResource.Human, 1f, "c"),
@@ -113,7 +113,7 @@ namespace Game.EditorTests
             const int turn = 4;
             StrategicResourceReservationLedger.BeginTurn(player, turn);
             StrategicResourceReservationLedger.Upsert(player, turn, Row(
-                StrategicReservationReason.StrategicReactionPass,
+                StrategicReservationReason.EconomyBuildCompletion,
                 StrategicReservedResource.ActionPoints, 3f));
 
             var rows = StrategicResourceReservationLedger.Rows(player, turn);

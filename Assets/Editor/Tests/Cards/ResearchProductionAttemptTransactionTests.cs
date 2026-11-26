@@ -89,9 +89,7 @@ namespace Game.EditorTests
         }
 
         [TestCase(StrategicReservationReason.EconomyBuildCompletion, false)]
-        [TestCase(StrategicReservationReason.StrategicReactionPass, false)]
         [TestCase(StrategicReservationReason.EconomyBuildCompletion, true)]
-        [TestCase(StrategicReservationReason.StrategicReactionPass, true)]
         [Category("UnityEngine")]
         public void GenerationRechecksApReservationsBeforePayment(StrategicReservationReason reason,
             bool drawOnOwnHold)

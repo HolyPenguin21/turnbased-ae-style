@@ -25,7 +25,6 @@ namespace Game.Ai.V2
     {
         EconomyDeferred,        // a build still being delivered: shields H/E/M/T, never AP
         EconomyCompletion,      // a build Provisioning proved can finish this turn
-        Reaction,               // the bounded reaction budget + envelope held through Phase B
         OperationContinuation,  // unpaid activation of a continuing Hard operation's next leg
     }
 
@@ -55,17 +54,14 @@ namespace Game.Ai.V2
         // carrying it is an Attack strike-force demand (InfrastructureFulfillment.SpendAuthorityFor).
         internal const string OperationContinuationOwner = "derived:operation-continuation";
 
-        internal static ResourceClaimKind KindOf(StrategicReservationReason reason) => reason switch
-        {
-            StrategicReservationReason.EconomyDeferredBuild => ResourceClaimKind.EconomyDeferred,
-            StrategicReservationReason.EconomyBuildCompletion => ResourceClaimKind.EconomyCompletion,
-            _ => ResourceClaimKind.Reaction,
-        };
+        internal static ResourceClaimKind KindOf(StrategicReservationReason reason) =>
+            reason == StrategicReservationReason.EconomyDeferredBuild
+                ? ResourceClaimKind.EconomyDeferred : ResourceClaimKind.EconomyCompletion;
 
         // THE table: which claims a spender may use as if they were free.
         internal static bool MayDrawOn(SpendAuthority authority, ResourceClaim claim)
         {
-            // Its own hold (a builder hero serving its build, a reaction re-probing its envelope).
+            // Its own hold (a builder hero serving its build).
             if (authority.Owner != null && claim.Owner == authority.Owner)
                 return true;
             // A build that completes now is senior to other builds' deferred holds, which by
