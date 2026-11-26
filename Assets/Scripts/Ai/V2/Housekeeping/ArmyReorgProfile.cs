@@ -396,25 +396,9 @@ namespace Game.Ai.V2
             if (host?.PreparationTargetKeys == null || hostUnits == null)
                 return;
             others = (others ?? Enumerable.Empty<KeyValuePair<ReorgContainer, List<ReorgUnit>>>()).ToList();
-            var need = new Dictionary<string, int>();
-            foreach (string k in host.PreparationTargetKeys)
-                if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
-            int nonTarget = 0;
             var nonTargetBodies = new List<ReorgUnit>();
-            foreach (ReorgUnit u in hostUnits.Where(u => u != null && !u.IsHero)
-                         .OrderByDescending(u => u.Power).ThenBy(u => u.Key))
-            {
-                if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
-                    need[u.StrikeKey] = n - 1;
-                else if (!u.IsArmySupportCarrier) // never surplus (StrikeRoster.NonTargetBodies)
-                {
-                    nonTarget++;
-                    nonTargetBodies.Add(u);
-                }
-            }
-            foreach (ReorgUnit u in hostUnits.Where(u => u != null && u.IsHero))
-                if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
-                    need[u.StrikeKey] = n - 1;
+            Dictionary<string, int> need = RosterNeed(host.PreparationTargetKeys, hostUnits, nonTargetBodies);
+            int nonTarget = nonTargetBodies.Count;
             int found = 0;
             bool Take(string key)
             {
@@ -500,6 +484,30 @@ namespace Game.Ai.V2
         }
 
         // §7 — the container holds >= 2 heroes, so which of them commands is a real choice.
+        // The positions of a preparation's target roster (a multiset by card key) that `units` do
+        // not fill yet. `nonRosterBodies`, when given, receives the non-hero bodies outside the
+        // roster, strongest first; an army support carrier is never surplus
+        // (StrikeRoster.NonTargetBodies).
+        internal static Dictionary<string, int> RosterNeed(IReadOnlyList<string> target,
+            IEnumerable<ReorgUnit> units, List<ReorgUnit> nonRosterBodies = null)
+        {
+            var need = new Dictionary<string, int>();
+            foreach (string k in target)
+                if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
+            List<ReorgUnit> roster = units.Where(u => u != null).ToList();
+            foreach (ReorgUnit u in roster.Where(u => !u.IsHero).OrderByDescending(u => u.Power).ThenBy(u => u.Key))
+            {
+                if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                    need[u.StrikeKey] = n - 1;
+                else if (!u.IsArmySupportCarrier)
+                    nonRosterBodies?.Add(u);
+            }
+            foreach (ReorgUnit u in roster.Where(u => u.IsHero))
+                if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                    need[u.StrikeKey] = n - 1;
+            return need;
+        }
+
         public static bool HasCommanderChoice(ReorgContainer c) =>
             c != null && c.CanReorderCommander && c.Units.Count(u => u != null && u.IsHero) >= 2;
 

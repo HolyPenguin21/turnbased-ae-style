@@ -65,15 +65,9 @@ namespace Game.Ai.V2
                 if (meta.CanReorderCommander)
                     commandWaste += CommanderMismatch(units, meta, commandContext);
                 if (meta.MayReleaseExcessHeroes)
-                    preparationSlotWaste += PreparationSlotWaste(units);
+                    preparationSlotWaste += HeroSlotWaste(units, keepGarrisonHeroes: false);
                 else if (meta.IsMutableGround && meta.CanDonate)
-                    // Ordinary secondary heroes add no command or force. Keep canonical passive
-                    // battle carriers (Heal/Drill) for the mission's own counterfactual check.
-                    // A Support hero is OperatorExposure's business (2026-11-18: off a hero-only
-                    // bench it is exposed; on it, it takes no fighter slot).
-                    preparationSlotWaste += units.Where(u => u != null && u.IsHero).Skip(1)
-                        .Count(u => !u.IsCommitted && !u.IsDevelopmentOperator
-                            && !u.IsGarrisonHero && !u.IsArmySupportCarrier);
+                    preparationSlotWaste += HeroSlotWaste(units, keepGarrisonHeroes: true);
                 if (meta.PreparationTargetKeys != null)
                     preparationSlotWaste += ReorgViability.PreparationRosterPenalty(meta, units,
                         s.Meta.Select(kv => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(
