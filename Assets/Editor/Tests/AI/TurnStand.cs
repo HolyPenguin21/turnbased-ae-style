@@ -20,17 +20,19 @@ using Object = UnityEngine.Object;
 namespace Game.EditorTests
 {
     // ===========================================================================================
-    //  REACTION STAND: the whole AI turn (AiTurnController.RunTurn -> Pipeline.RunTurn) on a small
-    //  map, built from the AI players' authored decks, with facts that arrive in the turn (a contact,
-    //  a hand change) pending before the turn loop runs. Armies have no scene controller, so no move
-    //  is executed: what runs is every decision and every card play of the turn, the Phase B rounds
-    //  and the end of the turn.
+    //  TURN STAND: the whole AI turn (AiTurnController.RunTurn -> Pipeline.RunTurn) on a small map,
+    //  built from the AI players' authored decks: own Citadel, garrison, field army and scout, enemies
+    //  seen now, facts pending before the turn loop runs. Armies have no scene controller, so no move
+    //  is executed and no card is deployed: what runs is every decision and card arbitration of the
+    //  turn, the Phase B rounds and the end of the turn. A module under cleanup adds its own scenarios
+    //  here (TurnScenario + its setup + its expectation).
     //  Every turn is checked against the turn's boundaries: no exception, AP never below zero, no
     //  reservation or claim invariant violation and no [ERROR] check line, no reservation left after
-    //  the turn, no unit lost, the turn session closed. The state after the turn and the turn's control lines go to a
-    //  digest (REACTION_STAND_OUT, default Logs/ReactionStand) compared between revisions.
+    //  the turn, no unit lost, the turn session closed; an expectation case also checks what its turn
+    //  must show. The state after the turn and the turn's control lines go to a digest (TURN_STAND_OUT,
+    //  default Logs/TurnStand) compared between revisions.
     // ===========================================================================================
-    public enum ReactionScenario
+    public enum TurnScenario
     {
         Quiet,           // own forces only
         Contact,         // a weak enemy army seen now, 3 hexes away
@@ -48,7 +50,7 @@ namespace Game.EditorTests
         GarrisonOnly,       // the garrison alone, no enemy: no defence objective, no mission step moves AP
     }
 
-    public sealed class ReactionStandTests
+    public sealed class TurnStandTests
     {
         private const string CatalogPath = "Assets/Cards/StartingDeckCatalog.asset";
         private const int TurnNumber = 1;
@@ -56,9 +58,9 @@ namespace Game.EditorTests
         private static IEnumerable<TestCaseData> Cases()
         {
             foreach ((string own, string enemy) in HousekeepingStand.DeckPairs)
-                foreach (ReactionScenario s in Enum.GetValues(typeof(ReactionScenario)))
+                foreach (TurnScenario s in Enum.GetValues(typeof(TurnScenario)))
                     yield return new TestCaseData(own, enemy, s)
-                        .SetName($"ReactionStand.{s}.{own.Replace(' ', '_')}_vs_{enemy.Replace(' ', '_')}");
+                        .SetName($"TurnStand.{s}.{own.Replace(' ', '_')}_vs_{enemy.Replace(' ', '_')}");
         }
 
         private readonly List<string> _lines = new List<string>();
@@ -94,14 +96,14 @@ namespace Game.EditorTests
         }
 
         [TestCaseSource(nameof(Cases))]
-        public void Turn(string ownDeck, string enemyDeck, ReactionScenario scenario)
+        public void Turn(string ownDeck, string enemyDeck, TurnScenario scenario)
         {
             StartingDeckCatalog catalog = UnityEditor.AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>(CatalogPath);
             StartingDeck own = catalog.aiDecks.First(d => d != null && d.deckName == ownDeck);
             StartingDeck foeDeck = catalog.aiDecks.First(d => d != null && d.deckName == enemyDeck);
             UnityEngine.Random.InitState(ownDeck.GetHashCode() ^ (int)scenario * 7919);
 
-            var mapObject = new GameObject("reaction stand map");
+            var mapObject = new GameObject("turn stand map");
             _objects.Add(mapObject);
             HexMap map = mapObject.AddComponent<HexMap>();
             var hexes = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
@@ -133,17 +135,17 @@ namespace Game.EditorTests
             if (bodies.Count == 0 || hero == null)
                 Assert.Ignore($"{ownDeck}: no ground body or hero");
 
-            bool fieldArmy = scenario != ReactionScenario.NoFieldArmyThreat && scenario != ReactionScenario.GarrisonOnly;
+            bool fieldArmy = scenario != TurnScenario.NoFieldArmyThreat && scenario != TurnScenario.GarrisonOnly;
             Army(me, new HexCoord(0, 0), true, bodies[0]);
             if (fieldArmy)
                 Army(me, new HexCoord(1, 0), false, hero, bodies[bodies.Count / 2], bodies[bodies.Count - 1]);
             CardDefinition recce = ownCards.FirstOrDefault(c => c.cardType == CardType.Unit && !c.isAviation
                 && AbilityParams.UnitHasAnyRecce(UnitData.FromDefinition(c, me)));
-            if (recce != null && scenario != ReactionScenario.GarrisonOnly)
+            if (recce != null && scenario != TurnScenario.GarrisonOnly)
                 Army(me, new HexCoord(0, 1), false, recce);
-            if (scenario == ReactionScenario.ZeroApThreat)
+            if (scenario == TurnScenario.ZeroApThreat)
                 root.ActionPoints = 0;
-            if (scenario == ReactionScenario.RichThreat)
+            if (scenario == TurnScenario.RichThreat)
                 foreach (ResourceType type in new[] { ResourceType.Human, ResourceType.Energy,
                              ResourceType.Materials, ResourceType.Tech })
                     root.AddResource(type, 34);
@@ -155,26 +157,26 @@ namespace Game.EditorTests
             };
             AiHandData hand = AiHandRegistry.GetOrCreate(me, catalog, ctx.StartingHandSize, ctx.HandCapacity);
             hand.SetCurrentTurn(TurnNumber);
-            if (scenario == ReactionScenario.FullHand)
+            if (scenario == TurnScenario.FullHand)
                 while (hand.HasFreeSlot && hand.HasCardsLeftToDraw)
                     hand.DrawOne();
 
             List<CardDefinition> foeBodies = GroundBodies(foeCards, foe);
-            if (scenario >= ReactionScenario.HostAdjacent)
+            if (scenario >= TurnScenario.HostAdjacent)
                 PlaceExpectationEnemies(scenario, me, foe, foeBodies);
-            else if (scenario != ReactionScenario.Quiet && scenario != ReactionScenario.PendingHand)
+            else if (scenario != TurnScenario.Quiet && scenario != TurnScenario.PendingHand)
             {
                 if (foeBodies.Count == 0)
                     Assert.Ignore($"{enemyDeck}: no ground body");
-                ArmyData enemy = scenario == ReactionScenario.Threat
+                ArmyData enemy = scenario == TurnScenario.Threat
                     ? Army(foe, new HexCoord(3, 0), false,
                         Enumerable.Repeat(foeBodies[foeBodies.Count - 1], 4).ToArray())
                     : Army(foe, new HexCoord(4, 0), false, foeBodies[0], foeBodies[0]);
                 AiMapMemory.ObserveForTest(me, enemy);
-                if (scenario == ReactionScenario.PendingContact)
+                if (scenario == TurnScenario.PendingContact)
                     StrategicInterruptRegistry.MarkDiscovery(me, TurnNumber, new[] { enemy.Id });
             }
-            if (scenario == ReactionScenario.PendingHand)
+            if (scenario == TurnScenario.PendingHand)
                 StrategicInterruptRegistry.MarkHandOpportunity(me, TurnNumber);
 
             HashSet<UnitData> unitsBefore = OwnUnits(me);
@@ -183,9 +185,9 @@ namespace Game.EditorTests
             catch (Exception e) { failure = e; }
 
             string digest = Digest(me, root, hand, scenario, ownDeck, enemyDeck, failure);
-            string dir = Environment.GetEnvironmentVariable("REACTION_STAND_OUT");
+            string dir = Environment.GetEnvironmentVariable("TURN_STAND_OUT");
             if (string.IsNullOrEmpty(dir))
-                dir = Path.Combine(Directory.GetCurrentDirectory(), "Logs", "ReactionStand");
+                dir = Path.Combine(Directory.GetCurrentDirectory(), "Logs", "TurnStand");
             Directory.CreateDirectory(dir);
             File.WriteAllText(Path.Combine(dir, $"{scenario}.{ownDeck.Replace(' ', '_')}.txt"), digest);
 
@@ -206,10 +208,10 @@ namespace Game.EditorTests
         }
 
         // The enemies of the expectation cases, all seen now (AiMapMemory observation).
-        private void PlaceExpectationEnemies(ReactionScenario scenario, PlayerSetupData me, PlayerSetupData foe,
+        private void PlaceExpectationEnemies(TurnScenario scenario, PlayerSetupData me, PlayerSetupData foe,
             List<CardDefinition> foeBodies)
         {
-            if (scenario == ReactionScenario.FullHand || scenario == ReactionScenario.GarrisonOnly)
+            if (scenario == TurnScenario.FullHand || scenario == TurnScenario.GarrisonOnly)
                 return;
             if (foeBodies.Count == 0)
                 Assert.Ignore("enemy deck: no ground body");
@@ -218,61 +220,61 @@ namespace Game.EditorTests
             var seen = new List<ArmyData>();
             switch (scenario)
             {
-                case ReactionScenario.HostAdjacent:
+                case TurnScenario.HostAdjacent:
                     seen.Add(Army(foe, new HexCoord(1, -1), false, strong, strong, strong, strong));
                     break;
-                case ReactionScenario.TwoContacts:
+                case TurnScenario.TwoContacts:
                     seen.Add(Army(foe, new HexCoord(4, 0), false, weak, weak));
                     seen.Add(Army(foe, new HexCoord(-3, 2), false, mid, mid, mid));
                     break;
-                case ReactionScenario.NoFieldArmyThreat:
-                case ReactionScenario.ZeroApThreat:
-                case ReactionScenario.RichThreat:
+                case TurnScenario.NoFieldArmyThreat:
+                case TurnScenario.ZeroApThreat:
+                case TurnScenario.RichThreat:
                     seen.Add(Army(foe, new HexCoord(3, 0), false, strong, strong, strong, strong));
                     break;
-                case ReactionScenario.PendingContactFar:
+                case TurnScenario.PendingContactFar:
                     seen.Add(Army(foe, new HexCoord(-3, -3), false, weak, weak));
                     break;
             }
             foreach (ArmyData enemy in seen)
                 AiMapMemory.ObserveForTest(me, enemy);
-            if (scenario == ReactionScenario.PendingContactFar)
+            if (scenario == TurnScenario.PendingContactFar)
                 StrategicInterruptRegistry.MarkDiscovery(me, TurnNumber, seen.Select(a => a.Id));
         }
 
         // What each expectation case must show in the turn's own lines (beyond the boundaries).
-        private IEnumerable<string> Expectations(ReactionScenario scenario, PlayerRoot root)
+        private IEnumerable<string> Expectations(TurnScenario scenario, PlayerRoot root)
         {
             bool Any(params string[] parts) => _lines.Any(l => parts.All(l.Contains));
             switch (scenario)
             {
-                case ReactionScenario.HostAdjacent:
+                case TurnScenario.HostAdjacent:
                     if (!Any("[ActiveDefence][Objective] decision=ACCEPT"))
                         yield return "expected an accepted ActiveDefence objective against the army next to the Citadel";
                     break;
-                case ReactionScenario.TwoContacts:
+                case TurnScenario.TwoContacts:
                     if (!Any("threat: contacts 2"))
                         yield return "expected both enemy armies as known contacts";
                     break;
-                case ReactionScenario.NoFieldArmyThreat:
+                case TurnScenario.NoFieldArmyThreat:
                     if (!Any("decision=CREATE", "held_base_garrison_below_floor"))
                         yield return "expected the garrison to ask for field power against the strong army";
                     break;
-                case ReactionScenario.ZeroApThreat:
+                case TurnScenario.ZeroApThreat:
                     if (root.ActionPoints != 0)
                         yield return $"AP changed from 0 to {root.ActionPoints}";
                     foreach (string l in _lines.Where(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"spent ap [1-9]")))
                         yield return "AP spent with 0 AP: " + l;
                     break;
-                case ReactionScenario.FullHand:
+                case TurnScenario.FullHand:
                     foreach (string l in _lines.Where(l => l.Contains("WINNER Draw")))
                         yield return "drew into a full hand: " + l;
                     break;
-                case ReactionScenario.PendingContactFar:
+                case TurnScenario.PendingContactFar:
                     if (!_lines.Any(l => l.Contains("Triggers=") && l.Contains("Contact")))
                         yield return "the pending Contact fact was never taken by the loop";
                     break;
-                case ReactionScenario.GarrisonOnly:
+                case TurnScenario.GarrisonOnly:
                     if (Any("[ActiveDefence][Objective] decision=ACCEPT"))
                         yield return "an ActiveDefence objective without any enemy";
                     break;
@@ -282,7 +284,7 @@ namespace Game.EditorTests
         // ---- world ------------------------------------------------------------------------------
         private PlayerRoot Root(PlayerSetupData player)
         {
-            PlayerRoot root = PlayerRoot.Create(player, "reaction stand " + player.Nickname);
+            PlayerRoot root = PlayerRoot.Create(player, "turn stand " + player.Nickname);
             _objects.Add(root.gameObject);
             root.ActionPoints = 10;
             foreach (ResourceType type in new[] { ResourceType.Human, ResourceType.Energy,
@@ -338,7 +340,7 @@ namespace Game.EditorTests
 
         // ---- digest -----------------------------------------------------------------------------
         // The state after the turn and the turn's control lines; timings and trace ids are left out.
-        private string Digest(PlayerSetupData me, PlayerRoot root, AiHandData hand, ReactionScenario scenario,
+        private string Digest(PlayerSetupData me, PlayerRoot root, AiHandData hand, TurnScenario scenario,
             string ownDeck, string enemyDeck, Exception failure)
         {
             var sb = new StringBuilder();
@@ -359,8 +361,7 @@ namespace Game.EditorTests
                 sb.AppendLine($"intent {i.IntentKey} {i.Status} mover={i.PreferredMoverArmyId?.ToString() ?? "-"}");
             string[] markers =
             {
-                "strat.B - reaction feasible", "pending invalidation but no FEASIBLE", "reaction - BEGIN",
-                "reaction - END", "end-of-turn tempo re-run", "[AI][V2][INVARIANT]", "[Invariant] ERROR",
+                "[AI][V2][INVARIANT]", "[Invariant] ERROR",
                 "strat.B/tempo - END", "[AI][V2][Loop] step=", "admission pass opened",
                 "][ERROR]", "end-of-turn facts",
             };
