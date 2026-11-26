@@ -20,22 +20,17 @@ namespace Game.Ai.V2
             float composition = 0f;
             var formationStrengths = new List<float>();
 
-            // §9 — formation-leadership bookkeeping. A "benched" hero sits in a garrison or a lone
-            // hero container; a heroless viable field formation is only a fixable defect when such
-            // a hero exists in the same group.
+            // Formation leadership: a "benched" hero sits in a garrison or a lone-hero container; a heroless
+            // viable field formation is a fixable defect only when such a hero exists on the hex.
             int benchedCombatCapable = 0;
             int unledViableFields = 0;
             int supportLedWhileCombatBenched = 0;
 
-            // 2026-10-15 (user decision) — a lone free hero is a bench, not a defect, until a known
-            // enemy can reach this hex within activeDefenceWithdrawMaxEnemyEta turns: then it
-            // shelters in the local garrison (exposed like an operator outside it), which its
-            // command rating also serves. Economy still reaches it there by garrison extraction.
-            // 2026-11-18 — only while the garrison has a slot to take it; otherwise the hero stands
-            // as a bench on the hex.
-            // 2026-11-26 (owner, stand E04) — only while no army of the hex can take the blow: the
-            // hardest combat-capable army fights first (BattleInitiator.CompareDefenderHardness) and
-            // a hero-only army meets the enemy only after them, so beside any fighter it is safe.
+            // A lone free hero is a bench, not a defect, until a known enemy can reach this hex within
+            // activeDefenceWithdrawMaxEnemyEta turns; then it shelters in the local garrison (exposed like an
+            // operator outside it) while the garrison has a slot and no army of the hex holds a fighter: the
+            // hardest combat-capable army fights first (BattleInitiator.CompareDefenderHardness), so beside
+            // any fighter a hero-only army is safe.
             bool shelterLoneHeroes = s.ThreatBenchmarks.Any(t => !t.HiddenFromUs
                     && t.EtaToGroup <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
                 && !s.Roster.Values.Any(r => r.Any(u => u != null && u.IsGroundCombatant))
@@ -84,22 +79,17 @@ namespace Game.Ai.V2
                         benchedCombatCapable += units.Count(u => u != null && u.IsHero
                             && u.HeroRole != HeroOperationalRole.SupportOperator
                             && GarrisonMayRelease(units, u, meta));
-                        // 2026-11-25 (owner, housekeeping stand Q1: "why repackage when the
-                        // strongest army is already formed?") — the garrison's own strength and
-                        // composition are no reason to move bodies: a sound free field army was
-                        // folded whole into a garrison with room, burying its commander. Its floor
-                        // (GarrisonDeficit, the release rule) stays; the defence of the hex is the
-                        // night fold's (HousekeepingNightFold).
+                        // The garrison's own strength and composition are no reason to move bodies (a sound free army
+                        // would be folded into it, burying its commander); its floor stays (GarrisonDeficit, the release
+                        // rule). The defence of the hex is the night fold's.
                     }
                     continue;
                 }
 
-                // EmptyReusableArmy is neutral: once filled it is evaluated as a normal field
-                // formation, but while empty it contributes neither a defect nor a zero-strength
-                // entry that would pressure the planner to seed it.
-                // T05 — a mission receiver is scored as the field formation it is (its defects
-                // can only be fixed by inbound members), but a hero in it is never "benched":
-                // a claimed container gives nobody away.
+                // An empty reusable army is neutral: filled, it is a normal field formation; empty, it adds
+                // neither a defect nor a zero-strength entry that would pressure the planner to seed it. A
+                // mission receiver is scored as the formation it is (fixable by inbound members only), but a hero
+                // in it is never benched: a claimed container gives nobody away.
                 if (!meta.IsScoredField || units.Count == 0)
                     continue;
 
@@ -138,11 +128,8 @@ namespace Game.Ai.V2
                 : 0;
 
             formationStrengths.Sort((a, b) => b.CompareTo(a));
-            // 2026-11-25 (owner) — the day layout is the task layout: the strongest-first AiPower
-            // profile of the field formations, with or without an enemy in sight. A known or a
-            // sudden attack is met by the night fold (HousekeepingNightFold: every formation of the
-            // hex in one fight until the owner's next turn), so the threat-first whole-hex profile,
-            // the passive garrison packing and the lost-hex fold no longer move bodies by day.
+            // The day layout is the task layout: the strongest-first power profile of the field formations,
+            // with or without an enemy in sight. A known or sudden attack is met by the night fold.
             return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
                 singles, nonViable, commandWaste, formationDefect, formationStrengths,
                 -composition, s.Transfers.Count);

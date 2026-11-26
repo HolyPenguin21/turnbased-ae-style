@@ -9,13 +9,12 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  ARMY REORG PROFILE + LOCAL FORCE GROUP  (Strategy V2 — HousekeepingManager, step 8C)
+    //  ARMY REORG PROFILE + LOCAL FORCE GROUP — the planner's model of one hex.
     // ===========================================================================================
-    //  IMMUTABLE, CONTEXTUAL classification of one local container for one Housekeeping pass. It
-    //  COMPOSES existing canonical signals (AiArmyRoles physical role, AiPower strength/composition,
-    //  ActorCommitments ownership, ArmyData capacity) — it is NOT a new persistent role and never
-    //  written back onto ArmyData / AiArmyRoles. Rebuilt from live gameplay state every time
-    //  Housekeeping runs; nothing here survives a turn.
+    //  An immutable, contextual projection of each local container for one Housekeeping pass, built
+    //  from the owners' signals (AiArmyRoles role, AiPower strength, ActorCommitments ownership,
+    //  ArmyData capacity); never written back. ReorgViability holds the roster rules the planner
+    //  reads on it.
     // ===========================================================================================
 
     public enum ReorgPhysicalRole
@@ -41,15 +40,15 @@ namespace Game.Ai.V2
         public bool IsGroundCombatant;
         public bool IsGroundBattleBody;
         public int CommandRating;
-        // §8 — canonical hero operational-role signals, 0 / Flexible for non-heroes.
+        // Hero operational-role signals (0 / Flexible for non-heroes).
         public float HeroCombatLeadership;
         public HeroOperationalRole HeroRole;
         public float Power;
         public int Range;
         public IReadOnlyList<UnitTypeTag> TypeTags = Array.Empty<UnitTypeTag>();
         public int ActivationApCost;
-        // T05 — this member's remaining / maximum movement (ArmyData's slowest-member rule), so
-        // an inbound member of a moving operation is checked against its route before planning.
+        // Remaining / maximum movement (ArmyData's slowest-member rule): an inbound member of a
+        // moving operation is checked against its route.
         public int MoveCurrent;
         public int MoveMax;
         // Native movement and spent budget are required when projecting a DIFFERENT roster:
@@ -58,7 +57,6 @@ namespace Game.Ai.V2
         public int MovementSpent = -1;
         public int RuntimeIdentity = -1;
         public int TransportCarrierIdentity = -1;
-        public bool HasRecce;
         public bool IsAviation;
         public bool IsCommitted;
         // The unit's card identity (StrikeRoster.UnitKey) — matched against an Attack
@@ -67,8 +65,8 @@ namespace Game.Ai.V2
         // Turn-local contextual duty: this exact hero is the minimum operator set needed by a
         // Research/Production facility on the current hex. Not a persistent strategic role.
         public bool IsDevelopmentOperator;
-        // 2026-09-30 (user decision) — a garrison hero (AiArmyRoles.IsGarrisonHero: the card's
-        // Support type tag). Housekeeping moves it into the local garrison and never out of it.
+        // A garrison hero (AiArmyRoles.IsGarrisonHero: the card's Support type tag). By day it goes
+        // into the local garrison and never out of it.
         public bool IsGarrisonHero => AiArmyRoles.IsGarrisonHero(IsHero, TypeTags);
         // Exact immutable combat profile consumed by WorthIt. Heroes keep a profile for
         // diagnostics but are excluded from Ground Combat roster estimates.
@@ -91,7 +89,7 @@ namespace Game.Ai.V2
         public HashSet<int> ActivationCoveredUnitKeys = new HashSet<int>();
         public List<ReorgUnit> Units = new List<ReorgUnit>();
 
-        // Mirrors ArmyData.RequiresActivationCharge, restricted to units that actually cost AP.
+        // ArmyData.RequiresActivationCharge for this roster, restricted to units that cost AP.
         public bool ChargesActivationFor(ReorgUnit u) =>
             HasActivatedThisTurn && u.ActivationApCost > 0 && !ActivationCoveredUnitKeys.Contains(u.Key);
 
@@ -112,29 +110,26 @@ namespace Game.Ai.V2
         // A claimed army whose task needs units (ArmyMutationContract.NeedsUnits): the garrison's
         // surplus above its floor joins it (planner step 0.9).
         public bool NeedsUnits;
-        // 2026-11-26 (owner) — the hex's fist: the free field army with a commanding hero and
-        // fighters, the widest command then the strongest (FistMusterObjectiveEvaluator.FistHost's
-        // order). It takes the garrison's surplus like a task (step 0.9, above the garrison's own
-        // share floor as the muster Intake keeps it) and the morning restores it after the night.
+        // The hex's fist: the free field army with a commanding hero and fighters, the widest command
+        // then the strongest (FistMusterObjectiveEvaluator.FistHost's order). It takes the garrison's
+        // surplus like a task (above the garrison's own share floor, as the muster Intake keeps it) and
+        // the morning restores it after the night.
         public bool IsFist;
-        // The fist only: how many garrison bodies it may still take on this hex (the release rule
-        // and the garrison's own share, SpareableBodies) — the bodies it can still seat count
-        // toward its commander choice (owner 2026-11-25: "if the army does not gather 7").
+        // The fist only: how many garrison bodies it may still take on this hex (release rule and the
+        // garrison's own share, SpareableBodies); they count toward its commander choice.
         public int FistGarrisonSpare;
         // The garrison's own share floor (FistMusterObjectiveEvaluator.OwnShareFloor): what it
         // keeps whoever else stands on its hex — the fist's intake never goes below it.
         public float GarrisonOwnShareFloor;
 
-        // T05 — a claimed operation container whose ActorCommitments contract lets it take free
-        // same-hex members (ArmyMutationContract.MayReceive). It never donates, is never folded,
-        // swapped or deposited; its own structural defects (singleton / non-viable) count, so a
-        // weak mission host is a formation Housekeeping may fix by inbound only.
+        // A claimed operation container whose contract lets it take free same-hex members
+        // (ArmyMutationContract.MayReceive). It never donates, is never folded, swapped or deposited;
+        // its own singleton / non-viable defects count, so it may be fixed by inbound members only.
         public bool IsMissionReceiver;
-        // ATK-F03 — ArmyMutationContract.MayReleaseExcessHeroes (the Attack preparation host).
+        // ArmyMutationContract.MayReleaseExcessHeroes (the Attack preparation host).
         public bool MayReleaseExcessHeroes;
-        // 2026-10-01 — the Attack preparation host's frozen target roster (AttackIntent.TargetRoster
-        // keys, a multiset) and the held Unit card keys that could fill it. Null for every other
-        // container. Read by ReorgViability.PreparationRosterWaste.
+        // The Attack preparation host's frozen target roster (AttackIntent.TargetRoster keys, a multiset)
+        // and the held Unit card keys that could fill it; null for every other container.
         public IReadOnlyList<string> PreparationTargetKeys;
         public IReadOnlyList<string> PreparationHandKeys;
         public string MissionLabel;
@@ -171,13 +166,10 @@ namespace Game.Ai.V2
         public IReadOnlyList<WorthIt.DefenderProfile> Members = Array.Empty<WorthIt.DefenderProfile>();
         // The enemy army's commander as the snapshot knows it.
         public WorthIt.SideCommander Commander;
-        // §Task4 — observer-specific projection: the friendly non-hero ReorgUnit.Key set this
-        // specific enemy can actually target as far as WE know — every unit not in our own stealth
-        // (UnitData.IsHidden; enemy detection is unknown to the owner, so never IsHiddenFrom),
-        // computed once at Analyzer time off the live roster. A virtual transfer/swap moves a unit's Key into a
-        // different container but never changes this fact, so contact selection during planning
-        // stays honest about which enemy can see which unit. A container with none of its units in
-        // this set is not a real contact candidate for this enemy.
+        // The friendly non-hero keys this enemy can target as far as we know: every unit not in our
+        // own stealth (UnitData.IsHidden; the enemy's detection is unknown, so never IsHiddenFrom),
+        // read once off the live roster. A virtual transfer moves a key but never changes this fact, so
+        // contact selection stays honest; a container with none of these keys is no contact candidate.
         public HashSet<int> TargetableUnitKeys = new HashSet<int>();
     }
 
@@ -186,10 +178,9 @@ namespace Game.Ai.V2
         public int Q;
         public int R;
         public float HexDefenseBonus;
-        // 2026-11-20 (owner, match Halden vs Brynn T25) - the structural part of HexDefenseBonus
-        // (the own Base / Citadel's Defense, weather-aware), which an attacker's Disruption carrier
-        // removes. The same split every other own-defence estimate passes (WorldAnalysis.Threat,
-        // ActiveDefence HoldChanceAtAsset): without it Housekeeping held a disrupted Citadel at 1.0.
+        // The structural part of HexDefenseBonus (the own Base / Citadel's Defense, weather-aware), which
+        // an attacker's Disruption carrier removes — the split every own-defence estimate uses
+        // (WorldAnalysis.Threat, ActiveDefence HoldChanceAtAsset).
         public float BuildingDefenseBonus;
         // The public weather of the group's hex: a fight there is fought under it.
         public Game.Combat.BattleEnvironment Environment;
@@ -200,10 +191,9 @@ namespace Game.Ai.V2
 
         public bool WorthPlanning()
         {
-            // §7 — a commander reorder is a single-container operation, so it must not wait on
-            // the multi-container gate below: a lone army/garrison with a choice of commander is
-            // worth a zero-AP planning pass on its own (the planner's one commander evaluation
-            // decides whether the current one is already the best).
+            // A commander reorder is a single-container operation: a lone army or garrison with a choice of
+            // commander is worth a planning pass on its own (the planner decides whether the current one is
+            // already the best).
             foreach (ReorgContainer c in Containers)
                 if (ReorgViability.HasCommanderChoice(c))
                     return true;
@@ -229,15 +219,15 @@ namespace Game.Ai.V2
                     && !ReorgViability.IsHexBench(c, c.Units)
                     && c.Units.Any(u => u != null && (u.IsDevelopmentOperator || u.IsGarrisonHero))))
                 return true;
-            // 2026-11-25 (owner) — a garrison holding more than its one body beside an army whose
-            // task needs units, or the hex's fist: its surplus may join it (planner step 0.9).
+            // A garrison holding more than its one body beside an army whose task needs units, or the hex's
+            // fist: its surplus may join it.
             if (localGarrison != null && localGarrison.CanDonate
                 && localGarrison.Units.Count(u => u != null && u.IsGroundBattleBody) > 1
                 && Containers.Any(c => !c.IsGarrison && (c.NeedsUnits || c.IsFist) && c.CanReceive))
                 return true;
 
-            // §9 — a heroless OR support-led viable field formation plus a benched combat hero
-            // that could lead it is worth a planning pass even if nothing else is degraded.
+            // A heroless or Support-led viable field formation plus a benched combat hero that could lead
+            // it is worth a planning pass even if nothing else is degraded.
             bool benchedCombatHero = Containers.Any(c => c.CanChangeComposition && c.Units.Any(u =>
                 u != null && u.IsHero && u.HeroRole != HeroOperationalRole.SupportOperator
                 && !(c.IsGarrison && u.IsGarrisonHero)
@@ -334,19 +324,10 @@ namespace Game.Ai.V2
         public static bool IsNonExemptSingleton(ReorgContainer c) =>
             c != null && !c.SingletonExempt && c.IsScoredField && IsSingletonShape(c.Units);
 
-        // 2026-10-01 (user decision) — how far an Attack preparation host is from the positions
-        // of its target roster that already have a concrete source (a free same-hex body of a
-        // donor container, a held card):
-        //   pending sources + min(non-roster bodies, max(0, pending sources - free slots)).
-        // Taking a same-hex roster body in lowers the first term; releasing a non-roster body
-        // that blocks a slot lowers the second; taking a non-roster body back in raises it again,
-        // so the planner never ping-pongs. A held card stays pending until Phase A plays it (a
-        // constant for Housekeeping). Zero for every container without a target roster.
-        // The live release floor (AiArmyRoles.GarrisonDefenceFloor) on a virtual roster of the hex:
-        // the garrison's base floor less the power of the resident field armies as they stand in
-        // `rosters`. 2026-11-25 (housekeeping stand E21): a frozen analysis-time floor let a plan
-        // move a free army's body into a departing host and then release a garrison body the live
-        // rule, re-reading the shrunken resident credit, refused.
+        // The live release floor (AiArmyRoles.GarrisonDefenceFloor) on a virtual roster of the hex: the
+        // garrison's base floor less the power of the resident field armies as they stand in `rosters`
+        // (a floor frozen at analysis time would let a plan move a resident's body away and then
+        // release a garrison body the live rule refuses).
         public static float GarrisonFloor(ReorgContainer garrison,
             IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> rosters)
         {
@@ -358,6 +339,12 @@ namespace Game.Ai.V2
             return Math.Max(0f, garrison.GarrisonBaseFloor - resident);
         }
 
+        // How far an Attack preparation host is from the positions of its target roster that have a
+        // concrete source (a free same-hex body of a donor, a held card):
+        //   pending sources + min(non-roster bodies, max(0, pending sources - free slots)).
+        // Taking a roster body in lowers the first term, releasing a non-roster body that blocks a
+        // slot lowers the second, taking it back raises it again — no ping-pong. A held card stays
+        // pending until Phase A plays it. Zero without a target roster.
         public static int PreparationRosterWaste(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
             IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others)
         {
@@ -365,12 +352,9 @@ namespace Game.Ai.V2
             return pending + blocked;
         }
 
-        // 2026-11-25 (housekeeping stand, D01) — the planner's comparison term: the waste above
-        // plus the missing positions whose body stands in a garrison that will not release it
-        // (outside its strongest-first spare set, no exchange either). Putting a free roster
-        // body into the garrison used to LOWER the waste (its pending source vanished) and so
-        // tied with handing it to the host; the body then sat there for good, since neither
-        // Housekeeping nor the preparation's assembly takes a non-spare garrison body.
+        // The planner's comparison term: the waste plus the missing positions whose body stands in a
+        // garrison that will not release it (outside its spare set, no exchange either). Without it a
+        // free roster body put into the garrison would lower the waste and stay there for good.
         public static int PreparationRosterPenalty(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
             IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others)
         {
@@ -412,10 +396,8 @@ namespace Game.Ai.V2
             {
                 if (o.Key == null || o.Key == host || !o.Key.CanDonate || o.Value == null)
                     continue;
-                // A garrison body is a released source only when the garrison may let it go (the
-                // strike view of the one release rule, AiArmyRoles.SpareableBodies over its power
-                // floor) — otherwise the host would release a slot for a body that never comes
-                // (Halden T21-T23 ping-pong).
+                // A garrison body is a source only when the garrison may let it go (AiArmyRoles.SpareableBodies
+                // over its power floor); otherwise the host would free a slot for a body that never comes.
                 List<ReorgUnit> garrisonBodies = o.Key.IsGarrison
                     ? o.Value.Where(x => x != null && x.IsGroundCombatant).ToList() : null;
                 HashSet<int> spare = garrisonBodies == null ? null
@@ -429,11 +411,10 @@ namespace Game.Ai.V2
             foreach (string k in host.PreparationHandKeys ?? Array.Empty<string>())
                 Take(k);
             int released = found;
-            // 2026-11-16 (owner decision) — a garrison body the floor keeps is still a source by
-            // EXCHANGE: a non-roster body of the host goes into the garrison in its place, the
-            // garrison keeping min(held, floor) (AiArmyRoles.KeepsFloorAfterExchange). It counts
-            // as pending (the exchange lowers it) but never as a reason to release a host body
-            // into a free container: only the 1-for-1 exchange can bring it.
+            // A garrison body the floor keeps is still a source by exchange: a non-roster body of the host
+            // goes into the garrison in its place, the garrison keeping min(held, floor)
+            // (AiArmyRoles.KeepsFloorAfterExchange). It counts as pending, but never as a reason to release
+            // a host body into a free container: only the 1-for-1 exchange can bring it.
             var exchangeable = new List<ReorgUnit>(nonTargetBodies.Where(b => !b.IsCommitted)
                 .OrderBy(b => b.Power).ThenBy(b => b.Key));
             foreach (KeyValuePair<ReorgContainer, List<ReorgUnit>> o in others
@@ -483,11 +464,9 @@ namespace Game.Ai.V2
             }
         }
 
-        // §7 — the container holds >= 2 heroes, so which of them commands is a real choice.
-        // The positions of a preparation's target roster (a multiset by card key) that `units` do
-        // not fill yet. `nonRosterBodies`, when given, receives the non-hero bodies outside the
-        // roster, strongest first; an army support carrier is never surplus
-        // (StrikeRoster.NonTargetBodies).
+        // The positions of a preparation's target roster (a multiset by card key) that `units` do not
+        // fill yet. `nonRosterBodies`, when given, receives the non-hero bodies outside the roster,
+        // strongest first; an army support carrier is never surplus (StrikeRoster.NonTargetBodies).
         internal static Dictionary<string, int> RosterNeed(IReadOnlyList<string> target,
             IEnumerable<ReorgUnit> units, List<ReorgUnit> nonRosterBodies = null)
         {
@@ -508,6 +487,7 @@ namespace Game.Ai.V2
             return need;
         }
 
+        // Two or more heroes: which of them commands is a real choice.
         public static bool HasCommanderChoice(ReorgContainer c) =>
             c != null && c.CanReorderCommander && c.Units.Count(u => u != null && u.IsHero) >= 2;
 

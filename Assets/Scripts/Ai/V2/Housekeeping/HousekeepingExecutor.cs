@@ -8,23 +8,18 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  HOUSEKEEPING EXECUTOR  (Strategy V2 — HousekeepingManager, step 8C)
+    //  HOUSEKEEPING EXECUTOR — applies one day plan to the live world.
     // ===========================================================================================
-    //  Applies one pure ReorganizationPlan to LIVE state only through canonical gameplay APIs:
-    //  ArmyActions.TransferMember / ArmyActions.SwapMembers. Every operation is re-preflighted
-    //  against current ownership, same-hex scope, mission claims, capacity, aviation boundaries,
-    //  garrison safety and the 0-AP Housekeeping invariant. No direct roster/registry mutation.
-    //
-    //  Separate successful operations stay applied if a later operation fails. A whole-fold is
-    //  one explicit atomic batch: all of its members pass final-roster preflight and move together,
-    //  or none move. Any unexpected failure still aborts the stale remainder of THIS hex.
+    //  Only through the gameplay APIs (ArmyActions transfer / swap / reorder). Every operation is
+    //  re-checked first against current ownership, same-hex scope, mission contracts, capacity,
+    //  aviation, garrison safety and zero AP. Applied operations stay if a later one fails; a whole
+    //  fold is one atomic batch; the first failure aborts the rest of this hex's plan.
     // ===========================================================================================
     public sealed class HousekeepingExecResult
     {
         public bool StateChanged;
         public int Applied;
         public int Failed;
-        public bool AbortedRemainder;
     }
 
     internal static class HousekeepingExecutor
@@ -107,14 +102,14 @@ namespace Game.Ai.V2
 
                 if (t.IsReorder)
                 {
-                    // §7 — zero-AP commander promotion. No transfer, no AP, membership unchanged.
+                    // Zero-AP commander promotion: no transfer, membership unchanged.
                     if (from.Owner != player || !ArmyRegistry.AllForOwner(player).Contains(from))
                     {
                         Fail(res, plan, $"reorder rejected #{from.Id} ({unit.Name}) - container no longer owned/registered");
                         break;
                     }
-                    // T05 — the same contract the planner read: a claimed container reorders only
-                    // when its operation allows commander promotion.
+                    // The contract the planner read: a claimed container reorders only when its operation allows
+                    // commander promotion.
                     ArmyMutationContract reorderContract =
                         ArmyReorgAnalyzer.MutationContractFor(player, turn, from, commitments);
                     if (reorderContract != null && !reorderContract.MayReorderCommander)
@@ -197,13 +192,12 @@ namespace Game.Ai.V2
         private static void Fail(HousekeepingExecResult res, ReorganizationPlan plan, string detail)
         {
             res.Failed++;
-            res.AbortedRemainder = true;
             AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} - ABORT: {detail}");
         }
 
-        // T05 — `a` gives, `b` receives. The giver must be free (a claimed container never donates);
-        // the receiver may be claimed only while its live contract admits inbound members. Swaps
-        // pass inboundOnly=false: both sides give, so both must be free.
+        // `a` gives, `b` receives. The giver must be free (a claimed container never donates); the
+        // receiver may be claimed only while its contract admits inbound members. Swaps pass
+        // inboundOnly=false: both sides give, so both must be free.
         private static bool CommonPreflight(PlayerSetupData player, int turn, ArmyData a, ArmyData b,
             ActorCommitments commitments, out string why, bool inboundOnly = true,
             UnitData released = null, bool rosterExchange = false)
@@ -219,14 +213,14 @@ namespace Game.Ai.V2
             { why = "aviation container"; return false; }
             ArmyMutationContract giver = ArmyReorgAnalyzer.MutationContractFor(player, turn, a, commitments);
             ArmyMutationContract receiver = ArmyReorgAnalyzer.MutationContractFor(player, turn, b, commitments);
-            // ATK-F03 — the one outbound exception: a preparation host lets a non-commander hero
-            // go to a free container (the planner chose it as an excess hero).
+            // The outbound exceptions of a preparation host: a non-commander hero the planner released as
+            // excess may go to a free container,
             bool heroRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
                 && released != null && released.IsHero && released != a.Commander && receiver == null
                 && (!StrategicEffectRegistry.IsArmySupportCarrier(released)
                     || AiArmyRoles.IsSoleFacilityOperator(player, a.Hex, released));
-            // 2026-10-01 — and a body its frozen target roster does not contain (the planner chose
-            // it for a missing position's source; ReorgViability.PreparationRosterWaste).
+            // and so may a body its frozen target roster does not contain (released for a missing
+            // position's source).
             bool bodyRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
                 && receiver == null && giver.MayReleaseBody(a, released);
             if (giver != null && !heroRelease && !bodyRelease && !rosterExchange)
@@ -240,7 +234,7 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // T05 — live twin of the planner's CanAccept movement floor: a route-bound operation
+        // The planner's CanAccept movement floor on the live roster: a route-bound operation
         // (contract.KeepsMovement) must not be slowed by the members joining it.
         private static bool KeepsOperationMovement(PlayerSetupData player, int turn, ArmyData to,
             IReadOnlyList<UnitData> incoming, ActorCommitments commitments, out string why)
@@ -318,10 +312,9 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Live twin of the planner's TrySwap rosterExchange: `armyA` is a claimed Attack preparation
-        // host whose contract releases `unitA` (a body its target roster does not contain) and
-        // takes inbound members; `armyB` is the free local garrison giving `unitB`, a body whose
-        // key the roster names.
+        // The planner's TrySwap rosterExchange on the live armies: `armyA` is a claimed Attack preparation
+        // host whose contract releases `unitA` (a body its target roster does not contain) and takes
+        // inbound members; `armyB` is the free local garrison giving `unitB`, a body the roster names.
         private static bool IsPreparationRosterExchange(PlayerSetupData player, int turn, ArmyData armyA,
             UnitData unitA, ArmyData armyB, UnitData unitB, ActorCommitments commitments)
         {
@@ -358,9 +351,8 @@ namespace Game.Ai.V2
                 UnitData entering = garrisonA ? unitB : unitA;  // field  -> garrison
                 if (!leaving.IsHero)
                 {
-                    // 2026-11-16 — the one body-for-body garrison exchange: a preparation host's
-                    // non-roster body for a missing roster position (the planner's TrySwap
-                    // rosterExchange), the garrison keeping min(held, floor).
+                    // The one body-for-body garrison exchange: a preparation host's non-roster body for a missing
+                    // roster position, the garrison keeping min(held, floor).
                     if (!rosterExchange)
                     { why = "garrison swap must send a hero out"; return false; }
                     if (!AiArmyRoles.GarrisonExchangeKeepsFloor(player, garr, leaving, entering))
@@ -373,7 +365,7 @@ namespace Game.Ai.V2
             if (movedUnits.Contains(unitA) || movedUnits.Contains(unitB)) { why = "swap member already moved this plan"; return false; }
             if (!armyA.Members.Contains(unitA) || !armyB.Members.Contains(unitB)) { why = "swap membership changed"; return false; }
             if (unitA.IsAviation || unitB.IsAviation) { why = "aviation unit"; return false; }
-            // unitA enters B, unitB enters A. Zero-AP invariant mirrors ArmyActions.CanSwapMembers.
+            // unitA enters B, unitB enters A, at zero AP (ArmyActions.CanSwapMembers).
             if ((unitA.ActivationApCost > 0 && armyB.RequiresActivationCharge(unitA))
                 || (unitB.ActivationApCost > 0 && armyA.RequiresActivationCharge(unitB)))
             { why = "swap would spend AP on activated destination"; return false; }

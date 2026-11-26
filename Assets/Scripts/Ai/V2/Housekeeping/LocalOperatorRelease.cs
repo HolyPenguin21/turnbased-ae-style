@@ -9,13 +9,14 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  LOCAL OPERATOR RELEASE — THE one rule for a Research/Production operator that stands in a
-    //  field army on the hex of its own facility and may stay home when that army works elsewhere.
-    //  The hero moves to the own garrison of the SAME hex, zero AP, so the facility keeps its
-    //  operator (ResearchProductionSystem.FindActors reads every own army on the hex).
-    //  Read by the Housekeeping planner's twin (HousekeepingExecutor live preflight) and by the
-    //  pre-departure step of every ground operation (TaskExecutor); never a second predicate.
-    //  Cross-hex donation of a needed operator stays forbidden (AiArmyRoles.IsFacilityOperator).
+    //  LOCAL OPERATOR RELEASE — a Research/Production operator that stands in a field army on the
+    //  hex of its own facility stays home when that army leaves.
+    // ===========================================================================================
+    //  The hero moves, zero AP, to the own garrison of the same hex, so the facility keeps its
+    //  operator (ResearchProductionSystem.FindActors reads every own army on the hex). Asked by the
+    //  Housekeeping executor's preflight, the pre-departure step of every ground operation
+    //  (TaskExecutor) and the departure checks of Economy / Development. A cross-hex donation of a
+    //  needed operator stays forbidden (AiArmyRoles.IsFacilityOperator).
     // ===========================================================================================
     internal static class LocalOperatorRelease
     {

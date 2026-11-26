@@ -161,10 +161,8 @@ namespace Game.Ai.V2
             $"A{p.Attack:0.#}/D{p.Defense:0.#}/HP{p.HitPoints:0.#}/I{p.Initiative}"
             + (p.Abilities.Count > 0 ? "/skills:" + string.Join("+", p.Abilities) : "");
 
-        // §16 — the aggregate block above logs inputs, decision and final state; this adds only
-        // the important UNRESOLVED
-        // structural defects a debug run needs, without flooding the log with every rejected
-        // candidate. Only containers the plan did not touch are reported.
+        // The block above logs inputs, decision and final state; this adds only the unresolved
+        // structural defects of containers the plan did not touch.
         private static void LogUnresolvedStructuralDefects(LocalForceGroup group, ReorganizationPlan plan)
         {
             if (group?.Containers == null || plan == null)

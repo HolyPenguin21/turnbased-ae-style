@@ -5,8 +5,8 @@ namespace Game.Ai.V2
 {
     public static partial class ArmyReorganizationPlanner
     {
-        // §7 — zero-AP roster reorder inside one container: move `hero` to the front of the
-        // roster (heroes stay a contiguous prefix). Membership and counts are unchanged.
+        // Zero-AP reorder inside one container: `hero` moves to the front (heroes stay a contiguous
+        // prefix); membership is unchanged.
         private static VState TryReorderCommander(VState state, int armyId, ReorgUnit hero)
         {
             VState c = state.Clone();
@@ -25,10 +25,9 @@ namespace Game.Ai.V2
             return c;
         }
 
-        // Garrison-only twin of the commander reorder: restore the canonical hero order (heroes by
-        // descending CommandRating) in ONE zero-AP mutation, which the executor applies as
-        // ArmyData.NormalizeGarrisonOrder. Unlike a commander promotion it does not mark the hero
-        // moved: a roster-order restore never consumes the one-transfer-per-unit budget.
+        // The garrison's commander reorder: restore its canonical hero order in one zero-AP mutation
+        // (ArmyData.NormalizeGarrisonOrder). It does not mark the hero moved: a roster-order restore
+        // never consumes the one-transfer-per-unit budget.
         private static VState TryNormalizeGarrison(VState state, int armyId)
         {
             VState c = state.Clone();
@@ -103,8 +102,8 @@ namespace Game.Ai.V2
             ReorgUnit u = from.FirstOrDefault(x => x.Key == unit.Key);
             ReorgContainer srcMeta = c.Meta[srcId];
             ReorgContainer dstMeta = c.Meta[dstId];
-            // 2026-11-18 (owner) — a hero entering a hero-only bench on the hex stays where it
-            // serves (ReorgViability.IsHexBench): an operator / Support hero may take that step.
+            // A hero entering a hero-only bench on the hex stays where it serves (ReorgViability.IsHexBench):
+            // an operator / Support hero may take that step.
             bool toHexBench = u != null && u.IsHero && ReorgViability.IsHexBench(dstMeta, to);
             if (u == null || c.MovedUnitKeys.Contains(u.Key) || u.IsCommitted
                 || (u.IsDevelopmentOperator && !allowDevelopmentOperator && !toHexBench) || u.IsAviation)
@@ -170,9 +169,8 @@ namespace Game.Ai.V2
             return movedAny && ReorgViability.IsViable(weak) ? c : null;
         }
 
-        // `rosterExchange` (2026-11-16, owner decision) — side A is an Attack preparation host
-        // (its contract names a target roster) giving a body that roster does not contain, side B
-        // the local garrison giving a body of a missing position; the garrison keeps
+        // `rosterExchange` — side A is an Attack preparation host giving a body its target roster does not
+        // contain, side B the local garrison giving a body of a missing position; the garrison keeps
         // min(held, floor) below. The only exchange a claimed container takes part in.
         private static VState TrySwap(VState state, int aId, ReorgUnit unitA,
             int bId, ReorgUnit unitB, bool rosterExchange = false)
@@ -185,9 +183,8 @@ namespace Game.Ai.V2
             ReorgUnit ua = a.FirstOrDefault(x => x.Key == unitA.Key);
             ReorgUnit ub = b.FirstOrDefault(x => x.Key == unitB.Key);
 
-            // T05 — a claimed operation container never gives a member away, so it is never a
-            // side of an exchange (its contract admits inbound only) — except a preparation
-            // host's body-for-body roster exchange with the local garrison (`rosterExchange`).
+            // A claimed operation container never gives a member away (its contract admits inbound only),
+            // so it is never a side of an exchange — except the preparation host's roster exchange.
             bool hostExchange = rosterExchange && aMeta.PreparationTargetKeys != null
                 && aMeta.CanReceive && bMeta.IsGarrison && bMeta.CanChangeComposition
                 && unitA != null && !unitA.IsHero && unitB != null && !unitB.IsHero;
@@ -221,8 +218,7 @@ namespace Game.Ai.V2
                 || !KeepsTransportedMovement(b, afterB, bMeta, ua))
                 return null;
 
-            // §P1 — a garrison side of the swap must keep its defensive power reserve (same
-            // "only if currently above it" semantics as GarrisonMayRelease).
+            // A garrison side keeps its defensive power floor (the same rule as GarrisonMayRelease).
             if (aMeta.IsGarrison && !GarrisonRosterKeepsFloor(a, ua, ub, GarrisonFloorIn(c, aMeta)))
                 return null;
             if (bMeta.IsGarrison && !GarrisonRosterKeepsFloor(b, ub, ua, GarrisonFloorIn(c, bMeta)))
@@ -266,7 +262,7 @@ namespace Game.Ai.V2
                 && !MissionReceiverTakesHero(state, dest, u, destMeta))
                 return false;
             if (destMeta.ChargesActivationFor(u))
-                return false; // TransferMember would spend AP, which Step 8C does not own.
+                return false; // the transfer would spend AP; Housekeeping owns none
             var after = new List<ReorgUnit>(dest);
             ReorgViability.AddMemberSorted(after, u, destMeta.IsGarrison);
             // Check the final roster under the SAME domain support rule as live transfer.

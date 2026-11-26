@@ -12,15 +12,12 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  ARMY REORG ANALYZER  (Strategy V2 — HousekeepingManager, step 8C)
+    //  ARMY REORG ANALYZER — the live world of one player -> immutable per-hex projections.
     // ===========================================================================================
-    //  LIVE post-Phase-B world -> immutable LocalForceGroup projections + executor back-maps.
-    //  Reuses canonical signals instead of inventing a second source of truth:
-    //    · role/protection   — AiArmyRoles / AviationRules / ActorCommitments / strategic leases
-    //    · garrison safety   — AiConfig secure* floors, rechecked by AiArmyRoles at execution
-    //    · strength/compo    — AiPower.PowerUnit from final live UnitData (Equipment already applied)
-    //    · capacity ordering — the live ArmyData.Members order, because FIRST hero CommandRating wins
-    //    · AP legality       — HasActivatedThisTurn + each member's effective ActivationApCost
+    //  LocalForceGroup per own hex plus the back-maps the executors resolve. Every signal comes from
+    //  its owner: role and protection (AiArmyRoles, AviationRules, ActorCommitments, the capability
+    //  lease), garrison floors (AiArmyRoles), strength (AiPower over the final live units), capacity
+    //  order (the live roster: the first hero commands), AP legality (activation state and cost).
     // ===========================================================================================
     public sealed class ArmyReorgAnalysis
     {
@@ -132,7 +129,6 @@ namespace Game.Ai.V2
                     MovementSpent = u.MovementSpent,
                     RuntimeIdentity = u.RuntimeId,
                     TransportCarrierIdentity = u.TransportCarrier?.RuntimeId ?? -1,
-                    HasRecce = AbilityParams.UnitHasAnyRecce(u),
                     IsAviation = u.IsAviation,
                     IsCommitted = false,
                     StrikeKey = StrikeRoster.UnitKey(u),
@@ -154,9 +150,9 @@ namespace Game.Ai.V2
                 && (container.Role == ReorgPhysicalRole.NormalFieldArmy || container.Role == ReorgPhysicalRole.Garrison);
             container.CanReorderCommander = container.CanChangeComposition;
 
-            // T05 — a claimed operation protects its FUNCTION, not a frozen roster: its contract
-            // (ActorCommitments, the one claim authority) says whether free members may join,
-            // whether its commander may be promoted and whether its route speed is binding.
+            // A claimed operation protects its function, not a frozen roster: its contract (ActorCommitments)
+            // says whether free members may join, whether its commander may be promoted and whether its
+            // route speed is binding.
             if (protectedOwner)
             {
                 ArmyMutationContract contract = MutationContractFor(player, turn, army, commitments)
@@ -194,9 +190,8 @@ namespace Game.Ai.V2
             if (army.IsGarrison)
             {
                 bool isCitadel = army.Hex.Equals(citadelHex);
-                // 2026-09-30 — one body always stays; the defence itself is a power floor read
-                // only when a body leaves (a small shortfall bought for a strong attacker is
-                // legal, so it is never a deficit Housekeeping refills).
+                // One body always stays; the defence itself is a power floor read only when a body leaves
+                // (a small shortfall bought for a strong attacker is legal, never a deficit to refill).
                 container.GarrisonNonHeroFloor = 1;
                 container.GarrisonPowerFloor = AiArmyRoles.GarrisonDefenceFloor(player, army.Hex, isCitadel);
                 container.GarrisonBaseFloor = AiArmyRoles.GarrisonFloorBeforeResidents(player, army.Hex, isCitadel);
@@ -210,9 +205,9 @@ namespace Game.Ai.V2
             return container;
         }
 
-        // 2026-11-26 (owner) — the hex's fist, on a hex with an own garrison: a free field army
-        // (FistMusterObjectiveEvaluator.IsLiveFistContainer) led by a hero with fighters, the
-        // widest command first, then the strongest (FistHost's order).
+        // The hex's fist, on a hex with an own garrison: a free field army
+        // (FistMusterObjectiveEvaluator.IsLiveFistContainer) led by a hero with fighters, the widest
+        // command first, then the strongest (FistHost's order).
         private static void MarkFist(PlayerSetupData player, List<ReorgContainer> containers,
             Dictionary<int, ArmyData> armyById)
         {
@@ -286,18 +281,16 @@ namespace Game.Ai.V2
             IReadOnlyList<HexCoord> bases = snapshot.Self?.BaseHexes
                 ?? (IReadOnlyList<HexCoord>)System.Array.Empty<HexCoord>();
 
-            // §Task4 — every friendly non-hero unit currently on this hex, keyed the same way the
-            // planner's virtual roster keeps them. Visibility is evaluated once here, off the live
-            // roster, and travels with the Key through every later virtual transfer/swap.
+            // Every friendly non-hero unit on this hex, keyed as the planner's virtual roster keeps them.
+            // Visibility is read once here, off the live roster, and travels with the key through every
+            // virtual transfer.
             List<ReorgUnit> nonHeroFriendlies = containers.SelectMany(c => c.Units)
                 .Where(u => u != null && u.IsGroundCombatant).ToList();
 
-            // Owner decision 2026-11-05: a hidden enemy (fog/stealth cheat) only benchmarks the
-            // Citadel's own group, so its garrison is never packaged as an easy win; anywhere
-            // else Housekeeping packages against honestly seen enemies only. It never creates a
-            // threat or blocks a mission either way (Housekeeping owns neither).
-            // The starting Citadel only, while held: Self.Citadel falls back to another base once
-            // it is lost (and to a default hex with no base at all).
+            // A hidden enemy (fog/stealth cheat) benchmarks only the held starting Citadel's group, so its
+            // garrison is never packaged as an easy win; anywhere else only honestly seen enemies count.
+            // It never creates a threat or blocks a mission (Housekeeping owns neither). Self.Citadel falls
+            // back to another base once the starting Citadel is lost.
             bool citadelGroup = snapshot.Self != null && snapshot.Self.HoldsStartingCitadel
                 && groupHex.Equals(snapshot.Self.Citadel);
             foreach (ArmySnapshot enemy in enemies.OrderBy(a => a?.ArmyId ?? int.MaxValue))
@@ -333,10 +326,9 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // T05 — the claim's contract, intersected with a strategic capability lease (a leased,
-        // unclaimed army may be reinforced but never taken apart). Null for a free army.
-        // Same precedence as ClassifyRole: a garrison is a garrison whatever leased it (a card
-        // played into it), and a leased scout / collector keeps its solo shape (no inbound).
+        // The claim's contract intersected with the capability lease (a leased, unclaimed army may be
+        // reinforced but never taken apart); null for a free army. Same precedence as ClassifyRole: a
+        // garrison is a garrison whatever leased it, and a leased scout / collector keeps its solo shape.
         internal static ArmyMutationContract MutationContractFor(PlayerSetupData player, int turn,
             ArmyData army, ActorCommitments commitments)
         {
@@ -356,18 +348,13 @@ namespace Game.Ai.V2
             ArmyMutationContract protection = MissionActorPolicy.PhysicalMutationContract(player, turn, army, commitments);
             if (protection != null && !protection.ProtectsSoloRole)
                 return ReorgPhysicalRole.ProtectedMissionArmy;
-            // §P1 — the SoloRecce role protects a scout only while it actually has recon WORK: a
-            // live ReconPatrolState (claim/lease already returned ProtectedMissionArmy above). An
-            // idle scout-shaped army with no assignment is just an ordinary singleton the zero-AP
-            // reorg pass may fold or reuse.
+            // The SoloRecce role protects a scout only while it has recon work (a live ReconPatrolState;
+            // claim and lease already returned ProtectedMissionArmy above). An idle scout-shaped army is an
+            // ordinary singleton the reorg may fold or reuse.
             if (AiArmyRoles.IsSoloRecce(army) && protection?.ProtectsSoloRole == true)
                 return ReorgPhysicalRole.SoloRecce;
-            // A solo collector belongs to itself, same call as SoloRecce above — it is never
-            // folded into another army by zero-AP reorg. Unlike SoloRecce there is no separate
-            // "still has work" registry to gate on: once it is this shape at all, housekeeping
-            // leaves it alone (its own MobileCollection MissionIntent claim already protects it
-            // via ProtectedMissionArmy while actively travelling/assigned; this covers the gap
-            // once it is parked and passively earning, when that claim may no longer be live).
+            // A solo collector is never folded into another army either. Its MobileCollection claim protects
+            // it while it travels (ProtectedMissionArmy); this covers it parked and passively earning.
             if (AiArmyRoles.IsSoloCollector(army))
                 return ReorgPhysicalRole.SoloCollector;
             if (army.Members.Count == 0)
