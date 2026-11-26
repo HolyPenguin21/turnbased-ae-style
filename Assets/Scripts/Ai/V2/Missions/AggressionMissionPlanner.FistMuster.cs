@@ -23,16 +23,21 @@ namespace Game.Ai.V2
                 || LiveAttackOperation(activeIntents) != null
                 || AttackForceReadiness.MobilizationOpen(snap.Self))
                 return;
-            // A live defensive regroup or withdrawal owns where the armies stand: a muster to the
-            // staging Base would walk the same armies the other way on the next turn.
+            // A defensive regroup or withdrawal owns where the armies stand, whether it is a live
+            // intent or proposed by this pass (AppendActiveDefence runs first): a muster to the
+            // staging Base would walk the same armies the other way, or the same army the same way
+            // under a second key.
             MissionIntent defensive = activeIntents?.FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
                 && i.ActiveDefence?.Phase == ActiveDefencePhase.Return
-                && (i.ActiveDefence.ReturnPurpose == ActiveDefenceReturnPurpose.RegroupForAsset
-                    || i.ActiveDefence.ReturnPurpose == ActiveDefenceReturnPurpose.SafeWithdrawal));
-            if (defensive != null)
+                && IsDefensiveReturn(i.ActiveDefence.ReturnPurpose));
+            MissionProposal proposed = defensive != null ? null : proposals.FirstOrDefault(p =>
+                p?.Target is ActiveDefenceMissionTarget t && t.Phase == ActiveDefencePhase.Return
+                && IsDefensiveReturn(t.ReturnPurpose));
+            if (defensive != null || proposed != null)
             {
                 AiDebugLog.WriteDeduped($"muster-hold#{snap.Observer?.ColorIndex}",
-                    $"[AI][V2][Muster] decision=HOLD reason=defensive_return_live:{defensive.IntentKey}");
+                    "[AI][V2][Muster] decision=HOLD reason=defensive_return_"
+                    + (defensive != null ? $"live:{defensive.IntentKey}" : $"proposed:{StableMissionKey.For(proposed)}"));
                 return;
             }
             AttackObjective objective = PreparationObjectives(objectives, activeIntents).FirstOrDefault();
@@ -79,5 +84,9 @@ namespace Game.Ai.V2
                 proposals.Add(proposal);
             }
         }
+
+        private static bool IsDefensiveReturn(ActiveDefenceReturnPurpose purpose) =>
+            purpose == ActiveDefenceReturnPurpose.RegroupForAsset
+            || purpose == ActiveDefenceReturnPurpose.SafeWithdrawal;
     }
 }
