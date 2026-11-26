@@ -285,12 +285,16 @@ namespace Game.Ai.V2
                 StrategicInterruptRegistry.ClearDiscovery(player, ctx.TurnNumber);
             }
 
+            // The reaction's own Phase B round, on the Phase B recipe (TempoRound): current
+            // knowledge and Recon objectives, the completion holds revalidated before it spends.
             snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
+            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
             ActorCommitments postCommitments = ActorCommitments.FromIntents(
                 snapshot.AllIntents, snapshot, null);
+            StrategicManager.BeforeTempoSpend(player, intentState, root, hand, ctx);
             var phaseB = new StrategicPhaseResult();
             yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                postCommitments, phaseA.Reservation, phaseB);
+                postCommitments, phaseA.Reservation, phaseB, reconObjectives);
             result.CardsPlayed += phaseB.CardsPlayed;
             result.CardsDrawn += phaseB.CardsDrawn;
             result.StateChanged |= phaseB.StateChanged || allExecuted.Any(e => e != null && e.Outcome.StateChanged);
