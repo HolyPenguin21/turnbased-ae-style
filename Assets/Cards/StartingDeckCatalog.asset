@@ -2147,7 +2147,7 @@ MonoBehaviour:
     - cardKey: ashen.card.rad-leaper
       count: 2
     - cardKey: ashen.card.roadbreaker
-      count: 4
+      count: 3
     - cardKey: ashen.card.rad-hunter
       count: 2
     - cardKey: ashen.card.hooded
@@ -2163,7 +2163,7 @@ MonoBehaviour:
     - cardKey: neutral.facility.intel
       count: 1
     - cardKey: ashen.card.blister-juggernaut
-      count: 3
+      count: 2
     - cardKey: ashen.card.flywheel
       count: 1
     - cardKey: ashen.card.ash-crossbowman
@@ -2175,6 +2175,10 @@ MonoBehaviour:
     - cardKey: ashen.card.scrap-shaman
       count: 1
     - cardKey: ashen.card.tech-scrapper
+      count: 2
+    - cardKey: ashen.card.furnace-tortoise
+      count: 1
+    - cardKey: ashen.card.cinder-stalker
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -3157,7 +3161,7 @@ MonoBehaviour:
     - cardKey: ashen.card.scab-shield
       count: 4
     - cardKey: ashen.card.roadbreaker
-      count: 4
+      count: 3
     - cardKey: ashen.card.rad-hunter
       count: 2
     - cardKey: ashen.card.hooded
@@ -3173,7 +3177,7 @@ MonoBehaviour:
     - cardKey: neutral.facility.intel
       count: 1
     - cardKey: ashen.card.blister-juggernaut
-      count: 4
+      count: 3
     - cardKey: ashen.card.flywheel
       count: 1
     - cardKey: ashen.card.ash-walker
@@ -3182,6 +3186,8 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.tech-scrapper
       count: 2
+    - cardKey: ashen.card.carrion-mother
+      count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
       count: 1
@@ -4577,7 +4583,7 @@ MonoBehaviour:
     - cardKey: vessels.01.relay-base
       count: 1
     - cardKey: vessels.20.siege-walker
-      count: 2
+      count: 1
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
@@ -4585,10 +4591,12 @@ MonoBehaviour:
     - cardKey: vessels.16.bulwark-vessel
       count: 1
     - cardKey: vessels.27.lens-watcher
-      count: 1
+      count: 2
     - cardKey: vessels.23.echo-mortar
       count: 1
     - cardKey: vessels.unit.halo-kite
+      count: 1
+    - cardKey: vessels.unit.choir-roller
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -4773,7 +4781,7 @@ MonoBehaviour:
     - cardKey: vessels.01.relay-base
       count: 1
     - cardKey: vessels.20.siege-walker
-      count: 2
+      count: 1
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
@@ -4791,6 +4799,10 @@ MonoBehaviour:
     - cardKey: vessels.unit.choir-roller
       count: 1
     - cardKey: vessels.unit.prism-lancer
+      count: 1
+    - cardKey: vessels.unit.mnemonic-carrier
+      count: 1
+    - cardKey: vessels.unit.spindle-gunner
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
