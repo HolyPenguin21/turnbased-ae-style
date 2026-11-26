@@ -62,7 +62,7 @@ namespace Game.Ai.V2
         //  feasibility are never duplicated here — they are read live from AviationRange and
         //  AiAirSortiePlanner every decision.
         // ===================================================================================
-        public int LastProcessedTurn = -1;                          // last AI turn RunActor processed this sortie
+        public int LastProcessedTurn = -1;                          // last AI turn an air step processed this sortie
         public string LastDecisionReason;                           // one-line "why" for the last airborne decision (telemetry)
 
         // True on the first call of an AI turn this sortie has not been processed in yet — lets the
