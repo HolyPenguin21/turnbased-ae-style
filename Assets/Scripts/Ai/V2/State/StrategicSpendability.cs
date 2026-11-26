@@ -278,11 +278,11 @@ namespace Game.Ai.V2
                 ? 0f : OutstandingOperationContinuationAp(player, root, ctx);
 
         // Every Spendable* query below is TurnResourceBook.Free under a SpendAuthority: the
-        // caller's own hold (excludeOwner) and, for a build completing now, other builds'
-        // deferred holds are the only claims it may draw on.
+        // caller's own hold and, for a build completing now, other builds' deferred holds are the
+        // only claims it may draw on. Without an authority every hold counts.
         internal static float SpendableAp(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, string excludeOwner = null) =>
-            SpendableAp(player, root, ctx, new SpendAuthority(excludeOwner, false));
+            AiTurnContext ctx) =>
+            SpendableAp(player, root, ctx, default(SpendAuthority));
 
         internal static float SpendableAp(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, SpendAuthority authority) =>
@@ -298,12 +298,9 @@ namespace Game.Ai.V2
             FitsSpendable(player, root, ctx, cost, authority);
 
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock.
-        // `excludeOwner` drops the caller's OWN reservation (by its EXACT Owner
-        // key, not by the shared Reason) so a re-probe of the reaction that placed a hold does not fail
-        // against itself and two owners sharing a Reason can't shadow each other's revalidation.
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ResourceCost cost, string excludeOwner = null)
-            => FitsSpendable(player, root, ctx, cost, new SpendAuthority(excludeOwner, false));
+            AiTurnContext ctx, ResourceCost cost)
+            => FitsSpendable(player, root, ctx, cost, default(SpendAuthority));
 
         // The Economy-completion gate: an Economy build that finishes THIS turn (Provisioning's
         // completion stage, its Execution re-check, or a Phase A on-hex build). Every other

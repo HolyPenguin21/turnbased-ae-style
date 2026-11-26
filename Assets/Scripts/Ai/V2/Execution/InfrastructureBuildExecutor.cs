@@ -155,7 +155,7 @@ namespace Game.Ai.V2
         internal static bool UpgradeBaseCapacity(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             BuildingData b, BaseUpgradeTier tier)
         {
-            V2PhaseActivity activity = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
+            V2TurnActivity activity = V2TurnActivityTelemetry.For(player, ctx.TurnNumber);
             activity.InfrastructureAttempts++;
             int apBefore = root.ActionPoints;
             BaseUpgradeTier[] tiers = ctx.GameConfig?.baseUpgradeTiers;

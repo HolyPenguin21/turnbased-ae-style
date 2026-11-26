@@ -18,12 +18,11 @@ namespace Game.Ai.V2
     //  tentative claims, was proven unable) is exhaustion.
     //
     //  SCOPE + INVALIDATION (spec §7). A new TURN (BeginTurn) is a genuinely fresh slate: AP and
-    //  movement refill, armies un-activate, so every pool is re-evaluated from scratch. A new
-    //  reaction ROUND (BeginRound) is NOT — it does not, on its own, change capability state, so
-    //  exhaustion is CARRIED, and lifted only when a cheap pool-level revalidation
+    //  movement refill, armies un-activate, so every pool is re-evaluated from scratch. Within the
+    //  turn exhaustion is lifted only when a cheap pool-level revalidation
     //  (RevalidateAndClearIfRecovered) proves at least one eligible actor now exists — e.g. after
-    //  Phase A inside the round materialised a new scout, or an actor freed up. An exhausted pool
-    //  with still-zero eligible actors is never asked to provision again.
+    //  Phase A materialised a new scout, or an actor freed up. An exhausted pool with still-zero
+    //  eligible actors is never asked to provision again.
     // ===========================================================================================
     internal enum CapabilityPoolKind
     {
@@ -40,7 +39,6 @@ namespace Game.Ai.V2
         private sealed class Scope
         {
             public int Turn = -1;
-            public int Round;                       // 0 == main pipeline, >=1 == reaction round
             public readonly Dictionary<CapabilityPoolKind, string> Exhausted =
                 new Dictionary<CapabilityPoolKind, string>();
             public readonly Dictionary<StableMissionKey, string> DeferredMissions =
@@ -65,7 +63,6 @@ namespace Game.Ai.V2
         {
             Scope s = Get(player);
             s.Turn = turn;
-            s.Round = 0;
             s.Exhausted.Clear();
             s.DeferredMissions.Clear();
             s.RetryNextTurn.Clear();
@@ -75,23 +72,6 @@ namespace Game.Ai.V2
         {
             if (player != null && ByPlayer.TryGetValue(player, out Scope scope) && scope.Turn == turn)
                 ByPlayer.Remove(player);
-        }
-
-        // A bounded reaction round does NOT, by itself, change capability state — so it does NOT
-        // clear exhaustion (spec §7). Recovery is proven per-pool by RevalidateAndClearIfRecovered.
-        // A turn boundary (BeginTurn) still resets, and the same is true if the turn number moved
-        // (a stale carry from an earlier turn is never trusted).
-        public static void BeginRound(PlayerSetupData player, int turn, int round)
-        {
-            Scope s = Get(player);
-            if (s.Turn != turn)
-            {
-                s.Exhausted.Clear();
-                s.DeferredMissions.Clear();
-                s.RetryNextTurn.Clear();
-            }
-            s.Turn = turn;
-            s.Round = round;
         }
 
         public static bool IsExhausted(PlayerSetupData player, CapabilityPoolKind pool)
@@ -113,17 +93,15 @@ namespace Game.Ai.V2
             if (snap != null && PoolHasEligibleActor(snap, player, pool))
             {
                 s.Exhausted.Remove(pool);
-                AiDebugLog.Write($"[AI][V2] capability pool recovered - {pool} revalidated as usable this "
-                    + $"{(s.Round == 0 ? "turn" : "reaction round " + s.Round)}");
-                V2Phase phase = s.Round == 0 ? V2Phase.Main : V2Phase.Reaction;
-                V2TurnActivityTelemetry.Phase(player, s.Turn, phase).PoolRecoveries++;
+                AiDebugLog.Write($"[AI][V2] capability pool recovered - {pool} revalidated as usable this turn");
+                V2TurnActivityTelemetry.For(player, s.Turn).PoolRecoveries++;
                 return true;
             }
             return false;
         }
 
         // NoExecutableStep already means RetryNextTurn. Keep that exact stable mission out of
-        // later main/reaction re-packs this turn; pool recovery remains a separate concern.
+        // later re-packs this turn; pool recovery remains a separate concern.
         public static bool CanAttempt(PlayerSetupData player, MissionProposal mission,
             WorldSnapshot snap)
         {
@@ -213,10 +191,8 @@ namespace Game.Ai.V2
             if (!s.Exhausted.ContainsKey(pool))
             {
                 s.Exhausted[pool] = reason ?? "pool-wide failure";
-                AiDebugLog.Write($"[AI][V2] capability pool exhausted - {pool} this "
-                    + $"{(s.Round == 0 ? "turn" : "reaction round " + s.Round)}: {s.Exhausted[pool]}");
-                V2Phase phase = s.Round == 0 ? V2Phase.Main : V2Phase.Reaction;
-                V2TurnActivityTelemetry.Phase(player, s.Turn, phase).ExhaustionEvents++;
+                AiDebugLog.Write($"[AI][V2] capability pool exhausted - {pool} this turn: {s.Exhausted[pool]}");
+                V2TurnActivityTelemetry.For(player, s.Turn).ExhaustionEvents++;
             }
         }
 
@@ -288,17 +264,14 @@ namespace Game.Ai.V2
             }
         }
 
-        // The one single-mission provisioning-failure settlement shared by the main loop and the
-        // reaction rounds: defer, then mark the pool exhausted only on the pool-wide proof.
-        internal static bool RecordProvisionFailure(WorldSnapshot snap, PlayerSetupData player,
-            MissionProposal mission, ProvisionFailure failure, string reasonPrefix = "")
+        // The one single-mission provisioning-failure settlement: defer, then mark the pool
+        // exhausted only on the pool-wide proof.
+        internal static void RecordProvisionFailure(WorldSnapshot snap, PlayerSetupData player,
+            MissionProposal mission, ProvisionFailure failure)
         {
             DeferNoExecutableStep(player, mission, failure);
-            bool poolWide = ProvenPoolWideUnable(snap, player, mission, failure);
-            if (poolWide)
-                MarkExhausted(player, PoolFor(mission),
-                    $"{reasonPrefix}{failure.Kind}: no eligible actor in snapshot");
-            return poolWide;
+            if (ProvenPoolWideUnable(snap, player, mission, failure))
+                MarkExhausted(player, PoolFor(mission), $"{failure.Kind}: no eligible actor in snapshot");
         }
 
         // Exhaustion is a claim about the whole physical pool, not about one batch's session

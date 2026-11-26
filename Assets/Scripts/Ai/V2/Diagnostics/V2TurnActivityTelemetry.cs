@@ -7,19 +7,16 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  V2 TURN ACTIVITY TELEMETRY  (Strategy V2)
     // ===========================================================================================
-    //  One per-player, per-turn record of WHAT the AI actually did and IN WHICH PHASE. The main
-    //  pipeline (Pipeline.RunTurn) writes the Main bucket; StrategicReactionPass writes the
-    //  Reaction bucket (additively across its bounded rounds). Total is Main + Reaction with NO
-    //  double counting — each source writes its own bucket exactly once per phase.
+    //  One per-player, per-turn record of WHAT the AI actually did. The pipeline (Pipeline.RunTurn)
+    //  writes it once at the end of the turn; the capability-pool registry and the infrastructure
+    //  executor add their own events.
     //
     //  Counters are deliberately DERIVED from facts the pipeline already produced (demand lists,
     //  funded/provisioned lists, ExecutionResult stop reasons, StrategicPhaseResult.CardsPlayed)
     //  rather than incremented ad hoc at scattered call sites, so a miscount is a wiring bug in
     //  one place, not a drift across ten.
     // ===========================================================================================
-    internal enum V2Phase { Main, Reaction }
-
-    internal sealed class V2PhaseActivity
+    internal sealed class V2TurnActivity
     {
         public int DemandsRaised;
         public int MissionsConsidered;
@@ -46,36 +43,6 @@ namespace Game.Ai.V2
         public int InfrastructureAttempts;
         public int InfrastructureBuilt;
 
-        public void Add(V2PhaseActivity o)
-        {
-            if (o == null) return;
-            DemandsRaised += o.DemandsRaised;
-            MissionsConsidered += o.MissionsConsidered;
-            MissionsFunded += o.MissionsFunded;
-            Provisioned += o.Provisioned;
-            foreach (KeyValuePair<ProvisionFailureKind, int> failure in o.ProvisionFailures)
-            {
-                ProvisionFailures.TryGetValue(failure.Key, out int current);
-                ProvisionFailures[failure.Key] = current + failure.Value;
-            }
-            ExecutionAttempts += o.ExecutionAttempts;
-            ExecutionsSucceeded += o.ExecutionsSucceeded;
-            ExecutionsStaleOrSkipped += o.ExecutionsStaleOrSkipped;
-            CardsPlayed += o.CardsPlayed;
-            CardsDrawn += o.CardsDrawn;
-            CapabilityDeliveries += o.CapabilityDeliveries;
-            ExhaustionEvents += o.ExhaustionEvents;
-            PoolRecoveries += o.PoolRecoveries;
-            MaterializationAttempts += o.MaterializationAttempts;
-            MaterializationsSucceeded += o.MaterializationsSucceeded;
-            GeneratedCardAttempts += o.GeneratedCardAttempts;
-            GeneratedCardsSucceeded += o.GeneratedCardsSucceeded;
-            EquipmentAssignmentAttempts += o.EquipmentAssignmentAttempts;
-            EquipmentAssignmentsSucceeded += o.EquipmentAssignmentsSucceeded;
-            InfrastructureAttempts += o.InfrastructureAttempts;
-            InfrastructureBuilt += o.InfrastructureBuilt;
-        }
-
         public void RecordProvisionFailure(ProvisionFailureKind kind)
         {
             if (kind == ProvisionFailureKind.None)
@@ -101,52 +68,27 @@ namespace Game.Ai.V2
             + $"infra {InfrastructureBuilt}/{InfrastructureAttempts}";
     }
 
-    internal sealed class V2TurnActivity
-    {
-        public readonly V2PhaseActivity Main = new V2PhaseActivity();
-        public readonly V2PhaseActivity Reaction = new V2PhaseActivity();
-
-        public V2PhaseActivity Total()
-        {
-            var t = new V2PhaseActivity();
-            t.Add(Main);
-            t.Add(Reaction);
-            return t;
-        }
-    }
-
     internal static class V2TurnActivityTelemetry
     {
         private static readonly TurnScopedByPlayer<V2TurnActivity> ByPlayer =
             new TurnScopedByPlayer<V2TurnActivity>(() => new V2TurnActivity());
 
-        // Called once at the very top of Pipeline.RunTurn. A fresh record every turn so a stale
-        // Reaction bucket from last turn can never bleed into this turn's Total.
+        // Called once when the turn session opens: a fresh record every turn.
         public static void Begin(PlayerSetupData player, int turn)
         {
             if (player == null) return;
             ByPlayer.Reset(player, turn);
         }
 
-        public static V2PhaseActivity Phase(PlayerSetupData player, int turn, V2Phase phase)
-        {
-            if (player == null) return new V2PhaseActivity();
-            V2TurnActivity a = ByPlayer.GetOrReset(player, turn);
-            return phase == V2Phase.Reaction ? a.Reaction : a.Main;
-        }
+        public static V2TurnActivity For(PlayerSetupData player, int turn) =>
+            player == null ? new V2TurnActivity() : ByPlayer.GetOrReset(player, turn);
 
         public static void LogSummary(PlayerSetupData player, int turn)
         {
             if (player == null) return;
             if (!(ByPlayer.Peek(player, turn) is V2TurnActivity a))
                 return;
-            V2PhaseActivity total = a.Total();
-            if (AiDebugLog.Verbose)
-            {
-                AiDebugLog.Write($"[AI][V2] {player.Nickname}: activity main    - {a.Main.Line()}");
-                AiDebugLog.Write($"[AI][V2] {player.Nickname}: activity reaction - {a.Reaction.Line()}");
-            }
-            AiDebugLog.Write($"[AI][V2][TURN-END] {player.Nickname}: {total.Line()}");
+            AiDebugLog.Write($"[AI][V2][TURN-END] {player.Nickname}: {a.Line()}");
             ByPlayer.Remove(player, turn);
         }
 

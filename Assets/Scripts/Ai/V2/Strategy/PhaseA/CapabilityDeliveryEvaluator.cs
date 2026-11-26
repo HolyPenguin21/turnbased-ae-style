@@ -9,8 +9,7 @@ namespace Game.Ai.V2
 {
     // ARCH-02 §17 — the canonical owner of "after a materialization deployed, how much operational
     // capability did it actually add, and which armies now hold a Housekeeping capability lease for
-    // it". Extracted verbatim from StrategicManager so Phase A, Phase B and (through them) the
-    // bounded StrategicReactionPass share one measurement, not three that can drift apart.
+    // it". Phase A and Phase B share this one measurement, so they cannot drift apart.
     internal static class CapabilityDeliveryEvaluator
     {
         internal static IReadOnlyList<int> OperationalLeaseArmyIds(HashSet<int> armyIdsBefore,
@@ -166,8 +165,8 @@ namespace Game.Ai.V2
                 commitments?.Claim(demand.EconomyPreferredBuilderArmyId.Value);
         }
 
-        // §3 — the ONE post-delivery finalization path shared by Phase A, Phase B and (through
-        // those two) the bounded StrategicReactionPass. It owns delivered-capability measurement
+        // §3 — the ONE post-delivery finalization path shared by Phase A and Phase B. It owns
+        // delivered-capability measurement
         // and the Housekeeping capability lease for every army created/modified to satisfy a live
         // strategic demand, so a later Phase A / Phase B divergence cannot silently drop the lease
         // again. Callers still own the parts that genuinely differ by phase: Phase A's discrete

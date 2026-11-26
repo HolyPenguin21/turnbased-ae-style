@@ -9,9 +9,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  PROJECTED PHYSICAL STATE  (ARCH-02 §15 / §57 / §58)
     // ===========================================================================================
-    //  The ONE joint physical-capacity model for a multi-chain materialization portfolio, shared
-    //  by MaterializationPortfolioSolver (Phase A) and ReactionMaterializationSolver (reaction
-    //  closure). Consumption (cards / generation / AP / H-E-M-T) stays in
+    //  The ONE joint physical-capacity model for a multi-chain materialization portfolio
+    //  (MaterializationPortfolioSolver, Phase A). Consumption (cards / generation / AP / H-E-M-T) stays in
     //  MaterializationConsumptionState; this owns the recipient/hero/hand-slot side that the
     //  consumption model does not model.
     //

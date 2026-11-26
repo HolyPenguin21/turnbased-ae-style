@@ -15,18 +15,16 @@ namespace Game.Ai.V2
         internal readonly IReadOnlyCollection<int> ActorIds;
         internal readonly IReadOnlyCollection<int> ContactIds;
         internal readonly IReadOnlyCollection<HexCoord> Hexes;
-        internal readonly AiHandData Hand;
 
         internal WorldDelta(bool hasMutation, StrategicInvalidationReason dirtyFacts,
             IEnumerable<int> actorIds = null, IEnumerable<int> contactIds = null,
-            IEnumerable<HexCoord> hexes = null, AiHandData hand = null)
+            IEnumerable<HexCoord> hexes = null)
         {
             HasMutation = hasMutation;
             DirtyFacts = dirtyFacts;
             ActorIds = actorIds == null ? null : Array.AsReadOnly(actorIds.ToArray());
             ContactIds = contactIds == null ? null : Array.AsReadOnly(contactIds.ToArray());
             Hexes = hexes == null ? null : Array.AsReadOnly(hexes.ToArray());
-            Hand = hand;
         }
     }
 
@@ -78,7 +76,7 @@ namespace Game.Ai.V2
                 ++CommitEvents;
                 foreach (var fact in _facts)
                     StrategicInterruptRegistry.Record(fact.player, fact.turn, fact.delta.DirtyFacts,
-                        fact.delta.ActorIds, fact.delta.ContactIds, fact.delta.Hexes, fact.delta.Hand);
+                        fact.delta.ActorIds, fact.delta.ContactIds, fact.delta.Hexes);
                 return Current;
             }
             public void Dispose()
@@ -103,7 +101,7 @@ namespace Game.Ai.V2
             }
             if (delta.HasMutation) { ++Current; ++CommitEvents; }
             StrategicInterruptRegistry.Record(player, turn, delta.DirtyFacts,
-                delta.ActorIds, delta.ContactIds, delta.Hexes, delta.Hand);
+                delta.ActorIds, delta.ContactIds, delta.Hexes);
             return Current;
         }
 
@@ -132,10 +130,9 @@ namespace Game.Ai.V2
 
         internal static WorldDelta Publish(PlayerSetupData player, int turn,
             StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
-            IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null,
-            AiHandData hand = null)
+            IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null)
         {
-            var delta = new WorldDelta(false, reasons, actorIds, contactIds, hexes, hand);
+            var delta = new WorldDelta(false, reasons, actorIds, contactIds, hexes);
             var session = AiTurnSession.Peek(player, turn);
             if (session != null) session.Apply(delta);
             else Apply(player, turn, delta);

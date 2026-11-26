@@ -99,7 +99,6 @@ namespace Game.Ai.V2
             RaidObjective chosen = null;
             RaidOperationalReadiness chosenReadiness = null;
             int blocked = 0;
-            var readyList = new List<(RaidObjective, GroundCombatAssemblyPlan)>();
             // Non-creating read — Build must not register a fresh allocator-state entry as a side
             // effect. null == no state yet == no cooldowns.
             AiAllocatorState cooldownState = AiAllocatorStateRegistry.Peek(player);
@@ -124,7 +123,6 @@ namespace Game.Ai.V2
                         snap, o, KnownOpposition.ForRaid(snap, o.Target), commitments, inv);
                 if (readiness.ReadyExecutable)
                 {
-                    readyList.Add((o, readiness.ReadyPlan));
                     diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={o.Target.DiagnosticLabel} "
                         + $"reason=ready_free_army_clears_shared_readiness actor={readiness.ReadyPlan.BaseArmyId} "
                         + $"win={readiness.ReadyPlan.ProjectedWinChance:0.00} "
@@ -156,7 +154,6 @@ namespace Game.Ai.V2
                 }
             }
 
-            eval.ReadyExecutable = readyList;
             eval.BlockedByCooldown = blocked;
 
             if (chosen == null || chosenReadiness == null)

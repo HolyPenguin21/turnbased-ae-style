@@ -83,7 +83,7 @@ namespace Game.Ai.V2
 
             if (operationalResidual)
             {
-                StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
+                StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber);
                 AiDebugLog.Write($"[AI][V2] strategic interrupt - Phase B delivered operational "
                     + $"{residual.Capability}; re-admit missions before further surplus spending");
                 exec.Interrupt = true;

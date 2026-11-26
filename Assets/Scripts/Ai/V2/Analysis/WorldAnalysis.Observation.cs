@@ -49,9 +49,8 @@ namespace Game.Ai.V2
 
             var receipts = new List<WorldDelta>();
             void Observe(StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
-                IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null,
-                AiHandData hand = null) =>
-                receipts.Add(WorldDeltaLifecycle.Publish(player, turn, reasons, actorIds, contactIds, hexes, hand));
+                IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null) =>
+                receipts.Add(WorldDeltaLifecycle.Publish(player, turn, reasons, actorIds, contactIds, hexes));
 
             HashSet<int> contacts = ChangedContactIds(before.Snapshot, after.Snapshot);
             if (contacts.Count > 0)
@@ -153,10 +152,7 @@ namespace Game.Ai.V2
 
             if (before.Hand != after.Hand
                 || before.HandVersion != after.HandVersion)
-                Observe(
-                    StrategicInvalidationReason.Hand
-                    | StrategicInvalidationReason.Capability,
-                    hand: after.Hand);
+                Observe(StrategicInvalidationReason.Hand | StrategicInvalidationReason.Capability);
             if (execution != null) execution.WorldDeltas = receipts.AsReadOnly();
         }
 

@@ -153,7 +153,7 @@ namespace Game.EditorTests
                     StrategicInterruptRegistry.MarkDiscovery(me, TurnNumber, new[] { enemy.Id });
             }
             if (scenario == ReactionScenario.PendingHand)
-                StrategicInterruptRegistry.MarkHandOpportunity(me, TurnNumber, hand);
+                StrategicInterruptRegistry.MarkHandOpportunity(me, TurnNumber);
 
             HashSet<UnitData> unitsBefore = OwnUnits(me);
             Exception failure = null;

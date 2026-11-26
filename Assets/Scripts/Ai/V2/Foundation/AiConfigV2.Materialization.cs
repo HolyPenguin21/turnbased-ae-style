@@ -197,20 +197,8 @@
         // opportunity cost on the same evaluator scale. Facility placement, Equipment attach and
         // Research/Production generation remain ordinary PlayCard candidates through that single
         // evaluator (spec §5, one scorer).
-        // spec §7 — the reaction pass reserves a BOUNDED AP BUDGET for its same-turn
-        // replan, not an exact action cost (the replan re-runs the whole Demand→Mission→Provision
-        // pipeline and picks its own action, so there is no single pre-planned action to price).
-        // This is the ceiling on that budget; the estimate feeding it may legitimately exceed it —
-        // the replan is simply bounded to this many AP.
-        public const int reactionReserveApCap = 6;
-        // spec §7 — AP estimate for a hand-only (no discovered target) reaction follow-up when the
-        // hand carries no priced card to sample; a single modest replay.
-        public const int reactionFollowupApEstimate = 2;
-        // spec §7 — extra AP beyond a responder's activation cost folded into the reaction estimate
-        // for the one repositioning step a bounded replan typically makes.
-        public const int reactionResponderMoveApEstimate = 1;
-        // §7 — for the same-turn tempo re-run after a released reaction reservation
-        // (AiStrategyV2Pipeline.EndOfTurnReaction) and the turn loop's round cap. UseSurplus is itself the bounded loop; this only caps the re-run repeats.
+        // The turn loop's Phase B round cap: at most this many rounds after the first
+        // (TempoRoundVerdict). UseSurplus is itself the bounded loop; this only caps its repeats.
         public const int maxEndOfTurnTempoReruns = 1;
 
         // =======================================================================================

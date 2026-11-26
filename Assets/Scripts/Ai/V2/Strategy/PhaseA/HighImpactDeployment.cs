@@ -186,7 +186,7 @@ namespace Game.Ai.V2
                         pass.Player, pass.Root, pass.Ctx, recipient.Id);
                     pass.ApBudget.ReserveDeliveryFollowup(recipient,
                         UnprotectedFollowupAp(activation, afterCredit));
-                    StrategicInterruptRegistry.MarkCapabilityChanged(pass.Player, pass.Turn, pass.Hand);
+                    StrategicInterruptRegistry.MarkCapabilityChanged(pass.Player, pass.Turn);
                 }
                 AiDebugLog.Write($"[AI][V2][OpeningUnit] card={plan.BaseCardInHand.Definition.displayName} "
                     + $"deployed={played.Deployed} ap={played.ApSpent} followup={followup} "

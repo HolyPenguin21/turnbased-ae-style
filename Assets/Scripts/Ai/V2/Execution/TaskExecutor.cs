@@ -159,19 +159,11 @@ namespace Game.Ai.V2
 
     internal static class TaskExecutor
     {
-        // Shared short-circuits of Execute() and ExecuteStep(): stale plan, mover-resolve failure
-        // and MissionRevalidator stale goal. The two callers differ observably (Execute's batch
-        // model never signals NeedsReplan on a stale mover/goal and logs a "mover
-        // gone"/revalidation line; ExecuteStep does the opposite), so those differences are
-        // explicit parameters.
-        //
-        // Scout dispatch itself (ReconGroundExecutor.Run vs RunStep) stays UNMERGED on purpose:
-        // Execute's multi-step lookahead
-        // and ExecuteStep's single-atomic-step contract are two different behaviors, not two copies
-        // of the same one.
+        // The short-circuits of a step before any command: stale plan, mover-resolve failure and
+        // MissionRevalidator stale goal. Each stops the step for a replan.
         private static bool TryHandleStalePlan(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
-            List<ExecutionResult> results, bool enforceFreshPlan, bool logStalePlan)
+            List<ExecutionResult> results, bool enforceFreshPlan)
         {
             if (!enforceFreshPlan || pm.PlannedAtStateVersion < 0
                 || WorldDeltaLifecycle.IsCurrent(pm.PlannedAtStateVersion))
@@ -186,9 +178,6 @@ namespace Game.Ai.V2
             CompleteResult(result, root);
             results.Add(result);
             ReleaseEconomyReservation(player, ctx, pm);
-            if (logStalePlan)
-                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - stale plan "
-                    + $"planned@v{pm.PlannedAtStateVersion}, current=v{WorldDeltaLifecycle.Current}; no command issued");
             return true;
         }
 
@@ -196,8 +185,7 @@ namespace Game.Ai.V2
         // `army` (caller proceeds). On failure fully populates+adds `result` and returns null.
         private static bool TryResolveMoverOrHandleGone(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
-            List<ExecutionResult> results, int apBefore, bool setNeedsReplan, bool logMoverGone,
-            string retireReason, out ArmyData army)
+            List<ExecutionResult> results, int apBefore, out ArmyData army)
         {
             army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (army != null)
@@ -211,22 +199,18 @@ namespace Game.Ai.V2
             result.FinalHex = pm.ExecutionHex;
             result.StopReason = ExecutionStopReason.MoverLost;
             result.ApSpent = 0f;
-            if (setNeedsReplan)
-                result.NeedsReplan = true;
+            result.NeedsReplan = true;
             ApCheck(pm, apBefore, root, result);
             CompleteResult(result, root);
             results.Add(result);
             ReleaseEconomyReservation(player, ctx, pm);
-            ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, retireReason);
-            if (logMoverGone)
-                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - mover #{pm.MoverArmyId} gone before first step");
+            ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover gone before atomic execution");
             return true;
         }
 
         private static bool TryHandleStaleValidity(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ArmyData army, ExecutionResult result,
-            List<ExecutionResult> results, int apBefore, bool setNeedsReplan, bool logRevalidation,
-            string retireReason)
+            List<ExecutionResult> results, int apBefore)
         {
             MissionValidity validity = MissionRevalidator.Validate(player, root, ctx, pm);
             if (!MissionRevalidator.IsStale(validity))
@@ -247,38 +231,24 @@ namespace Game.Ai.V2
                 : validity == MissionValidity.StaleGoalMet
                     ? ExecutionStopReason.ReachedGoal
                     : ExecutionStopReason.TargetInvalidated;
-            if (setNeedsReplan)
-                result.NeedsReplan = validity != MissionValidity.StaleGoalMet;
+            result.NeedsReplan = validity != MissionValidity.StaleGoalMet;
             ApCheck(pm, apBefore, root, result);
             CompleteResult(result, root);
             results.Add(result);
             ReleaseEconomyReservation(player, ctx, pm);
             if (validity == MissionValidity.StaleMoverLost)
-                ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, retireReason);
-            if (logRevalidation)
-                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - revalidation: {validity}; "
-                    + "no movement, 0 AP");
+                ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "atomic mission revalidation lost mover");
             return true;
         }
 
         // The ONE per-mission step lifecycle: stale-plan check, deferred-Economy materialization,
-        // mover resolve, stale- goal revalidation, kind dispatch, AP/version/resource stamping,
-        // result recording, reservation release. Both Execute() (batch adapter, `singleStepOnly:
-        // false`) and ExecuteStep() (`singleStepOnly: true`) call this and NOTHING ELSE per mission
-        // — neither re-implements any of it. `singleStepOnly` is an execution-STRATEGY switch, not
-        // a second lifecycle: it picks which of Recon/Raid's own two execution modes applies
-        // (continuous multi-step lookahead — Run/RunRaid — vs one atomic step —
-        // RunStep/RunRaidStep, the difference those subsystems expose), and the two callers'
-        // observable differences (Execute's batch model never sets NeedsReplan on a lost/stale
-        // mover or an unsupported kind, and logs where ExecuteStep doesn't; ExecuteStep does the
-        // reverse).
+        // mover resolve, stale-goal revalidation, kind dispatch (each lane's one atomic step),
+        // AP/version/resource stamping, result recording, reservation release.
         private static IEnumerator ExecuteMissionCore(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
-            List<ExecutionResult> results, bool enforceFreshPlan, WorldSnapshot snapshot,
-            List<ProvisionedMission> queue, int missionIndex, bool singleStepOnly)
+            List<ExecutionResult> results, bool enforceFreshPlan, WorldSnapshot snapshot)
         {
-            if (TryHandleStalePlan(player, root, ctx, pm, result, results,
-                    enforceFreshPlan, logStalePlan: !singleStepOnly))
+            if (TryHandleStalePlan(player, root, ctx, pm, result, results, enforceFreshPlan))
                 yield break;
 
             int apBefore = root != null ? root.ActionPoints : 0;
@@ -306,34 +276,19 @@ namespace Game.Ai.V2
                 yield break;
             }
             if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, apBefore,
-                    setNeedsReplan: singleStepOnly, logMoverGone: !singleStepOnly,
-                    singleStepOnly ? "mover gone before atomic execution" : "mover gone before execution",
                     out ArmyData army))
                 yield break;
 
             // ARCH-02 §35 — the executor does NOT synthesise a replacement mission for a
             // stale-goal Scout. It records the stale outcome; MissionContinuityLayer.Reconcile
             // + the mission planner re-target the durable ReconPatrolState on the next pass.
-            if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results, apBefore,
-                    setNeedsReplan: singleStepOnly, logRevalidation: !singleStepOnly,
-                    retireReason: singleStepOnly
-                        ? "atomic mission revalidation lost mover" : "mission revalidation lost mover"))
+            if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results, apBefore))
                 yield break;
 
             if (pm.Kind == MissionKind.Scout)
             {
-                if (singleStepOnly)
-                {
-                    var soloQueue = new List<ProvisionedMission> { pm };
-                    var control = new ReconGroundExecutor.StepControl();
-                    yield return ReconGroundExecutor.RunStep(player, root, ctx, pm, result, apBefore,
-                        soloQueue, 0, snapshot, control);
-                }
-                else
-                {
-                    yield return ReconGroundExecutor.Run(player, root, ctx, pm, result, apBefore,
-                        queue, missionIndex, snapshot);
-                }
+                yield return ReconGroundExecutor.RunStep(player, root, ctx, pm, result, apBefore,
+                    new List<ProvisionedMission> { pm }, 0, snapshot, new ReconGroundExecutor.StepControl());
                 FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
@@ -353,28 +308,20 @@ namespace Game.Ai.V2
 
             if (pm.Kind == MissionKind.Raid)
             {
-                if (singleStepOnly)
-                    yield return RaidExecutor.RunRaidStep(player, root, ctx, pm, result, apBefore, snapshot);
-                else
-                    yield return RaidExecutor.RunRaid(player, root, ctx, pm, result, apBefore, snapshot);
+                yield return RaidExecutor.RunRaidStep(player, root, ctx, pm, result, apBefore, snapshot);
                 FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
 
             if (pm.Kind == MissionKind.ActiveDefence)
             {
-                if (singleStepOnly)
-                    yield return ActiveDefenceExecutor.RunActiveDefenceStep(player, root, ctx, pm, result, apBefore, snapshot);
-                else
-                    yield return ActiveDefenceExecutor.RunActiveDefence(player, root, ctx, pm, result, apBefore, snapshot);
+                yield return ActiveDefenceExecutor.RunActiveDefenceStep(player, root, ctx, pm, result, apBefore, snapshot);
                 FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
 
-            // ATK §67 — Attack is ALWAYS one atomic step, in both the single-step and the multi-step
-            // caller. There is deliberately no multi-step Attack variant: a capture changes the map's
-            // topology so much that the next step must be decided against a fresh snapshot, through
-            // the ordinary settled-step loop, never inside one executor call.
+            // ATK §67 — Attack is one atomic step: a capture changes the map's topology so much that
+            // the next step must be decided against a fresh snapshot, through the settled-step loop.
             if (pm.Kind == MissionKind.Attack)
             {
                 yield return AttackExecutor.RunStep(player, root, ctx, pm, result, snapshot);
@@ -404,67 +351,17 @@ namespace Game.Ai.V2
             // Future mission kinds must opt into an executor explicitly. Never silently treat
             // an unknown mission as Scout or let it mutate the world through a fallback path.
             result.StopReason = ExecutionStopReason.TargetInvalidated;
-            result.NeedsReplan = singleStepOnly;
+            result.NeedsReplan = true;
             result.ApSpent = 0f;
             ApCheck(pm, apBefore, root, result);
             CompleteResult(result, root);
             results.Add(result);
             ReleaseEconomyReservation(player, ctx, pm);
-            if (!singleStepOnly)
-                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - unsupported mission kind {pm.Kind}");
         }
 
-        // `snapshot` is passed through to the per-mission executors. ARCH-02 §35 — the terminal
-        // air-recon pass is NO LONGER run here: the orchestrator plans it (AirReconPlanner) and
-        // runs it (ReconAirExecutor.Execute) as its own stage after this returns. A thin adapter
-        // over ExecuteMissionCore (see that method's own comment) — this loop owns only queue
-        // iteration and the ReconAcceptanceAudit summary bookkeeping, nothing about a mission's own
-        // lifecycle.
-        public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
-            WorldSnapshot snapshot = null, bool enforceFreshPlan = false)
-        {
-            if (ctx?.Map == null)
-                yield break;
-
-            // Strategic acceptance evidence can exist even when allocation/provisioning produces no
-            // executable Scout this turn.
-            if (provisioned == null || provisioned.Count == 0)
-            {
-                ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
-                ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
-                yield break;
-            }
-
-            var queue = new List<ProvisionedMission>(provisioned);
-            ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
-
-            for (int missionIndex = 0; missionIndex < queue.Count; missionIndex++)
-            {
-                ProvisionedMission pm = queue[missionIndex];
-                var result = new ExecutionResult
-                {
-                    Key = pm.Key,
-                    Source = pm,
-                    PlannedAtStateVersion = pm.PlannedAtStateVersion,
-                    StateVersionBefore = WorldDeltaLifecycle.Current,
-                    ResourcesBefore = AiV2Trace.Stamp(root),
-                };
-                yield return ExecuteMissionCore(player, root, ctx, pm, result, results,
-                    enforceFreshPlan, snapshot, queue, missionIndex, singleStepOnly: false);
-            }
-
-            // TaskExecutor owns the batch lifecycle, so the summary is still written when the last
-            // provisioned Scout becomes stale, loses its mover, or otherwise never enters the Ground
-            // executor. Individual Ground hooks may summarize earlier; the collector is idempotent
-            // and automatically reopens the summary if later evidence changes a status.
-            ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
-        }
-
-        // Mid-turn orchestration door for exactly one already-provisioned Ground/Raid task step.
-        // Selection, allocation and provisioning stay outside this execution owner; validation,
-        // command dispatch, AP invariants and version/resource stamping stay inside
-        // ExecuteMissionCore, called here with a singleton queue and singleStepOnly: true.
+        // The orchestration door for exactly one already-provisioned task step. Selection,
+        // allocation and provisioning stay outside this execution owner; validation, command
+        // dispatch, AP invariants and version/resource stamping stay inside ExecuteMissionCore.
         internal static IEnumerator ExecuteStep(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisionedMission pm, List<ExecutionResult> results, WorldSnapshot snapshot = null,
             bool enforceFreshPlan = true)
@@ -480,13 +377,11 @@ namespace Game.Ai.V2
                 StateVersionBefore = WorldDeltaLifecycle.Current,
                 ResourcesBefore = AiV2Trace.Stamp(root),
             };
-            var soloQueue = new List<ProvisionedMission> { pm };
             yield return ExecuteMissionCore(player, root, ctx, pm, result, results,
-                enforceFreshPlan, snapshot, soloQueue, 0, singleStepOnly: true);
+                enforceFreshPlan, snapshot);
         }
 
-        // The one real mutation site for deferred pending work, shared by both execution doors
-        // (batch Execute() and incremental ExecuteStep()) so it is handled identically either way.
+        // The one real mutation site for deferred pending work.
         // Development: applies the pinned garrison extraction (pm.EconomyExtractionPlan) via
         // ProvisioningManager.ApplyGarrisonExtraction. Economy: ApplyEconomyPreparation applies the
         // pinned extraction (if any) and composition change — never a re-resolve. Fully populates

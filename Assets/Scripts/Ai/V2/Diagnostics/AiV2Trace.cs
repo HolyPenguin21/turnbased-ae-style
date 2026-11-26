@@ -143,14 +143,6 @@ namespace Game.Ai.V2
             return scope;
         }
 
-        // roundZeroBased 0 -> "R1", 1 -> "R2" (StrategicReactionPass numbers its rounds from 0).
-        public static V2TraceScope BeginReaction(PlayerSetupData player, int turn, int roundZeroBased)
-        {
-            var scope = new V2TraceScope($"T{turn}-{PlayerTag(player)}-R{roundZeroBased + 1}");
-            if (player != null) Scopes[player] = scope;
-            return scope;
-        }
-
         public static V2TraceScope CurrentScope(PlayerSetupData player) =>
             player != null && Scopes.TryGetValue(player, out V2TraceScope s) ? s : null;
 

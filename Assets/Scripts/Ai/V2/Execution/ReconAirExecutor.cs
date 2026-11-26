@@ -65,124 +65,6 @@ namespace Game.Ai.V2
             }
         }
 
-        // `perMissionResults` collects one ExecutionResult PER air-executed
-        // ProvisionedMission this pass, the SAME shape Ground's TaskExecutor produces, so each one
-        // flows into MissionOutcomeLedger.RecordExecution / MissionContinuity exactly like Ground's
-        // do. The aggregate `result` (AirReconExecutionResult) is the orchestrator's pass-wide
-        // telemetry rollup; a caller that omits `perMissionResults` gets the aggregate only.
-        public static IEnumerator Execute(AirReconPlan plan, PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result = null,
-            List<ExecutionResult> perMissionResults = null)
-        {
-            result ??= new AirReconExecutionResult();
-            if (plan == null || player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
-            {
-                AiDebugLog.Write($"[AI][V2][Recon][Air] exec - not reached ({plan?.Summary ?? "no plan"})");
-                result.StateVersionAfter = WorldDeltaLifecycle.Current;
-                yield break;
-            }
-            if (AiDebugLog.IsVerbose(AiVerboseArea.Aviation)) AiDebugLog.Write($"[AI][V2][Recon][Air] exec - {plan.Summary}");
-            if (PrepareStoredMissions(plan, player, root, ctx, snapshot, result))
-                snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, AiHandRegistry.Peek(player), ctx);
-            int apBefore = root.ActionPoints;
-            int h0 = root.GetResource(Game.Economy.ResourceType.Human);
-            int e0 = root.GetResource(Game.Economy.ResourceType.Energy);
-            int m0 = root.GetResource(Game.Economy.ResourceType.Materials);
-            int t0 = root.GetResource(Game.Economy.ResourceType.Tech);
-
-            foreach (AirReconSkippedMission skipped in plan.SkippedMissions)
-            {
-                ProvisionedMission pm = skipped?.Mission;
-                if (pm == null || perMissionResults == null)
-                    continue;
-                ExecutionResult er = NewPerMissionResult(pm, pm.ExecutionHex, -1);
-                if (skipped.Reason != ExecutionStopReason.MoverLost && ObjectiveSatisfied(player, pm))
-                    MarkSatisfiedNoOp(pm, er);
-                else
-                    er.StopReason = skipped.Reason;
-                er.StateVersionAfter = WorldDeltaLifecycle.Current;
-                perMissionResults.Add(er);
-            }
-
-            // Round 7 (Problem 1) — MANDATORY AIR RECOVERY is the one legitimate lifecycle/safety
-            // action allowed outside funded Recon progress: a sortie that MUST physically return to
-            // avoid being stranded/lost flies unconditionally, never gated on this pass's Mission ->
-            // Funding -> Assignment -> Provisioning pipeline. Everything else (still-outbound,
-            // still-observing continuation) is Strategic Recon Progress and MUST have won a fresh
-            // ProvisionedMission this pass (plan.ReadyActorIds, below) — AirReconPlanner no longer
-            // discovers/carries forward continuing actors on its own (see its header).
-            //
-            // Discover: airborne wings with a live ReconPatrolState that are NOT already bound to a
-            // fresh ProvisionedMission this pass, whose lifecycle projection (the SAME read-only
-            // projection ReconAirReservationPrepass/capacity sizing already uses — never a second
-            // must-recover rule) resolves to Phase.Return. A wing that projects to anything else
-            // (still Outbound/Turning/Hold) is NOT flown here — it makes no progress this turn unless
-            // it won fresh funding.
-            // A provisioned objective that became stale after Ground execution no longer grants
-            // strategic progress, but it also must not suppress the independent recovery pass.
-            var fundedThisPass = new HashSet<int>(plan.ReadyActorIds.Where(id =>
-                !plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission mission)
-                || !ObjectiveSatisfied(player, mission)));
-            foreach (ArmyData air in FindMandatoryRecoveryActors(player, ctx, fundedThisPass))
-            {
-                HexCoord? focus = ReconPatrolStateRegistry.TryGet(player, air.Id, out ReconPatrolState st)
-                    ? st.StrategicAnchor : (HexCoord?)null;
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Recovery] actor=#{air.Id} has no strategic "
-                    + "progress entitlement but must-recover - flying unconditionally (lifecycle safety)");
-                yield return RunActor(player, root, ctx, snapshot, air, result, missionFocusHex: focus);
-            }
-
-            foreach (int id in plan.ReadyActorIds)
-            {
-                ArmyData air = AiV2Util.ResolveArmy(player, id);
-                plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission pm);
-                if (pm != null && air != null && ObjectiveSatisfied(player, pm))
-                {
-                    ExecutionResult stale = NewPerMissionResult(pm, air?.Hex ?? pm.ExecutionHex,
-                        air != null ? air.Id : -1);
-                    MarkSatisfiedNoOp(pm, stale);
-                    stale.StateVersionAfter = WorldDeltaLifecycle.Current;
-                    perMissionResults?.Add(stale);
-                    continue;
-                }
-                if (air == null || !AviationRules.IsValidAirArmy(air) || air.Controller == null
-                    || air.CurrentMovement <= 0)
-                {
-                    if (pm != null && perMissionResults != null)
-                    {
-                        ExecutionResult missing = NewPerMissionResult(pm, pm.ExecutionHex, -1);
-                        missing.StopReason = ExecutionStopReason.MoverLost;
-                        missing.StateVersionAfter = WorldDeltaLifecycle.Current;
-                        perMissionResults.Add(missing);
-                    }
-                    continue;
-                }
-
-                ExecutionResult perMission = pm != null ? NewPerMissionResult(pm, air.Hex, air.Id) : null;
-                if (perMission != null)
-                    perMission.ActorMaterialized = plan.MaterializedActorIds.Contains(id);
-                int apBeforeActor = root.ActionPoints;
-                yield return RunActor(player, root, ctx, snapshot, air, result,
-                    missionFocusHex: pm?.FocusHex, perMissionResult: perMission);
-                if (perMission != null)
-                {
-                    perMission.ApSpent = Math.Max(0f, apBeforeActor - root.ActionPoints);
-                    FinalizePerMissionResult(player, pm, perMission);
-                    perMissionResults?.Add(perMission);
-                }
-            }
-
-            result.ApSpent = Math.Max(0, apBefore - root.ActionPoints);
-            int hSpent = Math.Max(0, h0 - root.GetResource(Game.Economy.ResourceType.Human));
-            int eSpent = Math.Max(0, e0 - root.GetResource(Game.Economy.ResourceType.Energy));
-            int mSpent = Math.Max(0, m0 - root.GetResource(Game.Economy.ResourceType.Materials));
-            int tSpent = Math.Max(0, t0 - root.GetResource(Game.Economy.ResourceType.Tech));
-            result.ResourcesSpent = (hSpent | eSpent | mSpent | tSpent) != 0
-                ? new Game.Cards.ResourceCost { human = hSpent, energy = eSpent, materials = mSpent, tech = tSpent }
-                : null;
-            result.StateVersionAfter = WorldDeltaLifecycle.Current;
-        }
-
         private static bool PrepareStoredMissions(AirReconPlan plan, PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result)
         {
@@ -206,8 +88,6 @@ namespace Game.Ai.V2
                     && TradeFunding.CanFund(player, root, ctx, new ResourceCost(energy: (int)energy));
                 ActorCommitments commitments = ActorCommitments.FromIntents(
                     WorldSnapshot.IntentsOf(snapshot), snapshot, null);
-                foreach (int actor in plan.ReservedActorIds)
-                    commitments.Claim(actor);
                 if (!valid || !affordable || !pick.HasValue
                     || !AviationWingPreparation.TryForm(player, ctx, source, group, commitments, out ArmyData wing, out _))
                 {
@@ -231,15 +111,13 @@ namespace Game.Ai.V2
 
         // Single owner of the safety exception to normal Mission -> Allocation -> Provisioning:
         // an airborne Recon actor already in Return phase must be allowed to recover even without
-        // a fresh strategic-progress entitlement. Callers decide only which actors are entitled;
-        // the lifecycle projection below remains the unique must-recover rule.
+        // a fresh strategic-progress entitlement; the lifecycle projection below is the unique
+        // must-recover rule.
         internal static List<ArmyData> FindMandatoryRecoveryActors(PlayerSetupData player,
-            AiTurnContext ctx, IEnumerable<int> entitledActorIds = null)
+            AiTurnContext ctx)
         {
-            var entitled = new HashSet<int>(entitledActorIds ?? Enumerable.Empty<int>());
             return ArmyRegistry.AllForOwner(player)
                 .Where(a => ReconAirCapacityPolicy.IsAirborneReconWing(player, a)
-                    && !entitled.Contains(a.Id)
                     // Recon audit B1 — a recovery that could not progress this turn is not
                     // re-admitted (nor protected by StrategicSpendability) until the next turn.
                     && !AviationObligationStallRegistry.IsStalled(player, ctx?.TurnNumber ?? -1, a.Id))

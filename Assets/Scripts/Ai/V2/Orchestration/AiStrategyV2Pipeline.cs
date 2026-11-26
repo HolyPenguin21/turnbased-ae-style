@@ -384,10 +384,9 @@ namespace Game.Ai.V2
                 frame.AcceptHousekeeping();
             yield return ctx.WaitAtObserverActionBoundary();
 
-            // --- Main-phase activity bucket. DERIVED once, here, from this pipeline's own facts —
-            //     never incremented inside a nested layer (spec §11). The Reaction bucket is owned
-            //     by StrategicReactionPass the same way. Total = Main + Reaction, no double count.
-            V2PhaseActivity main = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
+            // --- The turn's activity record. DERIVED once, here, from this pipeline's own facts —
+            //     never incremented inside a nested layer (spec §11).
+            V2TurnActivity main = V2TurnActivityTelemetry.For(player, ctx.TurnNumber);
             main.DemandsRaised = frame.Demands.Count;
             main.MissionsConsidered = telemetry.Missions.Count;
             // §8 — the activity bucket's peers (Provisioned, ExecutionAttempts, …) are all

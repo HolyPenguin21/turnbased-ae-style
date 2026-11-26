@@ -49,9 +49,8 @@ namespace Game.Ai.V2
             // (the turn-2 b_Lab case: the card filled hand 10/10 and AP were stranded until next turn).
             //
             // Do not duplicate StrategicManager's actionability logic here. Instead, only on this
-            // exact terminal boundary, raise the already-existing bounded hand-opportunity
-            // interrupt. Whether a reaction pass may consume it is decided by the orchestration
-            // scope; this executor only records the hand mutation and makes no replan promise.
+            // exact terminal boundary, publish a hand opportunity; the turn loop's trigger take
+            // re-admits the families that read the hand. This executor makes no replan promise.
             bool terminalBoundary = !hand.HasFreeSlot
                 || !hand.HasCardsLeftToDraw
                 || !root.CanSpendActionPoints(ctx.DrawApCost);
@@ -59,7 +58,7 @@ namespace Game.Ai.V2
                 && AiHandRegistry.TryGetOwner(hand, out PlayerSetupData owner)
                 && owner != null)
             {
-                StrategicInterruptRegistry.MarkHandOpportunity(owner, ctx.TurnNumber, hand);
+                StrategicInterruptRegistry.MarkHandOpportunity(owner, ctx.TurnNumber);
                 AiDebugLog.Write("[AI][V2] strategic interrupt - terminal boundary draw changed the hand; "
                     + "hand opportunity registered");
             }

@@ -16,11 +16,8 @@ namespace Game.Ai.V2
     //  RaidOperationalReadiness, the ReadyExecutable / NeedsAssembly-DEFER / NeedsHero / NeedsPower
     //  branch, and the exact AxisDemand shapes.
     //
-    //  Consumed by BOTH:
-    //    · DemandLayer.AggressionDemands  — the real Phase-A pipeline (yields Demands, replays
-    //      Diagnostics, attaches trace ids downstream),
-    //    · StrategicReactionPass          — the reaction feasibility probe (reads ChosenObjective /
-    //      Readiness / Outcome; never mirrors the rules).
+    //  Consumed by DemandLayer.AggressionDemands (yields Demands, replays Diagnostics, attaches
+    //  trace ids downstream).
     //
     //  Build is a deterministic primitive: no yield, no trace ids, no logging as a side effect.
     //  It only READS AiAllocatorStateRegistry for cooldowns. Every diagnostic line is returned in
@@ -52,12 +49,6 @@ namespace Game.Ai.V2
         public AggressionDemandOutcome Outcome = AggressionDemandOutcome.None;
         public string Reason = "";
         public int BlockedByCooldown;
-        // Every non-covered / non-cooldown discovered-or-not objective whose canonical
-        // RaidOperationalReadiness is ReadyExecutable RIGHT NOW, with the ready GroundCombatAssemblyPlan
-        // (its BaseArmyId is the canonical executable raid actor). The reaction direct-witness
-        // probe reads this instead of a GatePassed filter + cheapest arbitrary pathable army.
-        public IReadOnlyList<(RaidObjective Objective, GroundCombatAssemblyPlan Plan)> ReadyExecutable =
-            System.Array.Empty<(RaidObjective, GroundCombatAssemblyPlan)>();
         // Fully-formatted "[AI][V2][Demand][Aggression] …" lines — the caller replays them through
         // AiDebugLog so Build itself performs no logging.
         public IReadOnlyList<string> Diagnostics = System.Array.Empty<string>();

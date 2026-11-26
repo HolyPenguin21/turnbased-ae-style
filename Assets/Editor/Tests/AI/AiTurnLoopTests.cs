@@ -210,6 +210,22 @@ namespace Game.EditorTests
             return w.Trace;
         }
 
+        // The loop, then the facts left at its end (TurnLoop.RunEndOfTurn) with the given share.
+        private static List<string> RunWithEndOfTurn(Scenario sc, Scenario end, bool operational)
+        {
+            var st = new TurnLoopState { SettledSteps = sc.StartSettled, NoProgressCycles = sc.StartNoProgress };
+            var w = new Works(sc, st, () => st.ReturnsMayWait, () => st.PassCause);
+            var adapter = new WorksAdapter(w);
+            Drain(TurnLoop.Run(st, adapter, adapter, adapter));
+            foreach (IterationScript it in end.Iterations) sc.Iterations.Enqueue(it);
+            foreach (TempoRoundOutcome r in end.Rounds) sc.Rounds.Enqueue(r);
+            Drain(TurnLoop.RunEndOfTurn(st, adapter, adapter, new StepTriggerOutcome(
+                operational ? StrategicInvalidationReason.Contact : StrategicInvalidationReason.None,
+                StrategicInvalidationReason.Hand, false)));
+            w.End();
+            return w.Trace;
+        }
+
         // ---- Tests -----------------------------------------------------------------------------
 
         // Every round-outcome combination, each through the transcribed baseline statements
@@ -264,6 +280,60 @@ namespace Game.EditorTests
                 "round#1 op=0 sd=0 sc=0 st=0 s=2 np=0 zr=0",
                 "end s=2 np=0 zr=0 deferred=0",
             }, RunNew(sc.Clone()));
+        }
+
+        // The facts left at the end of the turn: an operational share opens one more pass, then one
+        // more Phase B round runs; a round asking for admission opens one last pass; the cold
+        // residual (open window, changed demands) is never repeated.
+        [Test]
+        public void EndOfTurnFactsRunOnePassOneRoundAndNoCold()
+        {
+            var sc = new Scenario { ColdAxes = 1, ColdHasDemands = true, ColdChanged = true };
+            sc.Iterations.Enqueue(new IterationScript { Kind = IterationKind.MissionStep, Progress = true });
+            sc.Iterations.Enqueue(new IterationScript { Kind = IterationKind.StopNoTrigger, Progress = true, Residual = false });
+            sc.Rounds.Enqueue(new TempoRoundOutcome(false, false, false, false));
+            var end = new Scenario();
+            end.Iterations.Enqueue(new IterationScript { Kind = IterationKind.StopNoFunded });
+            end.Rounds.Enqueue(new TempoRoundOutcome(true, true, true, true));
+            end.Iterations.Enqueue(new IterationScript { Kind = IterationKind.StopNoFunded });
+            end.Rounds.Enqueue(new TempoRoundOutcome(true, true, true, true));
+            CollectionAssert.AreEqual(new[]
+            {
+                "begin cause=Initial retrySet#1 s=0 np=0 zr=0",
+                "iter MissionStep mayWait=1 deferred=0 s=1 np=0 zr=0",
+                "iter StopNoTrigger mayWait=1 deferred=0 s=2 np=0 zr=0",
+                "terminalForce s=2 np=0 zr=0",
+                "settleWindow s=2 np=0 zr=0",
+                "round#1 op=0 sd=0 sc=0 st=0 s=2 np=0 zr=0",
+                "begin cause=EndOfTurnFacts retrySet#2 s=2 np=0 zr=0",
+                "iter StopNoFunded mayWait=0 deferred=0 s=2 np=0 zr=1",
+                "terminalForce s=2 np=0 zr=1",
+                "round#2 op=1 sd=1 sc=1 st=1 s=2 np=0 zr=1",
+                "begin cause=PhaseBTrigger retrySet#3 s=2 np=0 zr=0",
+                "iter StopNoFunded mayWait=0 deferred=0 s=2 np=0 zr=1",
+                "terminalForce s=2 np=0 zr=1",
+                "end s=2 np=0 zr=1 deferred=0",
+            }, RunWithEndOfTurn(sc.Clone(), end, operational: true));
+        }
+
+        [Test]
+        public void EndOfTurnFactsWithoutAnOperationalShareRunOnlyOneRound()
+        {
+            var sc = new Scenario();
+            sc.Iterations.Enqueue(new IterationScript { Kind = IterationKind.StopNoFunded });
+            sc.Rounds.Enqueue(new TempoRoundOutcome(false, false, false, false));
+            var end = new Scenario();
+            end.Rounds.Enqueue(new TempoRoundOutcome(false, true, true, false));
+            CollectionAssert.AreEqual(new[]
+            {
+                "begin cause=Initial retrySet#1 s=0 np=0 zr=0",
+                "iter StopNoFunded mayWait=1 deferred=0 s=0 np=0 zr=1",
+                "terminalForce s=0 np=0 zr=1",
+                "settleWindow s=0 np=0 zr=1",
+                "round#1 op=0 sd=0 sc=0 st=0 s=0 np=0 zr=1",
+                "round#2 op=0 sd=1 sc=1 st=0 s=0 np=0 zr=1",
+                "end s=0 np=0 zr=1 deferred=0",
+            }, RunWithEndOfTurn(sc.Clone(), end, operational: false));
         }
 
         [Test]

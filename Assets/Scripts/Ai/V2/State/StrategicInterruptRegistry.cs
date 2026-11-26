@@ -36,25 +36,23 @@ namespace Game.Ai.V2
         internal readonly IReadOnlyCollection<int> ActorIds;
         internal readonly IReadOnlyCollection<int> ContactIds;
         internal readonly IReadOnlyCollection<HexCoord> Hexes;
-        internal readonly AiHandData Hand;
 
         internal bool Any => Reasons != StrategicInvalidationReason.None;
 
         internal StrategicInvalidation(StrategicInvalidationReason reasons, int version,
             IReadOnlyCollection<int> actorIds, IReadOnlyCollection<int> contactIds,
-            IReadOnlyCollection<HexCoord> hexes, AiHandData hand)
+            IReadOnlyCollection<HexCoord> hexes)
         {
             Reasons = reasons;
             RegistryVersion = version;
             ActorIds = actorIds ?? Array.Empty<int>();
             ContactIds = contactIds ?? Array.Empty<int>();
             Hexes = hexes ?? Array.Empty<HexCoord>();
-            Hand = hand;
         }
 
         internal static StrategicInvalidation Empty =>
             new StrategicInvalidation(StrategicInvalidationReason.None, 0,
-                Array.Empty<int>(), Array.Empty<int>(), Array.Empty<HexCoord>(), null);
+                Array.Empty<int>(), Array.Empty<int>(), Array.Empty<HexCoord>());
     }
 
     // Carries current-turn facts that invalidate conclusions made by a prior strategic pass.
@@ -79,12 +77,11 @@ namespace Game.Ai.V2
 
         private sealed class Entry
         {
-            public AiHandData Hand;
             public StrategicInvalidationReason Reasons;
             public readonly Dictionary<StrategicInvalidationReason, PayloadBucket> PayloadByReason =
                 new Dictionary<StrategicInvalidationReason, PayloadBucket>();
-            // Monotonic within a pending-set lifetime. Bumped exactly once by Mark for each
-            // non-empty factual delta and once by a partial Consume/ClearDiscovery mutation.
+            // Monotonic within a pending-set lifetime: bumped once by each non-empty factual delta
+            // and once by each partial Consume.
             public int Version;
         }
 
@@ -122,25 +119,23 @@ namespace Game.Ai.V2
         // Match-start reset (MatchStateInventory.ResetForNewMatch).
         internal static void ClearAll() => ByPlayer.Clear();
 
-        public static void CaptureTurnContext(PlayerSetupData player, int turn, AiHandData hand)
+        // Opens this player's pending set for the turn (a set left from another turn is dropped).
+        public static void CaptureTurnContext(PlayerSetupData player, int turn)
         {
             if (player == null) return;
-            Entry e = ByPlayer.GetOrReset(player, turn);
-            if (hand != null) e.Hand = hand;
+            ByPlayer.GetOrReset(player, turn);
         }
 
         // Storage-only merge; never advances the global world revision.
         internal static void Record(PlayerSetupData player, int turn,
             StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
-            IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null,
-            AiHandData hand = null)
+            IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null)
         {
             reasons &= AllReasons;
             if (player == null || reasons == StrategicInvalidationReason.None)
                 return;
 
             Entry e = ByPlayer.GetOrReset(player, turn);
-            if (hand != null) e.Hand = hand;
 
             var incoming = new PayloadBucket();
             AddPositive(incoming.ActorIds, actorIds);
@@ -190,9 +185,8 @@ namespace Game.Ai.V2
             return snapshot;
         }
 
-        // Domain-named entry points for the bounded StrategicReactionPass. Their observable
-        // meaning is unchanged: discovered army ids remain TargetIds; hand/capability remain the
-        // only follow-up reasons. The additional ReconKnowledge flag is for the future task loop.
+        // Domain-named publishers: a discovered army (ReconKnowledge + Contact, each id once per
+        // pending set), a hand opportunity, a capability change.
         public static void MarkDiscovery(PlayerSetupData player, int turn, IEnumerable<int> armyIds)
         {
             if (player == null || armyIds == null) return;
@@ -210,61 +204,19 @@ namespace Game.Ai.V2
                 contactIds: newIds);
         }
 
-        public static void MarkHandOpportunity(PlayerSetupData player, int turn, AiHandData hand) =>
-            WorldDeltaLifecycle.Publish(player, turn, StrategicInvalidationReason.Hand, hand: hand);
+        public static void MarkHandOpportunity(PlayerSetupData player, int turn) =>
+            WorldDeltaLifecycle.Publish(player, turn, StrategicInvalidationReason.Hand);
 
-        public static void MarkCapabilityChanged(PlayerSetupData player, int turn, AiHandData hand) =>
-            WorldDeltaLifecycle.Publish(player, turn, StrategicInvalidationReason.Capability, hand: hand);
-
-        // Current pending-invalidation generation for this turn (0 = no entry / different turn).
-        public static int Version(PlayerSetupData player, int turn) =>
-            ByPlayer.Peek(player, turn) is Entry e
-                ? e.Version : 0;
-
-        // Historical name retained for existing call sites. It means any pending invalidation.
-        public static bool HasPendingDiscovery(PlayerSetupData player, int turn) => HasPending(player, turn);
+        public static void MarkCapabilityChanged(PlayerSetupData player, int turn) =>
+            WorldDeltaLifecycle.Publish(player, turn, StrategicInvalidationReason.Capability);
 
         public static bool HasPending(PlayerSetupData player, int turn) =>
             ByPlayer.Peek(player, turn) is Entry e && e.Reasons != StrategicInvalidationReason.None;
-
-        public static bool HasPendingContactDiscovery(PlayerSetupData player, int turn) =>
-            HasAny(player, turn, StrategicInvalidationReason.Contact);
-
-        public static bool HasPendingFollowup(PlayerSetupData player, int turn) =>
-            HasAny(player, turn,
-                StrategicInvalidationReason.Hand | StrategicInvalidationReason.Capability);
-
-        public static HashSet<int> TargetIds(PlayerSetupData player, int turn)
-        {
-            var result = new HashSet<int>();
-            if (!(ByPlayer.Peek(player, turn) is Entry e))
-                return result;
-            MergePayload(e, StrategicInvalidationReason.Contact, null, result, null);
-            return result;
-        }
-
-        public static bool TryGetHand(PlayerSetupData player, int turn, out AiHandData hand)
-        {
-            hand = null;
-            if (!(ByPlayer.Peek(player, turn) is Entry e))
-                return false;
-            hand = e.Hand;
-            return hand != null;
-        }
-
-        // Legacy contact-recursion suppression consumes the two flags emitted together by
-        // MarkDiscovery. Other typed facts (EventState, ResourceSite, Resources, etc.) survive.
-        public static void ClearDiscovery(PlayerSetupData player, int turn) =>
-            Consume(player, turn,
-                StrategicInvalidationReason.Contact | StrategicInvalidationReason.ReconKnowledge);
 
         public static void Clear(PlayerSetupData player, int turn)
         {
             ByPlayer.Remove(player, turn);
         }
-
-        private static bool HasAny(PlayerSetupData player, int turn, StrategicInvalidationReason mask) =>
-            ByPlayer.Peek(player, turn) is Entry e && (e.Reasons & mask) != 0;
 
         private static StrategicInvalidation Snapshot(Entry e, StrategicInvalidationReason reasons)
         {
@@ -275,7 +227,7 @@ namespace Game.Ai.V2
                 if ((reasons & single) != 0)
                     MergePayload(e, single, actors, contacts, hexes);
             return new StrategicInvalidation(reasons, e.Version,
-                SortedArray(actors), SortedArray(contacts), HexArray(hexes), e.Hand);
+                SortedArray(actors), SortedArray(contacts), HexArray(hexes));
         }
 
         private static void MergePayload(Entry e, StrategicInvalidationReason reason,

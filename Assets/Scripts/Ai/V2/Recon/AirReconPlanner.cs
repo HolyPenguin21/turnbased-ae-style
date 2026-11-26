@@ -17,7 +17,6 @@ namespace Game.Ai.V2
     // source/aircraft binding; the executor materializes them before issuing their first step.
     internal sealed class AirReconPlan
     {
-        public readonly HashSet<int> ReservedActorIds = new HashSet<int>();
         public readonly HashSet<int> MaterializedActorIds = new HashSet<int>();
         public readonly List<ProvisionedMission> StoredMissions = new List<ProvisionedMission>();
         public readonly List<int> ReadyActorIds = new List<int>();
@@ -30,11 +29,9 @@ namespace Game.Ai.V2
     internal static class AirReconPlanner
     {
         internal static AirReconPlan Plan(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            WorldSnapshot snapshot, IReadOnlyList<ProvisionedMission> airProvisioned,
-            IEnumerable<int> reservedActorIds = null)
+            WorldSnapshot snapshot, IReadOnlyList<ProvisionedMission> airProvisioned)
         {
             var plan = new AirReconPlan();
-            plan.ReservedActorIds.UnionWith(reservedActorIds ?? Array.Empty<int>());
             if (player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
             {
                 plan.Summary = "not reached (missing player/root/map/snapshot)";
