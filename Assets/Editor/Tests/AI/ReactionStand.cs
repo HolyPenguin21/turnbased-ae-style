@@ -37,6 +37,15 @@ namespace Game.EditorTests
         Threat,          // a strong enemy army seen now, 2 hexes away
         PendingContact,  // a weak enemy army whose discovery is pending when the turn starts
         PendingHand,     // a hand opportunity pending when the turn starts
+        // Expectation cases (each states what the turn must show, besides the boundaries):
+        HostAdjacent,       // a strong army next to the Citadel: an ActiveDefence objective is accepted
+        TwoContacts,        // a weak army east, a middle one south-west: both are known contacts
+        NoFieldArmyThreat,  // only the garrison and a scout against a strong army: the garrison asks for power
+        ZeroApThreat,       // the strong army with 0 AP: nothing spends AP, AP stays 0
+        RichThreat,         // the strong army with 40 of every resource: boundaries only
+        FullHand,           // the hand at its capacity: Phase B never draws
+        PendingContactFar,  // a far weak army whose discovery is pending: the loop takes the Contact fact
+        GarrisonOnly,       // the garrison alone, no enemy: no defence objective, no mission step moves AP
     }
 
     public sealed class ReactionStandTests
@@ -124,12 +133,20 @@ namespace Game.EditorTests
             if (bodies.Count == 0 || hero == null)
                 Assert.Ignore($"{ownDeck}: no ground body or hero");
 
+            bool fieldArmy = scenario != ReactionScenario.NoFieldArmyThreat && scenario != ReactionScenario.GarrisonOnly;
             Army(me, new HexCoord(0, 0), true, bodies[0]);
-            Army(me, new HexCoord(1, 0), false, hero, bodies[bodies.Count / 2], bodies[bodies.Count - 1]);
+            if (fieldArmy)
+                Army(me, new HexCoord(1, 0), false, hero, bodies[bodies.Count / 2], bodies[bodies.Count - 1]);
             CardDefinition recce = ownCards.FirstOrDefault(c => c.cardType == CardType.Unit && !c.isAviation
                 && AbilityParams.UnitHasAnyRecce(UnitData.FromDefinition(c, me)));
-            if (recce != null)
+            if (recce != null && scenario != ReactionScenario.GarrisonOnly)
                 Army(me, new HexCoord(0, 1), false, recce);
+            if (scenario == ReactionScenario.ZeroApThreat)
+                root.ActionPoints = 0;
+            if (scenario == ReactionScenario.RichThreat)
+                foreach (ResourceType type in new[] { ResourceType.Human, ResourceType.Energy,
+                             ResourceType.Materials, ResourceType.Tech })
+                    root.AddResource(type, 34);
 
             var ctx = new AiTurnContext
             {
@@ -138,9 +155,14 @@ namespace Game.EditorTests
             };
             AiHandData hand = AiHandRegistry.GetOrCreate(me, catalog, ctx.StartingHandSize, ctx.HandCapacity);
             hand.SetCurrentTurn(TurnNumber);
+            if (scenario == ReactionScenario.FullHand)
+                while (hand.HasFreeSlot && hand.HasCardsLeftToDraw)
+                    hand.DrawOne();
 
             List<CardDefinition> foeBodies = GroundBodies(foeCards, foe);
-            if (scenario != ReactionScenario.Quiet && scenario != ReactionScenario.PendingHand)
+            if (scenario >= ReactionScenario.HostAdjacent)
+                PlaceExpectationEnemies(scenario, me, foe, foeBodies);
+            else if (scenario != ReactionScenario.Quiet && scenario != ReactionScenario.PendingHand)
             {
                 if (foeBodies.Count == 0)
                     Assert.Ignore($"{enemyDeck}: no ground body");
@@ -179,7 +201,82 @@ namespace Game.EditorTests
             List<UnitData> lost = unitsBefore.Except(OwnUnits(me)).ToList();
             if (lost.Count > 0)
                 problems.Add("units lost: " + string.Join(", ", lost.Select(u => u.Name)));
+            problems.AddRange(Expectations(scenario, root));
             Assert.That(problems, Is.Empty, digest);
+        }
+
+        // The enemies of the expectation cases, all seen now (AiMapMemory observation).
+        private void PlaceExpectationEnemies(ReactionScenario scenario, PlayerSetupData me, PlayerSetupData foe,
+            List<CardDefinition> foeBodies)
+        {
+            if (scenario == ReactionScenario.FullHand || scenario == ReactionScenario.GarrisonOnly)
+                return;
+            if (foeBodies.Count == 0)
+                Assert.Ignore("enemy deck: no ground body");
+            CardDefinition weak = foeBodies[0], mid = foeBodies[foeBodies.Count / 2],
+                strong = foeBodies[foeBodies.Count - 1];
+            var seen = new List<ArmyData>();
+            switch (scenario)
+            {
+                case ReactionScenario.HostAdjacent:
+                    seen.Add(Army(foe, new HexCoord(1, -1), false, strong, strong, strong, strong));
+                    break;
+                case ReactionScenario.TwoContacts:
+                    seen.Add(Army(foe, new HexCoord(4, 0), false, weak, weak));
+                    seen.Add(Army(foe, new HexCoord(-3, 2), false, mid, mid, mid));
+                    break;
+                case ReactionScenario.NoFieldArmyThreat:
+                case ReactionScenario.ZeroApThreat:
+                case ReactionScenario.RichThreat:
+                    seen.Add(Army(foe, new HexCoord(3, 0), false, strong, strong, strong, strong));
+                    break;
+                case ReactionScenario.PendingContactFar:
+                    seen.Add(Army(foe, new HexCoord(-3, -3), false, weak, weak));
+                    break;
+            }
+            foreach (ArmyData enemy in seen)
+                AiMapMemory.ObserveForTest(me, enemy);
+            if (scenario == ReactionScenario.PendingContactFar)
+                StrategicInterruptRegistry.MarkDiscovery(me, TurnNumber, seen.Select(a => a.Id));
+        }
+
+        // What each expectation case must show in the turn's own lines (beyond the boundaries).
+        private IEnumerable<string> Expectations(ReactionScenario scenario, PlayerRoot root)
+        {
+            bool Any(params string[] parts) => _lines.Any(l => parts.All(l.Contains));
+            switch (scenario)
+            {
+                case ReactionScenario.HostAdjacent:
+                    if (!Any("[ActiveDefence][Objective] decision=ACCEPT"))
+                        yield return "expected an accepted ActiveDefence objective against the army next to the Citadel";
+                    break;
+                case ReactionScenario.TwoContacts:
+                    if (!Any("threat: contacts 2"))
+                        yield return "expected both enemy armies as known contacts";
+                    break;
+                case ReactionScenario.NoFieldArmyThreat:
+                    if (!Any("decision=CREATE", "held_base_garrison_below_floor"))
+                        yield return "expected the garrison to ask for field power against the strong army";
+                    break;
+                case ReactionScenario.ZeroApThreat:
+                    if (root.ActionPoints != 0)
+                        yield return $"AP changed from 0 to {root.ActionPoints}";
+                    foreach (string l in _lines.Where(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"spent ap [1-9]")))
+                        yield return "AP spent with 0 AP: " + l;
+                    break;
+                case ReactionScenario.FullHand:
+                    foreach (string l in _lines.Where(l => l.Contains("WINNER Draw")))
+                        yield return "drew into a full hand: " + l;
+                    break;
+                case ReactionScenario.PendingContactFar:
+                    if (!_lines.Any(l => l.Contains("Triggers=") && l.Contains("Contact")))
+                        yield return "the pending Contact fact was never taken by the loop";
+                    break;
+                case ReactionScenario.GarrisonOnly:
+                    if (Any("[ActiveDefence][Objective] decision=ACCEPT"))
+                        yield return "an ActiveDefence objective without any enemy";
+                    break;
+            }
         }
 
         // ---- world ------------------------------------------------------------------------------
