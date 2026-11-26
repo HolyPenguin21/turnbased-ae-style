@@ -71,7 +71,7 @@ namespace Game.EditorTests
         {
             var slow = army.Members[0]; slow.IsAviation = true; slow.MoveCurrent = 1;
             var fast = new UnitData { Owner = army.Owner, IsAviation = true, MoveCurrent = 5, MoveMax = 5, HitPointsCurrent = 3 };
-            army.Members.Add(fast); army.IsAirArmy = true;
+            TestRoster.Add(army, fast); army.IsAirArmy = true;
             var move = Move(); Assert.That(move.TryEnterNextStep(out _, out _), Is.True);
             Assert.That(move.CanContinue, Is.False);
             ArmyActions.RemoveMember(army, slow);
@@ -208,7 +208,7 @@ namespace Game.EditorTests
             var passenger = army.Members[0]; passenger.MoveMax = 1; passenger.MoveCurrent = 1;
             var transport = new UnitData { Owner = army.Owner, MoveMax = 5, MoveCurrent = 5, HitPointsCurrent = 3 };
             transport.Abilities.Add(Game.Cards.UnitAbilities.Transport);
-            army.Members.Add(transport); army.RefreshTransport();
+            TestRoster.Add(army, transport); army.RefreshTransport();
             var move = Move();
             Assert.That(move.TryEnterNextStep(out _, out _), Is.True);
             ArmyActions.RemoveMember(army, transport);
@@ -312,7 +312,7 @@ namespace Game.EditorTests
         {
             army.MarkActivated();
             var joined = new UnitData { Owner = army.Owner, MoveMax = 5, MoveCurrent = 5, HitPointsCurrent = 4, ActivationApCost = 2 };
-            army.Members.Add(joined);
+            TestRoster.Add(army, joined);
             WithMap(map =>
             {
                 var move = ArmyMovementOperation.ForOrder(army, map, new[] { origin, first, last }, null, last, null);

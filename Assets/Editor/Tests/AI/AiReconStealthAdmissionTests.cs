@@ -64,7 +64,7 @@ namespace Game.EditorTests
         [Test]
         public void ReconfiguredNonSoloScoutCannotSpendReservedStealthOrCreatePatrol()
         {
-            _army.Members.Add(new UnitData { Owner = _player });
+            TestRoster.Add(_army, new UnitData { Owner = _player });
             Assert.That(AiArmyRoles.IsSoloRecce(_army), Is.False);
 
             ExecutionResult result = RunRejectedAdmission(null);

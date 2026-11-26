@@ -28,7 +28,7 @@ namespace Game.EditorTests
         private readonly Dictionary<string, MapObjectVisual> encoded = new Dictionary<string, MapObjectVisual>();
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
         private static void Set(object target, string name, object value) => target.GetType().GetField(name, Private).SetValue(target, value);
-        private static object Call(object target, string name, params object[] arguments) => target.GetType().GetMethod(name, Private).Invoke(target, arguments);
+        private static object Call(object target, string name, params object[] arguments) => TestReflection.FindMethod(target.GetType(), name, Private, arguments).Invoke(target, arguments);
 
         [SetUp]
         public void SetUp()

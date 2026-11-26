@@ -169,7 +169,7 @@ namespace Game.EditorTests
         public void DepartureProjection_DoesNotPromiseHeroReturnWithoutRoomAtHome()
         {
             ArmyData home = DepartureHome();
-            while (home.Members.Count < home.Capacity) home.Members.Add(Body("Guard", 12));
+            while (home.Members.Count < home.Capacity) TestRoster.Add(home, Body("Guard", 12));
             UnitData body = Body("Fighter", 20); body.IsSummoned = true;
             ArmyData host = Army(Staging, Hero("Lead", 8), Hero("Extra", 7), body);
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
@@ -276,7 +276,7 @@ namespace Game.EditorTests
             ArmyData host = Army(Staging, keep, extra, Body("Fighter", 20));
             Assert.That(GroundCombatAssemblyPlanner.CanApplyHeroReturn(host, home, keep,
                 new[] { extra }, requireReadyThisTurn), Is.EqualTo(!requireReadyThisTurn));
-            while (home.Members.Count < home.Capacity) home.Members.Add(Body("Guard", 12));
+            while (home.Members.Count < home.Capacity) TestRoster.Add(home, Body("Guard", 12));
             Assert.That(GroundCombatAssemblyPlanner.CanApplyHeroReturn(host, home, keep,
                 new[] { extra }, requireReadyThisTurn), Is.False, "future capability must still fit both rosters");
             Assert.That(host.Members, Does.Contain(extra));
@@ -440,7 +440,7 @@ namespace Game.EditorTests
         public void PartlyFullHome_PermitsPartialReturnsBeforeChoosingSupportFallback(bool needsAssembly, float gate)
         {
             ArmyData home = DepartureHome();
-            while (home.Members.Count < home.Capacity - 1) home.Members.Add(Body("Guard", 12));
+            while (home.Members.Count < home.Capacity - 1) TestRoster.Add(home, Body("Guard", 12));
             UnitData mara = Hero("Mara", 4, support: true), edda = Hero("Edda", 4, support: true);
             UnitData sol = Hero("Sol", 4); sol.ActivationApCost = 0;
             ArmyData host = Army(Staging, mara, edda, sol, Body("Fighter", 3));

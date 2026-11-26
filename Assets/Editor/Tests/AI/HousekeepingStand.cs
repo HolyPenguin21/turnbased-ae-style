@@ -412,7 +412,7 @@ namespace Game.EditorTests
                 && !c.isAviation && Has(c, UnitAbilities.Disruption));
             if (carrier == null)
                 NUnit.Framework.Assert.Ignore($"{EnemyDeck.Name}: no Disruption carrier");
-            enemy.AddMemberSorted(Make(carrier, Foe, "disruption"));
+            TestRoster.AddSorted(enemy, Make(carrier, Foe, "disruption"));
         }
 
         public void MoveEnemy(ArmyData enemy, int distance)
@@ -561,8 +561,8 @@ namespace Game.EditorTests
         private StandArmy DayArmyOf(UnitData u) =>
             Last?.After.Values.FirstOrDefault(a => a.Members.Contains(u));
 
-        private List<UnitData> DayMembers(ArmyData army) =>
-            Last != null && Last.After.TryGetValue(army.Id, out StandArmy a) ? a.Members : army.Members;
+        private IReadOnlyList<UnitData> DayMembers(ArmyData army) =>
+            Last != null && Last.After.TryGetValue(army.Id, out StandArmy a) ? a.Members : army.Roster;
 
         private WorldSnapshot Snapshot()
         {

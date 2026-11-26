@@ -227,7 +227,7 @@ namespace Game.EditorTests
         {
             BuildingRegistry.Clear();
             var hero = new UnitData { Owner = _owner, IsHero = true, IsHidden = true, HitPointsCurrent = 5 };
-            _army.Members.Add(hero);
+            TestRoster.Add(_army, hero);
             var detector = new ArmyData { Owner = _enemy, Hex = _hex };
             detector.Members.Add(new UnitData { Owner = _enemy, HitPointsCurrent = 5 });
             ArmyRegistry.Register(detector);
@@ -295,7 +295,7 @@ namespace Game.EditorTests
         public void FirstVisibleMemberActsWhileOtherMembersStayHidden()
         {
             var other = new UnitData { Owner = _owner, IsHidden = true };
-            _army.Members.Add(other);
+            TestRoster.Add(_army, other);
             StealthSystem.ExitStealth(_unit);
             Assert.That(BuildingRegistry.FindAt(_hex), Is.Null);
             Assert.That(other.IsHidden, Is.True);

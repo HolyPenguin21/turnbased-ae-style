@@ -151,7 +151,7 @@ namespace Game.EditorTests
                 case "ap": root.ActionPoints = 0; break;
                 case "body": donor.RemoveRosterMember(strong); break;
                 case "cover": donor.RemoveRosterMember(cover); break;
-                case "shell": shell.Members.Add(Body(owner, 2, 2, 5)); break;
+                case "shell": TestRoster.Add(shell, Body(owner, 2, 2, 5)); break;
                 case "activated": shell.MarkActivated(); break;
                 case "moved": ArmyRegistry.MoveArmy(enemy, new HexCoord(42, 40)); break;
                 case "hidden": typeof(VisionSystem).GetField("Visible", BindingFlags.Static | BindingFlags.NonPublic)
@@ -191,7 +191,7 @@ namespace Game.EditorTests
             switch (change)
             {
                 case "body": actor.ReplaceRoster(null); break;
-                case "added": actor.Members.Add(Body(owner, 1, 1, 5)); break;
+                case "added": TestRoster.Add(actor, Body(owner, 1, 1, 5)); break;
                 case "cover": donor.RemoveRosterMember(cover); break;
                 case "moved": ArmyRegistry.MoveArmy(enemy, new HexCoord(42, 40)); break;
                 case "cooccupant": var other = new ArmyData { Owner = enemyOwner, Hex = Goal };

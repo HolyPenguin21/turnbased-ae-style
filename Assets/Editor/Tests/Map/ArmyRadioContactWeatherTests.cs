@@ -55,9 +55,9 @@ namespace Game.EditorTests
         {
             var speaker = Army(_owner, 4);
             var enemy = Army(_enemy, 1);
-            enemy.Members.Add(new UnitData { Owner = _enemy, Attack = 999, HitPointsCurrent = 5, IsHidden = true });
-            enemy.Members.Add(new UnitData { Owner = _enemy, Attack = 999, HitPointsCurrent = 0 });
-            enemy.Members.Add(new UnitData { Owner = _enemy, Attack = 999, HitPointsCurrent = 5, IsPrisoner = true });
+            TestRoster.Add(enemy, new UnitData { Owner = _enemy, Attack = 999, HitPointsCurrent = 5, IsHidden = true });
+            TestRoster.Add(enemy, new UnitData { Owner = _enemy, Attack = 999, HitPointsCurrent = 0 });
+            TestRoster.Add(enemy, new UnitData { Owner = _enemy, Attack = 999, HitPointsCurrent = 5, IsPrisoner = true });
             Assert.That(ArmyRadioChatter.Situation(speaker, true, false, 0f).ToString(), Is.EqualTo("WeakEnemy"));
         }
 

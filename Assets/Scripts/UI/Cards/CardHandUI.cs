@@ -12,7 +12,6 @@ using Game.Turns;
 using Game.Units;
 using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Game.UI
@@ -537,9 +536,9 @@ namespace Game.UI
                     _debugCards[i].TickAnimation(dt);
         }
 
-        // Esc cancels an in-progress equipment attach (see BeginAttachMode) — but only when the
-        // Army Viewer isn't open: that modal owns Esc while it's showing and forwards the
-        // attach-cancel itself first (see ArmyViewerModalUI.Update), so this would double-fire.
+        // Esc cancels an in-progress equipment attach (see BeginAttachMode) — but only when no
+        // window owns input: an open window (Army Viewer, Base Viewer, menu) takes that Esc first;
+        // the Army Viewer forwards the attach-cancel itself (see ArmyViewerModalUI.Update).
         // Unity's Input System has no key-pressed event, so this is a genuine per-frame poll.
         private void Update()
         {
@@ -554,9 +553,7 @@ namespace Game.UI
             if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
             TickCardAnimations();
 
-            if (_pendingAttachment == null || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
-                return;
-            if (armyViewerModal != null && armyViewerModal.IsShowing)
+            if (_pendingAttachment == null || !Game.UI.UIFocusUtility.WasSceneEscapePressed())
                 return;
             CancelAttachMode();
         }

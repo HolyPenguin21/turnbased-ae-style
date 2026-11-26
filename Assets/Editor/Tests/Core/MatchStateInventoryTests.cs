@@ -54,9 +54,12 @@ namespace Game.EditorTests
 
         internal static List<(Type Owner, FieldInfo Field)> StatefulStatics()
         {
+            // The game assembly and the runtime modules split out of it (Game.* asmdefs).
             Assembly game = typeof(MatchStateInventory).Assembly;
             var result = new List<(Type, FieldInfo)>();
-            foreach (Type type in game.GetTypes())
+            foreach (Type type in AppDomain.CurrentDomain.GetAssemblies()
+                         .Where(a => a == game || a.GetName().Name.StartsWith("Game.", StringComparison.Ordinal))
+                         .SelectMany(a => a.GetTypes()))
             {
                 if (type.Namespace == null || !type.Namespace.StartsWith("Game", StringComparison.Ordinal)
                     || type.Namespace.StartsWith("Game.EditorTests", StringComparison.Ordinal)) continue;

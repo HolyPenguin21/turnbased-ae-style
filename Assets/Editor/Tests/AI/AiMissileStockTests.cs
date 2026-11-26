@@ -672,7 +672,7 @@ namespace Game.EditorTests
         public void StoredMissileGetsFundedProvisionedAndClaimedOnceBeforeAnyAssault()
         {
             using var world = new EngineWorld(owner);
-            var field = world.Airfield(owner, 0); field.Members.Add(LiveAircraft());
+            var field = world.Airfield(owner, 0); TestRoster.Add(field, LiveAircraft());
             EnemyArmy();
             var snap = LiveMissileWorld(world);
             Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(snap), Is.Empty);
@@ -706,7 +706,7 @@ namespace Game.EditorTests
         public void PreparationRechecksBlastValueAndOtherOwnersEnergyHoldBeforePayment()
         {
             using var world = new EngineWorld(owner);
-            var field = world.Airfield(owner, 0); field.Members.Add(LiveAircraft());
+            var field = world.Airfield(owner, 0); TestRoster.Add(field, LiveAircraft());
             ArmyData enemyArmy = EnemyArmy();
             var snap = LiveMissileWorld(world);
             var proposal = AirProposals(snap).Single();
@@ -842,7 +842,7 @@ namespace Game.EditorTests
         {
             using var world = new EngineWorld(owner);
             var snap = Snapshot(Sighting(MixedArmy(), hex: new HexCoord(12, 0))); snap.Map = world.Map;
-            var source = world.Airfield(owner, 0); source.Members.Add(LiveAircraft());
+            var source = world.Airfield(owner, 0); TestRoster.Add(source, LiveAircraft());
             world.Airfield(owner, 4);
             var carrierArmy = new ArmyData { Owner = owner, Hex = new HexCoord(8, 0) };
             var carrier = new UnitData { Owner = owner, AirfieldCapacity = 2, HitPointsCurrent = 10, HitPointsMax = 10 };

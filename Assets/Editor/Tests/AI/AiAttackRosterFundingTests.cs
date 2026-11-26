@@ -100,7 +100,7 @@ namespace Game.EditorTests
                 hand.AddCard(new CardData(slag));
                 Assert.That(Allowed(new ResourceCost(), other.Id, card), Is.True, "a second copy is free");
 
-                host.Members.Add(new Game.Units.UnitData { Owner = player, OriginatingCard = slag });
+                TestRoster.Add(host, new Game.Units.UnitData { Owner = player, OriginatingCard = slag });
                 Assert.That(Allowed(new ResourceCost(tech: 5), other.Id), Is.True,
                     "the host holds its card: the reserve is gone");
             }

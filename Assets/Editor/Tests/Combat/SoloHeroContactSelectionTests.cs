@@ -67,7 +67,7 @@ namespace Game.EditorTests
         public void RevealedHeroInitiatesContactEvenWhileItsCombatantsRemainHidden()
         {
             _hero.Members[0].IsHidden = true;
-            _hero.Members.Add(new UnitData { Owner = _hero.Owner, IsHidden = true, HitPointsCurrent = 5 });
+            TestRoster.Add(_hero, new UnitData { Owner = _hero.Owner, IsHidden = true, HitPointsCurrent = 5 });
             Assert.That(BattleInitiator.CanInitiateContact(_hero), Is.False);
 
             StealthSystem.ExitStealth(_hero.Members[0]);

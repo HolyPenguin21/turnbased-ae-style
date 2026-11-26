@@ -250,6 +250,10 @@ namespace Game.UI
         internal static bool CanHandleInput(MonoBehaviour owner) => IsTop(owner) && !ClosedThisFrame;
         internal static bool WasEscapePressed(MonoBehaviour owner)
             => CanHandleInput(owner) && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
+        // Esc for scene-level input (not a window): only while no window owns input and none
+        // closed this frame, so one press never closes a window and also cancels scene state.
+        internal static bool WasSceneEscapePressed()
+            => !HasModal && !ClosedThisFrame && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
 
         public static bool IsTextFieldFocused()
         {

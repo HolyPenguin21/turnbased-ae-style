@@ -263,7 +263,7 @@ namespace Game.EditorTests
             ArmyData wing = Wing(hex, Plane(ap: 1, energy: 1));
             wing.Members[0].SortieLaunchPaid = true;
             UnitData stored = Plane(ap: 2, energy: 3);
-            airfield.AddMemberSorted(stored);
+            TestRoster.AddSorted(airfield, stored);
             wing.MarkActivated();
 
             Assert.That(ArmyActions.TransferMember(stored, airfield, wing, null, out string why), Is.True, why);
@@ -382,7 +382,7 @@ namespace Game.EditorTests
         {
             HexCoord hex = new HexCoord(0, 0);
             ArmyData airfield = Airfield(hex, capacity: 3);
-            airfield.AddMemberSorted(Plane(1, 1));
+            TestRoster.AddSorted(airfield, Plane(1, 1));
             ArmyData wing = Wing(hex, Plane(1, 1));
             Assert.That(AviationRules.FreeAirfieldCapacity(hex, _owner), Is.EqualTo(1));
             Assert.That(AviationRules.FreeAirfieldCapacity(hex, _owner, wing), Is.EqualTo(2),
@@ -405,7 +405,7 @@ namespace Game.EditorTests
         {
             HexCoord home = new HexCoord(0, 0);
             ArmyData airfield = Airfield(home, capacity: 3);
-            airfield.AddMemberSorted(Plane(1, 1));
+            TestRoster.AddSorted(airfield, Plane(1, 1));
             ArmyData returning = Wing(new HexCoord(2, 0), Plane(1, 1));
             var reservation = new AirSortie { Army = returning, LandingHex = home };
             AirSortieRegistry.Add(_owner, reservation);
@@ -454,7 +454,7 @@ namespace Game.EditorTests
             Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(1));
             wing.ReplaceRoster(null);
             Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(2));
-            wing.AddMemberSorted(Plane(1, 1));
+            TestRoster.AddSorted(wing, Plane(1, 1));
             AirSortieRegistry.Clear();
             Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(2));
         }
@@ -472,7 +472,7 @@ namespace Game.EditorTests
             if (paidGarrison) garrison.MarkActivated();
             var aircraft = Enumerable.Range(0, paidGarrison ? 1 : ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), false) + 1)
                 .Select(_ => Plane(1, 1)).ToList();
-            foreach (var plane in aircraft) airfield.AddMemberSorted(plane);
+            foreach (var plane in aircraft) TestRoster.AddSorted(airfield, plane);
             Root().ActionPoints = 10;
             Assert.That(ArmyActions.TryUnloadAndBoardAircraft(ground, garrison, airfield,
                 aircraft, null, out _), Is.False);
@@ -493,7 +493,7 @@ namespace Game.EditorTests
             plane.HitPointsCurrent = 1;
             plane.MoveCurrent = 1;
             plane.HasAirAttackedThisTurn = true;
-            airfield.AddMemberSorted(plane);
+            TestRoster.AddSorted(airfield, plane);
             var ground = new ArmyData { Owner = _owner, Hex = home };
             var unit = new UnitData { Owner = _owner };
             ground.AddMemberSorted(unit);
@@ -1713,7 +1713,7 @@ namespace Game.EditorTests
             {
                 ArmyData airfield = Airfield(new HexCoord(0, 0), capacity: 4);
                 UnitData plane = Plane(1, 1);
-                airfield.AddMemberSorted(plane);
+                TestRoster.AddSorted(airfield, plane);
                 var shell = new ArmyData { Owner = _owner, Hex = airfield.Hex, Name = "Shell" };
                 shell.Controller = shellObject.AddComponent<ArmyController>(); shell.Controller.SetData(shell);
                 ArmyRegistry.Register(shell);
@@ -1761,7 +1761,7 @@ namespace Game.EditorTests
             {
                 ArmyData airfield = Airfield(new HexCoord(0, 0), capacity: 4);
                 UnitData plane = Plane(1, 1);
-                airfield.AddMemberSorted(plane);
+                TestRoster.AddSorted(airfield, plane);
                 var target = new HexCoord(3, 0);
                 var snap = new WorldSnapshot
                 {

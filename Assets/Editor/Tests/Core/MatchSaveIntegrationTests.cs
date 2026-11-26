@@ -68,7 +68,7 @@ namespace Game.EditorTests
         private static void Set(object target, string field, object value) => target.GetType().GetField(field, Private).SetValue(target, value);
         private static object Call(object target, string method, params object[] arguments)
         {
-            var found = target.GetType().GetMethod(method, Private);
+            var found = TestReflection.FindMethod(target.GetType(), method, Private, arguments);
             Assert.That(found, Is.Not.Null, "The fixture must exercise the runtime scene owner: " + method);
             try { return found.Invoke(target, arguments); }
             catch (TargetInvocationException ex) { throw ex.InnerException; }

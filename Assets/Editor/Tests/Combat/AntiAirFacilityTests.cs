@@ -128,7 +128,7 @@ namespace Game.EditorTests
             Assert.That(AntiAirRules.CollectTurnStartOpportunities(_player), Is.Empty);
 
             // One aircraft the AA owner can see makes the wing a target again.
-            wing.Members.Add(new UnitData { IsAviation = true, Owner = _enemy, HitPointsMax = 3, HitPointsCurrent = 3 });
+            TestRoster.Add(wing, new UnitData { IsAviation = true, Owner = _enemy, HitPointsMax = 3, HitPointsCurrent = 3 });
             Assert.That(AntiAirRules.CollectEntryReactions(wing, Adjacent).Count, Is.EqualTo(2));
             Assert.That(AntiAirRules.CollectTurnStartOpportunities(_player).Count, Is.EqualTo(2));
         }

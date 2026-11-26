@@ -227,7 +227,6 @@ namespace Game.Setup
             new MatchStateEntry("Game.Map.ResourceIconVisual", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.BattleSkillEffect", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.TutorialHintController", MatchStateKind.Presentation),
-            new MatchStateEntry("Game.UI.CollectionMessageUI", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.CollectionScreensUI", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.SceneLoadCurtain", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.ScreenWearOverlay", MatchStateKind.Presentation),
