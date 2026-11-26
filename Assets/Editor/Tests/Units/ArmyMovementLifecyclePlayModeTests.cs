@@ -264,7 +264,7 @@ namespace Game.EditorTests
         private IEnumerator FatalStep(ArmyData army, HexCoord at, ArmyController.StepResolutionOutcome outcome)
         {
             yield return null; // the AI WaitUntil is already polling while the resolver is suspended
-            army.Members.Clear();
+            army.ReplaceRoster(null);
             outcome.StopMovement = true;
             _selection.DeleteArmyIfEmptied(army);
         }
@@ -314,7 +314,7 @@ namespace Game.EditorTests
                 yield return null;
                 // Inject the post-AA roster, then run the real presenter's terminal deletion branch.
                 // Tokens/popup interaction is deliberately outside this lifecycle fixture.
-                army.Members.Clear();
+                army.ReplaceRoster(null);
                 yield return presenter.ResolveStep(army, to, outcome);
             }
             controller.SettleThen(() => controller.MoveAlong(_map, new List<HexCoord> { _origin, _first },
@@ -377,7 +377,7 @@ namespace Game.EditorTests
             IEnumerator Resolve(HexCoord from, HexCoord to, ArmyController.StepResolutionOutcome outcome)
             {
                 yield return null;
-                if (to.Equals(_first)) army.Members.RemoveAt(0);
+                if (to.Equals(_first)) army.RemoveRosterMember(army.Members[0]);
             }
             controller.SettleThen(() => controller.MoveAlong(_map,
                 new List<HexCoord> { _origin, _first, _last }, _ => Vector3.zero,
@@ -840,7 +840,7 @@ namespace Game.EditorTests
                 {
                     arrivals++;
                     ArmyRegistry.MoveArmy(army, controller.CurrentHex);
-                    army.Members.Clear();
+                    army.ReplaceRoster(null);
                     _selection.DeleteArmyIfEmptied(army);
                 }));
             yield return Settled(army);
@@ -881,7 +881,7 @@ namespace Game.EditorTests
             MethodInfo build = typeof(WorldAnalysis).GetMethod("BuildSelf", BindingFlags.Static | BindingFlags.NonPublic);
             SelfSnapshot before = (SelfSnapshot)build.Invoke(null, new object[] { _owner, _root, null, Context(), null });
             Assert.That(before.Armies.Any(a => a.ArmyId == army.Id), Is.True);
-            army.Members.Clear();
+            army.ReplaceRoster(null);
             _selection.DeleteArmyIfEmptied(army);
             SelfSnapshot after = (SelfSnapshot)build.Invoke(null, new object[] { _owner, _root, null, Context(), null });
             Assert.That(after.Armies.Any(a => a.ArmyId == army.Id), Is.False);
@@ -976,7 +976,7 @@ namespace Game.EditorTests
             {
                 yield return new WaitUntil(() => army.Controller != null && army.Controller.IsMoving
                     && army.Controller.CurrentHex.Equals(_first));
-                army.Members.Clear();
+                army.ReplaceRoster(null);
                 _selection.DeleteArmyIfEmptied(army);
             }
             _map.StartCoroutine(Kill());
@@ -1005,7 +1005,7 @@ namespace Game.EditorTests
             var otherSortie = new AirSortie { Army = other, Kind = AirSortieKind.Strike };
             AirSortieRegistry.Add(_owner, lostSortie);
             AirSortieRegistry.Add(_owner, otherSortie);
-            lost.Members.Clear();
+            lost.ReplaceRoster(null);
             _selection.DeleteArmyIfEmptied(lost);
             var result = new ExecutionResult { FinalHex = _first };
             var control = new ReconAirExecutor.ActorStepControl { MovedAny = true, CanContinue = true };
@@ -1031,7 +1031,7 @@ namespace Game.EditorTests
             {
                 yield return new WaitUntil(() => army.Controller != null && army.Controller.IsMoving
                     && army.Controller.CurrentHex.Equals(_first));
-                army.Members.Clear();
+                army.ReplaceRoster(null);
                 _selection.DeleteArmyIfEmptied(army);
             }
             // A stable runner is independent of the marker that Destroy will stop.

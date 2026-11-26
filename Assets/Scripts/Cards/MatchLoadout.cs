@@ -21,7 +21,7 @@ namespace Game.Cards
                 var validation = rules.Validate(source, ownership);
                 if (!validation.IsValid) throw new InvalidOperationException(string.Join("\n", validation.Errors));
             }
-            deck = CollectionProfile.CopyDeck(source);
+            deck = source?.Copy();
             // Unknown cards are only warnings in Validate; they never reach the match.
             deck.mainCards.RemoveAll(e => rules.Resolve(e.cardKey) == null);
             deck.equipment.RemoveAll(e => rules.Resolve(e.cardKey) == null);
@@ -38,7 +38,7 @@ namespace Game.Cards
         }
         // A match saves its frozen starting loadout, never the currently selected profile deck.
         // The existing profile copy boundary also detaches the saved match from profile edits.
-        public SavedDeck CaptureState() => CollectionProfile.CopyDeck(deck);
+        public SavedDeck CaptureState() => deck?.Copy();
 
         // A saved match keeps the loadout it started with: deck-building rules (points, copy
         // limits, permitted cards) are a new-match gate and may change in a balance patch

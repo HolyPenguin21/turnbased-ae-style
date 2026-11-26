@@ -445,6 +445,7 @@ namespace Game.UI
         // sibling order, and SetAsLastSibling() only reorders within the hand's own parent, not
         // relative to Canvas_UI's other top-level children.
         private const int DragSortingOrder = 1000;
+        private uint _dragInputGeneration;
         private const int TacticDragSortingOrder = 25001;
 
         public void OnBeginDrag(PointerEventData eventData)
@@ -460,6 +461,7 @@ namespace Game.UI
                 return;
 
             IsDragging = true;
+            _dragInputGeneration = UIFocusUtility.InputGeneration;
             _isHovered = false;
             _dragStartScreenX = eventData.position.x;
             _dragHoverValid = false;
@@ -485,7 +487,8 @@ namespace Game.UI
 
         public void OnDrag(PointerEventData eventData)
         {
-            if (UIFocusUtility.IsGameplayInputBlocked || (_tacticInteraction && _tacticUnavailableReason?.Invoke() != null))
+            if (UIFocusUtility.IsGameplayInputBlocked || _dragInputGeneration != UIFocusUtility.InputGeneration
+                || (_tacticInteraction && _tacticUnavailableReason?.Invoke() != null))
             { CancelDrag(); return; }
             if (!_dragAllowed)
                 return;
@@ -518,7 +521,8 @@ namespace Game.UI
 
         public void OnEndDrag(PointerEventData eventData)
         {
-            if (UIFocusUtility.IsGameplayInputBlocked) { CancelDrag(); return; }
+            if (UIFocusUtility.IsGameplayInputBlocked || _dragInputGeneration != UIFocusUtility.InputGeneration)
+            { CancelDrag(); return; }
             if (!_dragAllowed)
                 return;
 

@@ -5,7 +5,6 @@ using Game.Economy;
 using Game.Map;
 using Game.Styles;
 using Game.Terrain;
-using Game.UI;
 using UnityEngine;
 
 namespace Game.Core
@@ -68,9 +67,9 @@ namespace Game.Core
         // and the one embedded in ArmyViewerModalUI — and ArmyViewerModalUI's own unit grid),
         // so this lives here rather than as a duplicated [SerializeField] on each, same
         // reasoning as playerRowPrefab/resourceIconPrefab below.
-        public ArmyButtonUI armyButtonPrefab;
-        public ArmyButtonUI armyModalButtonPrefab;
-        public ArmyUnitCardUI armyUnitCardPrefab;
+        public Component armyButtonPrefab;
+        public Component armyModalButtonPrefab;
+        public Component armyUnitCardPrefab;
 
         [Header("Detailed Card Stat Colors")]
         // Color of the "(+N)" suffix on a detailed-card stat line's hex/building modifier (e.g.
@@ -94,7 +93,7 @@ namespace Game.Core
         // Instantiated by BaseViewerModalUI for its facility-slot grid — same reasoning as
         // armyUnitCardPrefab above (shared prefab reference, not a duplicated per-component
         // [SerializeField]).
-        public BaseSlotCardUI baseSlotCardPrefab;
+        public Component baseSlotCardPrefab;
         // Exactly 3 tiers this pass — Level 1->2->3->4, each unlocking one more Facility slot
         // (see BuildingData.UnlockedFacilitySlots). Costs from the user's own spec.
         public BaseUpgradeTier[] baseUpgradeTiers =
@@ -122,7 +121,7 @@ namespace Game.Core
         };
         // Instantiated by HexInfoPanelUI for its up-to-4 "build extractor"
         // buttons — same shared-prefab reasoning as armyButtonPrefab above.
-        public ResourceActionButtonUI resourceActionButtonPrefab;
+        public Component resourceActionButtonPrefab;
         // The marker for a hero-built resource site (see HexSelectionController.
         // TryBuildExtractionFacility) — a distinct prefab from the per-faction Base/Citadel
         // marker (FactionCardCatalog.basePrefab), not just a different icon swapped in at
@@ -206,7 +205,7 @@ namespace Game.Core
         [Header("Player Setup")]
         public int minPlayers = 2;
         public int maxPlayers = 4;
-        public PlayerRowUI playerRowPrefab;
+        public Component playerRowPrefab;
 
         [Header("Move Arrow")]
         // Comet-trail move-order preview (see MoveArrowMarker / MoveArrowStyle).

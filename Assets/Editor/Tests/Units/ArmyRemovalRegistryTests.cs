@@ -58,7 +58,7 @@ namespace Game.EditorTests
         public void LateMoveCannotReRegisterRemovedArmyOrChangeDeathHex()
         {
             ArmyData army = Army(_owner, _origin);
-            army.Members.Clear();
+            army.ReplaceRoster(null);
             ArmyRegistry.Unregister(army, _death);
             ArmyRegistry.MoveArmy(army, new HexCoord(3, 0));
             Assert.That(army.Hex, Is.EqualTo(_death));
@@ -86,7 +86,7 @@ namespace Game.EditorTests
             VisionSystem.VisibleContentChanged += changed;
             try
             {
-                army.Members.Clear();
+                army.ReplaceRoster(null);
                 ArmyRegistry.Unregister(army, _death);
                 ArmyRegistry.Unregister(army, _death);
                 ArmyRegistry.MoveArmy(army, _origin);
@@ -105,7 +105,7 @@ namespace Game.EditorTests
             Assert.That(AiMapMemory.AllKnownEnemySightings(_observer).Any(s => s.ArmyId == army.Id), Is.True);
             int before = AiMapMemory.KnowledgeVersionFor(_observer);
             long routeBefore = AiMapMemory.RouteMemoryVersionFor(_observer);
-            army.Members.Clear();
+            army.ReplaceRoster(null);
             ArmyRegistry.Unregister(army, _death);
             Assert.That(AiMapMemory.AllKnownEnemySightings(_observer).Any(s => s.ArmyId == army.Id), Is.False);
             Assert.That(AiMapMemory.KnowledgeVersionFor(_observer), Is.GreaterThan(before));
@@ -119,7 +119,7 @@ namespace Game.EditorTests
             ArmyData army = Army(_owner, _origin);
             ArmyRegistry.Unregister(observerArmy);
             Assert.That(VisionSystem.IsVisible(_observer, _origin), Is.False);
-            army.Members.Clear();
+            army.ReplaceRoster(null);
             ArmyRegistry.Unregister(army, _death);
             Assert.That(AiMapMemory.AllKnownEnemySightings(_observer).Any(s => s.ArmyId == army.Id), Is.True,
                 "a death outside vision cannot reveal hidden live state");

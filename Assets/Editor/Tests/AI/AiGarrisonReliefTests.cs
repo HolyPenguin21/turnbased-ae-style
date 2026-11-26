@@ -188,7 +188,7 @@ namespace Game.EditorTests
                 var donor = new Game.Map.ArmyData { Owner = owner, Hex = Citadel, IsGarrison = true };
                 var bodies = Enumerable.Range(0, 4).Select(i => new Game.Units.UnitData
                     { Owner = owner, HitPointsCurrent = 5 }).ToList();
-                foreach (Game.Units.UnitData u in bodies) donor.Members.Add(u);
+                foreach (Game.Units.UnitData u in bodies) donor.AppendRosterMember(u);
                 // The planned unit is a hero: the garrison floor (AiArmyRoles.SpareableBodies, tested
                 // on its own) never holds a hero back, so this case isolates the pinned-pair check.
                 bodies[0].IsHero = true;
@@ -209,12 +209,12 @@ namespace Game.EditorTests
                 Assert.That(units, Is.EqualTo(new[] { bodies[0] }));
                 Assert.That(donor.Members, Has.Count.EqualTo(4), "a check moves nothing");
 
-                shell.Members.Add(new Game.Units.UnitData { Owner = owner, HitPointsCurrent = 5 });
+                shell.AppendRosterMember(new Game.Units.UnitData { Owner = owner, HitPointsCurrent = 5 });
                 Assert.That(ActiveDefenceProvisioner.TryResolveReliefExtraction(owner, target, shell, null,
                     out _, out _, out _), Is.False, "a shell that already holds bodies is not the planned one");
-                shell.Members.Clear();
+                shell.ReplaceRoster(null);
 
-                donor.Members.Remove(bodies[0]);
+                donor.RemoveRosterMember(bodies[0]);
                 Assert.That(ActiveDefenceProvisioner.TryResolveReliefExtraction(owner, target, shell, null,
                     out _, out _, out _), Is.False, "a planned body that left the garrison voids the plan");
             }

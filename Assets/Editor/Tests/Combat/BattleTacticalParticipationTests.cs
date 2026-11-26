@@ -186,7 +186,7 @@ namespace Game.EditorTests
             var c = Contact(2, defending);
             c.actor.Attack = 2; c.actor.Initiative = 0;
             c.actor.HitPointsCurrent = c.actor.HitPointsMax = 3;
-            c.enemy.Members.Clear();
+            c.enemy.ReplaceRoster(null);
             for (int i = 0; i < BattleGrid.Columns; i++)
             {
                 UnitData melee = Unit(c.own.Owner, 110 + i, range: 1, attack: 6, defense: 3, hp: 8);
@@ -305,7 +305,7 @@ namespace Game.EditorTests
         public void FullBattlefield_SearchYieldsAndKeepsLiveCellsUntilTheFinalCommit()
         {
             var c = Contact(2);
-            c.own.Members.Clear(); c.enemy.Members.Clear();
+            c.own.ReplaceRoster(null); c.enemy.ReplaceRoster(null);
             for (int i = 0; i < 10; i++)
             {
                 var own = Unit(c.own.Owner, 100 + i, range: 1 + i % 3, attack: 3 + i % 2, hp: 8);

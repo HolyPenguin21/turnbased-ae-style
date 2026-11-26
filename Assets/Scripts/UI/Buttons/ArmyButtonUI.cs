@@ -38,7 +38,6 @@ namespace Game.UI
         {
             Army = army;
             _showStats = showStats;
-            ResolveViewReferences();
             Refresh();
 
             SetSelected(selected);
@@ -57,21 +56,8 @@ namespace Game.UI
 
         public void SetSelected(bool selected)
         {
-            ResolveViewReferences();
             if (lampOn != null) lampOn.SetActive(selected);
             if (lampOff != null) lampOff.SetActive(!selected);
-        }
-
-        private void ResolveViewReferences()
-        {
-            if (lampOn == null) lampOn = transform.Find("Image_LampOn")?.gameObject;
-            if (lampOff == null) lampOff = transform.Find("Image_LampOff")?.gameObject;
-            if (apLabel == null) apLabel = transform.Find("Text_AP")?.GetComponent<TMP_Text>();
-            if (movementLabel == null) movementLabel = transform.Find("Text_Move")?.GetComponent<TMP_Text>();
-            if (capacityLabel == null) capacityLabel = transform.Find("Text_Cap")?.GetComponent<TMP_Text>();
-            if (apIcon == null) apIcon = transform.Find("Image_AP")?.gameObject;
-            if (movementIcon == null) movementIcon = transform.Find("Icon_Move")?.gameObject;
-            if (capacityIcon == null) capacityIcon = transform.Find("Image_Cap")?.gameObject;
         }
 
         // Called after a rename so an already-instantiated button (both the hex-side row's and

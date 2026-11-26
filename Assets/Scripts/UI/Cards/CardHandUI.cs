@@ -184,7 +184,6 @@ namespace Game.UI
 
         private void Awake()
         {
-            TutorialHintController.Install(turnController, this, armyViewerModal);
             InitializeTacticSwitch();
             if (drawButton != null)
                 drawButton.onClick.AddListener(OnDrawClicked);
@@ -421,7 +420,8 @@ namespace Game.UI
         // that army (see TryPlayCard/TryDeployIntoArmyModal).
         public bool CanDragCards()
         {
-            return turnController != null
+            return !UIFocusUtility.Blocks(ModalBlock.Hand)
+                && turnController != null
                 && turnController.CurrentPlayer != null
                 && turnController.CurrentPlayer.IsHuman
                 // Only the acting human's own hand can be played (hotseat: the screen may be lent
@@ -439,6 +439,7 @@ namespace Game.UI
         private void OnEnable()
         {
             _handEnabled = true;
+            UIFocusUtility.BlockingChanged += CancelModalDrag;
             RefreshHandLayout();
             BindTacticInventory();
             _humanRoot = SeatRoot();
@@ -475,6 +476,8 @@ namespace Game.UI
         private void OnDisable()
         {
             _handEnabled = false;
+            UIFocusUtility.BlockingChanged -= CancelModalDrag;
+            CancelModalDrag();
             UnbindTacticInventory();
             ResetTacticPresentation();
             if (_humanRoot != null)
@@ -498,13 +501,23 @@ namespace Game.UI
 
         private void OnCardDraggingBlockedChanged(bool blocked)
         {
-            if (blocked && UIFocusUtility.IsGameplayInputBlocked)
-            {
-                foreach (var card in _cards) if (card != null) card.CancelDrag();
-                _dragHexKnown = false;
-                Relayout(animated: false);
-            }
+            if (blocked) CancelModalDrag();
             RefreshDrawButtonInteractable();
+        }
+
+        private void CancelModalDrag()
+        {
+            bool dragging = false;
+            foreach (var card in _cards)
+            {
+                if (card == null || !card.IsDragging) continue;
+                card.CancelDrag();
+                dragging = true;
+            }
+            foreach (var card in _tacticCards)
+                if (card != null) card.CancelDrag();
+            _dragHexKnown = false;
+            if (dragging) Relayout(animated: false);
         }
 
         // Advances every card's position/scale tween (see CardUI.TickAnimation) from ONE place
@@ -1104,7 +1117,7 @@ namespace Game.UI
 
         private void OnDrawClicked()
         {
-            if (!CanDragCards()) return;
+            if (UIFocusUtility.ClosedThisFrame || !CanDragCards()) return;
             var result = CardHandCommands.TryDraw(HumanPlayer, _humanHand, drawApCost);
             if (!result.Ok) { turnController?.ShowSpawnHint(result.FailReason); return; }
             RefreshDeckCountText();

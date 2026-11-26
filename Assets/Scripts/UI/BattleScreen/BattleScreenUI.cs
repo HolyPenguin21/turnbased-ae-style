@@ -82,6 +82,7 @@ namespace Game.UI
 
         [Header("Move / Attack")]
         [SerializeField] private BattleAttackPopupUI attackPopup;
+        [SerializeField] private BattleHandUI battleHand;
         [SerializeField] private BattleOutcomePopupUI outcomePopup;
         // Re-shown (Fight/Delay) for a second enemy army still sharing the hex once the current
         // fight resolves — see OnBattleOutcomeAcknowledged. Same instance HexSelectionController
@@ -445,6 +446,7 @@ namespace Game.UI
             ShowUnitDetail(null);
             if (panelRoot != null && !_presentationSuppressed)
                 panelRoot.SetActive(true);
+            UIFocusUtility.SetModal(this, _presentationSuppressed ? null : panelRoot, ModalBlock.Decision);
             VisibilityChanged?.Invoke();
 
             // The map underneath is about to be covered by this whole screen — whatever hex/
@@ -455,7 +457,7 @@ namespace Game.UI
                 TakeMapChrome(hideCardHand: true);
 
             _tacticsCritical = TacticBattleContext.IsCritical(hex, attacker, defender);
-            var tacticHand = GetComponentInChildren<BattleHandUI>(true);
+            var tacticHand = battleHand;
             // The acting human's hand; a human-vs-human fight rebinds it on every turn change.
             tacticHand?.Bind((attacker?.Owner?.IsHuman == true ? attacker.Owner
                 : defender?.Owner?.IsHuman == true ? defender.Owner : null)?.Tactics);
@@ -886,7 +888,7 @@ namespace Game.UI
             {
                 ArmyData actingSide = current.Owner == _attacker?.Owner ? _attacker : _defender;
                 if (actingSide != _localArmy) SetLocalSide(actingSide);
-                GetComponentInChildren<BattleHandUI>(true)?.Bind(current.Owner.Tactics);
+                battleHand?.Bind(current.Owner.Tactics);
             }
             RefreshGrid();
 
@@ -1069,6 +1071,7 @@ namespace Game.UI
 
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+            UIFocusUtility.SetModal(this, null);
             if (_aiAutoPassRoutine != null)
             {
                 StopBattleRoutine(_aiAutoPassRoutine);

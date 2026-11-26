@@ -447,7 +447,7 @@ namespace Game.EditorTests
         {
             var wing = new ArmyData { Owner = owner, IsAirArmy = true };
             wing.AddMemberSorted(Plane()); ArmyRegistry.Register(wing);
-            wing.Members.Clear();
+            wing.ReplaceRoster(null);
             AviationRules.SyncAirArmyShell(wing, null);
             Assert.That(GroundCombatAirSupport.WingLanded(owner, wing.Id), Is.False);
         }

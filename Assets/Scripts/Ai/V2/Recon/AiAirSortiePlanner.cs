@@ -840,11 +840,7 @@ namespace Game.Ai.V2
                 ArmyData homeAirfield = sourceAirfield
                     ?? AviationActions.EnsureAirfield(ctx.HexSelection, player, airArmy.Hex);
                 if (homeAirfield == null) yield break;
-                foreach (UnitData aircraft in airArmy.Members.ToList())
-                {
-                    airArmy.Members.Remove(aircraft);
-                    homeAirfield?.AddMemberSorted(aircraft);
-                }
+                AviationActions.CancelUnmovedLaunch(airArmy, homeAirfield);
                 ctx.HexSelection?.DeleteArmyIfEmptied(airArmy);
                 ctx.HexSelection?.RestackArmiesOn(airArmy.Hex, null);
                 yield return AiTurnController.WaitStep(ctx);

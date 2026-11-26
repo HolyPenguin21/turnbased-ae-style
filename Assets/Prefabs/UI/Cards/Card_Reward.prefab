@@ -95,7 +95,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.CollectionRewardCardView
   artHost: {fileID: 1006}
   detailsButton: {fileID: 1011}
+  detailsLabel: {fileID: 1015}
   chooseButton: {fileID: 1024}
+  chooseLabel: {fileID: 1028}
   copyCountLabel: {fileID: 1019}
   selectionFrame: {fileID: 1032}
   preview: {fileID: 8787116487375595284}

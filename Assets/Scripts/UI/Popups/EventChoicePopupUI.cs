@@ -15,7 +15,7 @@ namespace Game.UI
     // ChallengeResultRoot state further. Deliberately has NO Space-bar shortcut — per the user's
     // own spec, only the reward popup (see EventRewardPopupUI) gets one; a choice popup always
     // needs an explicit click.
-    public class EventChoicePopupUI : MonoBehaviour
+    public class EventChoicePopupUI : MonoBehaviour, Game.Audio.IInfoSoundSource
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private Image heroOrUnitArtImage;
@@ -31,6 +31,7 @@ namespace Game.UI
         // Lets GameTurnController react to this popup opening/closing instead of polling
         // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
         public event Action VisibilityChanged;
+        public event Action InfoSoundRequested;
 
         // Hero first, then the first non-hero unit — per the user's own spec ("герой армии или
         // первый юнит в армии"). DetailArt already carries the art-fallback baked in at spawn
@@ -46,6 +47,7 @@ namespace Game.UI
 
         public void Show(ArmyData mover, HexEventRegistry.Entry entry, Action onExplore, Action onSkip)
         {
+            bool wasShowing = IsShowing;
             EventDefinition definition = entry?.Definition;
             if (definition == null) return;
             decision?.Cancel();var request=decision=new Game.Core.MatchDecision();
@@ -80,8 +82,10 @@ namespace Game.UI
             {
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
             }
             VisibilityChanged?.Invoke();
+            if (!wasShowing && IsShowing) InfoSoundRequested?.Invoke();
         }
 
         private static string BuildDescription(HexEventRegistry.Entry entry)
@@ -113,6 +117,7 @@ namespace Game.UI
             if (panelRoot == null || !panelRoot.activeSelf)
                 return;
             panelRoot.SetActive(false);
+            UIFocusUtility.SetModal(this, null);
             VisibilityChanged?.Invoke();
         }
     }

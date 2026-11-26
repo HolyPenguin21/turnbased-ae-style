@@ -31,6 +31,7 @@ with tempfile.TemporaryDirectory(prefix="ai-state-verify-") as temporary:
     for file in source.rglob("*.cs"):
         text = file.read_text()
         text = text.replace("FindObjectsInactive.Include, FindObjectsSortMode.None", "FindObjectsSortMode.None")
+        text = text.replace("gameObject.scene.handle.GetRawData()", "(ulong)gameObject.scene.handle")
         text = re.sub(r"(FindObjectsByType<[^>]+>\()FindObjectsInactive\.(?:Include|Exclude)(\))", r"\1FindObjectsSortMode.None\2", text)
         file.write_text(text)
     # The fixture restores memory with a literal null map. Unity's overloaded Object null

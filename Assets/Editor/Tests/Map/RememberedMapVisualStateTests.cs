@@ -125,7 +125,7 @@ namespace Game.EditorTests
             ArmyData frozenRoster = null;
             var memory = HumanVisualMemory.CaptureState(snapshot => { frozenRoster = snapshot; return "roster"; });
             var state = selection.CaptureRememberedVisuals(Encode);
-            army.Members.Clear(); Object.DestroyImmediate(liveVisual.gameObject);
+            army.ReplaceRoster(null); Object.DestroyImmediate(liveVisual.gameObject);
             HumanVisualMemory.Clear(); HumanVisualMemory.RestoreState(memory, Player, key => frozenRoster);
             var restored = NewSelection(); restored.RestoreRememberedVisuals(state, Player, Decode);
             Call(restored, "RefreshRememberedArmyVisualsAt", hex);

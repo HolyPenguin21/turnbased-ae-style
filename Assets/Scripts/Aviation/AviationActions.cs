@@ -91,8 +91,8 @@ namespace Game.Aviation
             };
             foreach (UnitData aircraftCard in aircraft.ToList())
             {
-                airfield.Members.Remove(aircraftCard);
-                army.AddMemberSorted(aircraftCard);
+                airfield.RemoveRosterMember(aircraftCard);
+                army.InsertRosterMemberSorted(aircraftCard);
             }
             if (!ArmyRegistry.IsRegistered(army)) ArmyRegistry.Register(army);
             if (army.Controller == null) hexSelection?.CreateArmyMarker(army);
@@ -105,6 +105,16 @@ namespace Game.Aviation
             return true;
         }
 
+        // Undo formation before motion begins. Aircraft keep their current sortie state.
+        internal static void CancelUnmovedLaunch(ArmyData wing, ArmyData storage)
+        {
+            foreach (var aircraft in wing.Members.ToArray())
+            {
+                wing.RemoveRosterMember(aircraft);
+                storage.InsertRosterMemberSorted(aircraft);
+            }
+        }
+
         // Match-owned aircraft return. The hand model grants the ordinary card (with its
         // attachments); optional presentation only observes the completed result.
         public static void ReturnAircraftToDeck(ArmyData army, HexSelectionController hexSelection)
@@ -113,7 +123,7 @@ namespace Game.Aviation
                 && !army.IsCarrierContainer))
                 return;
             using var mutation = VisionSystem.BeginMutation();
-            var aircraftToReturn = army.Members.ToList(); army.Members.Clear();
+            var aircraftToReturn = army.Members.ToList(); army.ReplaceRoster(null);
             foreach (UnitData aircraft in aircraftToReturn)
             {
                 StealthSystem.OnUnitRemoved(aircraft);
@@ -207,9 +217,9 @@ namespace Game.Aviation
                 var landing = airArmy.Members.Take(free).ToList();
                 foreach (UnitData aircraft in landing)
                 {
-                    airArmy.Members.Remove(aircraft);
+                    airArmy.RemoveRosterMember(aircraft);
                     AviationRules.ResetAfterLanding(aircraft);
-                    airfield.AddMemberSorted(aircraft);
+                    airfield.InsertRosterMemberSorted(aircraft);
                 }
                 if (landing.Count == 0) continue;
                 landed += landing.Count;

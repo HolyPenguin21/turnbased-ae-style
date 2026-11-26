@@ -6,6 +6,12 @@ namespace Game.Setup
 {
     internal static class MatchSceneAssembly
     {
+        internal static void ConfigureTutorial(Game.Turns.GameTurnController turns)
+        {
+            if (turns != null)
+                Game.UI.TutorialHintController.Install(turns, turns.SceneCardHand, turns.SceneArmyViewer);
+        }
+
         internal static void ConfigureWorld(IVisionRules config, HexMap map)
         {
             if (config == null || map == null) throw new InvalidOperationException("Match configuration or map is missing.");

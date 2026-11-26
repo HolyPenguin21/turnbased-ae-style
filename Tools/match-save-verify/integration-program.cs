@@ -170,6 +170,23 @@ internal static class IntegrationProgram
         Check(File.ReadAllBytes(Path.Combine(directory,"slot-12.json.bak")).SequenceEqual(bytes),"stale rejection modified backup");
         Check(ReferenceEquals(GameSession.Players,beforePlayers)&&GameSession.PendingRestore==null,"stale rejection replaced session");SameIds(identity);
         checks++;Console.WriteLine("PASS stale campaign rejection preserves primary, backup and current match");
+        var incompatible = MatchSaveJson.Deserialize<MatchSaveEnvelope>(System.Text.Encoding.UTF8.GetString(bytes));
+        incompatible.schemaHash = new string('c', 64);
+        var obsoleteBytes = System.Text.Encoding.UTF8.GetBytes(MatchSaveJson.Serialize(incompatible));
+        store.Save(13, bytes);
+        store.Save(13, obsoleteBytes);
+        bool rejectedStructure = false;
+        try { store.Load(13, b => MatchSaveCodec.Decode(b, config), out _); }
+        catch (NotSupportedException) { rejectedStructure = true; }
+        Check(rejectedStructure, "incompatible structure silently loaded a backup match");
+        Check(File.ReadAllBytes(Path.Combine(directory, "slot-13.json")).SequenceEqual(obsoleteBytes),
+            "incompatible primary quarantined as corrupt");
+        Check(File.ReadAllBytes(Path.Combine(directory, "slot-13.json.bak")).SequenceEqual(bytes),
+            "incompatible structure damaged the backup");
+        Check(ReferenceEquals(GameSession.Players, beforePlayers) && GameSession.PendingRestore == null,
+            "incompatible structure changed the current match");
+        SameIds(identity);
+        checks++; Console.WriteLine("PASS obsolete structural hash preserves primary, backup and current match");
         foreach(string damage in new[]{"duplicate unit","dangling member","missing card","future version","wrong content","outside map","checksum","truncated","missing human loadout","missing human quota","missing human economy","missing AI economy","pending blueprint","missing living order","only one living player","quota mismatch","loadout faction mismatch","missing current viewer","wrong current viewer","overflow geometry"})
         {
             var envelope=MatchSaveJson.Deserialize<MatchSaveEnvelope>(System.Text.Encoding.UTF8.GetString(bytes));

@@ -35,6 +35,13 @@ namespace Game.Map
                 foreach (var sighting in viewer.Value.Values) visit(viewer.Key, sighting);
         }
 
+        internal static void ForEachSightingOfArmy(int armyId, Action<PlayerSetupData, ArmySighting> visit)
+        {
+            foreach (var viewer in ArmySightings)
+                if (viewer.Value.TryGetValue(armyId, out var sighting))
+                    visit(viewer.Key, sighting);
+        }
+
         // Snapshot codecs belong to the future entity serializer. The callback receives the
         // already frozen DISPLAY army, never its current live counterpart. It must encode the
         // complete observed roster/art/stats, not merely store a reference to a live army id.

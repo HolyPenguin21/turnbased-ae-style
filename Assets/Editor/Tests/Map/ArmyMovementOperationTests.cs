@@ -99,7 +99,7 @@ namespace Game.EditorTests
             var building = new BuildingData { Owner = army.Owner, Hex = first, IsBase = true };
             building.Abilities.Add(Game.Cards.UnitAbilities.Barracks); BuildingRegistry.Register(first, building);
             var move = Move(); move.TryEnterNextStep(out _, out _);
-            army.Members.Clear(); ArmyActions.DeleteArmyIfEmptied(army);
+            army.ReplaceRoster(null); ArmyActions.DeleteArmyIfEmptied(army);
             Assert.That(ArmyRegistry.IsRegistered(army), Is.False);
             Assert.That(move.Result.Kind, Is.EqualTo(ArmyMovementEnd.Dead));
             Assert.That(move.Result.Hex, Is.EqualTo(first));

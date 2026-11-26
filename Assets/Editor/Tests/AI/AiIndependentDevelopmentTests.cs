@@ -103,7 +103,7 @@ namespace Game.EditorTests
                 Assert.That(full.Select(o => o.Kind), Has.Member(DeploymentKind.NewArmy),
                     "a hero-only bench on the facility hex");
 
-                garrison.Members.RemoveAt(1);
+                garrison.RemoveRosterMember(garrison.Members[1]);
                 List<PlacementOption> room = PlacementSelector.FacilityOperatorPlacements(player, hex, operatorCard);
                 Assert.That(room[0].Kind, Is.EqualTo(DeploymentKind.Garrison), "the garrison first while it has room");
             }
@@ -837,7 +837,7 @@ namespace Game.EditorTests
         public void PreparedOperatorFinishesDeliveryButDoesNotAuthorizeProductionBeforeFacility()
         {
             var hero = new UnitData { Owner = _player, IsHero = true }; hero.Abilities.Add(UnitAbilities.Assembler);
-            _garrison.Members.Add(hero);
+            _garrison.AppendRosterMember(hero);
             Assert.That(DevelopmentOpportunityEvaluator.OperatorPreparedAt(_player, hero, Site, ResearchProductionMode.Production), Is.True);
             Assert.That(ResearchProductionSystem.IsEligible(_player, Site, ResearchProductionMode.Production, out _), Is.False);
             Assert.That(Facts().All(o => o.PreparationKind == DevelopmentPreparationKind.Facility), Is.True);
@@ -859,7 +859,7 @@ namespace Game.EditorTests
             _snapshot.Self = new SelfSnapshot { BaseHexes = new[] { Site, second }, Armies = Array.Empty<ArmySnapshot>(),
                 Hand = _hand.Hand, Deck = Array.Empty<CardDefinition>() };
             var hero = new UnitData { Owner = _player, IsHero = true }; hero.Abilities.Add(UnitAbilities.Assembler);
-            _garrison.Members.Add(hero);
+            _garrison.AppendRosterMember(hero);
             Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(ResearchProductionMode.Production,
                 _snapshot, _player, _hand, _ctx, null), Is.EqualTo((HexCoord?)Site));
             Assert.That(Facts().All(o => o.FacilityHex.Equals(Site)), Is.True,
@@ -888,7 +888,7 @@ namespace Game.EditorTests
             if (outsideOperator)
             {
                 var other = new UnitData { Owner = _player, IsHero = true };
-                other.Abilities.Add(UnitAbilities.Assembler); _garrison.Members.Add(other);
+                other.Abilities.Add(UnitAbilities.Assembler); _garrison.AppendRosterMember(other);
             }
             Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(ResearchProductionMode.Production,
                 _snapshot, _player, _hand, _ctx, null, replacement, live),
@@ -958,7 +958,7 @@ namespace Game.EditorTests
                 if (outsideOperator)
                 {
                     var other = new UnitData { Owner = _player, IsHero = true };
-                    other.Abilities.Add(UnitAbilities.Assembler); _garrison.Members.Add(other);
+                    other.Abilities.Add(UnitAbilities.Assembler); _garrison.AppendRosterMember(other);
                 }
                 var plan = new MaterializationPlan { BaseCardInHand = _operator,
                     Deploy = new PlacementOption(Site, DeploymentKind.NewArmy, null) };
@@ -992,10 +992,10 @@ namespace Game.EditorTests
             Assert.That(AiArmyRoles.DepartureStripsOperator(_player, field), Is.True,
                 "the army's only hero is the facility's only operator");
             var other = new UnitData { Owner = _player, IsHero = true }; other.Abilities.Add(UnitAbilities.Assembler);
-            _garrison.Members.Add(other);
+            _garrison.AppendRosterMember(other);
             Assert.That(AiArmyRoles.DepartureStripsOperator(_player, field), Is.False,
                 "another qualified operator stays on the hex outside the leaving army");
-            _garrison.Members.Remove(other); field.Members.Add(other);
+            _garrison.RemoveRosterMember(other); field.AppendRosterMember(other);
             Assert.That(AiArmyRoles.DepartureStripsOperator(_player, field), Is.True,
                 "an operator inside the leaving army is not a kept operator");
             field.Hex = new HexCoord(5, 5);
@@ -1072,19 +1072,19 @@ namespace Game.EditorTests
             var fast = new UnitData { Owner = _player, IsHero = true, Name = "A", CommandRating = 12 };
             var backup = new UnitData { Owner = _player, IsHero = true, Name = "B", CommandRating = 12 };
             fast.Abilities.Add(UnitAbilities.Assembler); backup.Abilities.Add(UnitAbilities.Assembler);
-            _garrison.Members.Add(fast); _garrison.Members.Add(backup);
+            _garrison.AppendRosterMember(fast); _garrison.AppendRosterMember(backup);
             for (int i = 0; i < AiConfig.secureBaseMinNonHeroUnits; i++)
-                _garrison.Members.Add(new UnitData { Owner = _player });
+                _garrison.AppendRosterMember(new UnitData { Owner = _player });
             Func<ResearchProductionMode, HexCoord?> site = mode =>
                 mode == ResearchProductionMode.Production ? Site : (HexCoord?)null;
             Assert.That(AiArmyRoles.FacilityNeedsHero(_player, _garrison, fast, site), Is.True);
             Assert.That(AiArmyRoles.FacilityNeedsHero(_player, _garrison, fast, site, new[] { fast }), Is.False);
             Assert.That(AiArmyRoles.BestSparableEconomyHero(_player, _garrison, site), Is.Not.Null,
                 "the remaining operator protects preparation without rejecting the entire garrison");
-            _garrison.Members.Remove(backup);
+            _garrison.RemoveRosterMember(backup);
             Assert.That(AiArmyRoles.BestSparableEconomyHero(_player, _garrison, site), Is.Null);
             var free = new UnitData { Owner = _player, IsHero = true, Name = "free", CommandRating = 12 };
-            _garrison.Members.Add(free);
+            _garrison.AppendRosterMember(free);
             Assert.That(AiArmyRoles.BestSparableEconomyHero(_player, _garrison, site), Is.SameAs(free),
                 "a blocked operator is filtered before ranking; another legal hero remains available");
         }
@@ -1105,7 +1105,7 @@ namespace Game.EditorTests
             if (obstacle == "claimed") commitments.Claim(_garrison.Id);
             if (obstacle == "activation") _garrison.MarkActivated();
             if (obstacle == "full")
-                for (int i = 0; i < 5; i++) _garrison.Members.Add(new UnitData { Owner = _player });
+                for (int i = 0; i < 5; i++) _garrison.AppendRosterMember(new UnitData { Owner = _player });
             Assert.That(LocalOperatorRelease.CanKeepOperatorsHome(_player, field, commitments, null,
                 out _, out _), Is.False);
             Assert.That(ProvisioningManager.IsMobileEconomyHero(field, _player, commitments), Is.False);
@@ -1121,9 +1121,9 @@ namespace Game.EditorTests
             try
             {
                 var op = new UnitData { Owner = _player, IsHero = true, Name = "pinned", CommandRating = 12 };
-                op.Abilities.Add(UnitAbilities.Assembler); _garrison.Members.Add(op);
+                op.Abilities.Add(UnitAbilities.Assembler); _garrison.AppendRosterMember(op);
                 for (int i = 0; i < AiConfig.secureBaseMinNonHeroUnits; i++)
-                    _garrison.Members.Add(new UnitData { Owner = _player });
+                    _garrison.AppendRosterMember(new UnitData { Owner = _player });
                 Assert.That(AiArmyRoles.CanSpareGarrisonMember(_player, _garrison, op), Is.True);
                 var plan = ProvisioningManager.GarrisonExtractionCandidate.Yes(
                     ProvisioningManager.GarrisonExtractionTier.Create, op, null, ArmyActions.CreateArmyApCost);

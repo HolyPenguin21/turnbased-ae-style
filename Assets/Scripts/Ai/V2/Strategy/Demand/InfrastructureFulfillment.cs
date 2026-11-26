@@ -380,7 +380,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
         {
             if (!demand.TargetHex.HasValue || demand.EconomyBuildCard == null
-                || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player)
+                || !InfrastructureActions.HasOwnHeroArmyAt(demand.TargetHex.Value, player)
                 || !BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx,
                     demand.EconomyBuildCard, demand.TargetHex.Value, out _, resourceForecast: true))
                 return null;
@@ -462,7 +462,7 @@ namespace Game.Ai.V2
             if (!demand.TargetHex.HasValue
                 || !CandidateEconomyHexes(snap, type.Value, demand.TargetHex)
                     .Any(h => h.Equals(demand.TargetHex.Value))
-                || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player))
+                || !InfrastructureActions.HasOwnHeroArmyAt(demand.TargetHex.Value, player))
                 return null;
             HexCoord built = demand.TargetHex.Value;
             int? builderId = EconomyBuilderAtTarget(snap, demand, built,

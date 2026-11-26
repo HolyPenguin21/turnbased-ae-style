@@ -46,7 +46,7 @@ namespace Game.EditorTests
             garrison.Members.Add(miller); garrison.Members.Add(rusty);
             for (int i = 0; i < 6; i++) garrison.Members.Add(new UnitData { Owner = player });
             Assert.That(Game.Ai.AiArmyRoles.EconomyHeroCandidates(player, garrison).Contains(miller), Is.False);
-            garrison.Members.Clear(); garrison.Members.Add(miller); garrison.Members.Add(rusty);
+            garrison.ReplaceRoster(new[] { miller, rusty });
             rusty.CommandRating = 0;
             var candidate = ProvisioningManager.ResolveGarrisonExtractionCandidate(player, garrison,
                 null, null, null, 10f, exactEconomyHeroId: rusty.RuntimeId);
@@ -2430,7 +2430,7 @@ namespace Game.EditorTests
             escort.IsHidden = true;
             army.Members.AddRange(new[] { hero, escort });
 
-            HexSelectionController.ApplyExtractionBuilderConsequences(army);
+            InfrastructureActions.ApplyExtractionBuilderConsequences(army);
 
             Assert.That(hero.MoveCurrent, Is.Zero);
             Assert.That(escort.MoveCurrent, Is.Zero);

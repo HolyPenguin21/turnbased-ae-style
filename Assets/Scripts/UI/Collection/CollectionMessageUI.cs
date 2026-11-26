@@ -1,58 +1,72 @@
+using Game.Audio;
 using Game.Core;
+using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Owns the lifetime and input block of transient profile errors/card descriptions.
+    // Owns the lifetime and input of transient profile errors and card descriptions.
     internal sealed class CollectionMessageUI : MonoBehaviour
     {
+        internal const string MessageDialogKey = "Prefabs/Collection/MessageDialog";
         internal const string RewardDialogKey = "Prefabs/Rewards/RewardDialog";
-        private static int showing;
-        private static int closedFrame = -1;
-        private GameObject previousSelection;
-        internal static bool IsShowing => showing > 0 || closedFrame == Time.frameCount;
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void Reset() { showing = 0; closedFrame = -1; }
-        internal static void Show(string message) => Show(message, null);
-        internal static void ShowReward(string message, string title = "REWARD DETAILS") => Show(message, title);
-        private static void Show(string message, string rewardTitle)
+
+        [SerializeField] private TMP_Text body;
+        [SerializeField] private ScrollRect scroll;
+        [SerializeField] private Button closeButton;
+
+        private GameObject canvasRoot;
+        internal static bool IsShowing => UIFocusUtility.Contains<CollectionMessageUI>() || UIFocusUtility.ClosedThisFrame;
+
+        internal static void Show(string message)
         {
-            bool rewardStyle = rewardTitle != null;
-            var canvas = CollectionUIElements.Canvas("CollectionMessage", rewardStyle ? new Vector2(1920, 1080) : (Vector2?)null);
+            var canvas = CreateCanvas(null);
+            var prefab = GameAssetCatalog.Load<GameObject>(MessageDialogKey);
+            var dialog = Instantiate(prefab.GetComponent<CollectionMessageUI>(), canvas);
+            dialog.body.text = message;
+            var width = dialog.scroll.content.rect.width;
+            float height = Mathf.Max(1, dialog.body.GetPreferredValues(message, width, 10000).y);
+            dialog.scroll.content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
+            SceneUIAudioBinder.BindCreatedRoot(dialog.closeButton);
+            dialog.Open(canvas.gameObject, dialog.closeButton);
+        }
+
+        internal static void ShowReward(string message, string title = "REWARD DETAILS")
+        {
+            var canvas = CreateCanvas(new Vector2(1920, 1080));
+            var view = Instantiate(GameAssetCatalog.Load<GameObject>(RewardDialogKey).GetComponent<CollectionRewardView>(), canvas);
+            view.Title.text = title;
+            view.Body.text = message;
+            canvas.gameObject.AddComponent<CollectionMessageUI>().Open(canvas.gameObject, view.PrimaryButton);
+        }
+
+        private static RectTransform CreateCanvas(Vector2? resolution)
+        {
+            var canvas = CollectionUIElements.Canvas("CollectionMessage", resolution);
             canvas.GetComponent<Canvas>().sortingOrder = 250;
-            var owner = canvas.gameObject.AddComponent<CollectionMessageUI>();
-            if (rewardStyle && EventSystem.current != null) owner.previousSelection = EventSystem.current.currentSelectedGameObject;
-            showing++; UIFocusUtility.SetOverlay(owner, true);
-            if (rewardStyle)
-            {
-                var view = Instantiate(GameAssetCatalog.Load<GameObject>(RewardDialogKey).GetComponent<CollectionRewardView>(), canvas);
-                view.Title.text = rewardTitle;
-                view.Body.text = message;
-                view.PrimaryButton.onClick.AddListener(owner.Close);
-                view.PrimaryButton.Select();
-                return;
-            }
-            var panel = CollectionUIElements.Panel(canvas, "Message"); CollectionUIElements.Stretch(panel);
-            var content = CollectionUIElements.Scroll(panel, "Description", 180, 150, 664, 360);
-            var label = CollectionUIElements.Label(content, message, 0, 0, 634, 1, 20);
-            float height = Mathf.Max(1, label.GetPreferredValues(message, 634, 10000).y);
-            ((RectTransform)label.transform).sizeDelta = new Vector2(634, height);
-            content.sizeDelta = new Vector2(634, height);
-            CollectionUIElements.Button(panel, "Close", 412, 550, 200, 40, owner.Close);
+            return canvas;
         }
-        private void Update()
-        { if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) Close(); }
-        private void Close() { gameObject.SetActive(false); Destroy(gameObject); }
-        private void OnDisable()
+
+        private void Open(GameObject root, Button button)
         {
-            showing = Mathf.Max(0, showing - 1); closedFrame = Time.frameCount; UIFocusUtility.SetOverlay(this, false);
-            if (EventSystem.current != null && previousSelection != null && previousSelection.activeInHierarchy)
-                EventSystem.current.SetSelectedGameObject(previousSelection);
-            previousSelection = null;
+            canvasRoot = root;
+            button.onClick.AddListener(Close);
+            UIFocusUtility.SetModal(this, root, ModalBlock.Full, button);
         }
+
+        private void Update()
+        {
+            if (UIFocusUtility.WasEscapePressed(this)) Close();
+        }
+
+        private void Close()
+        {
+            if (!UIFocusUtility.IsTop(this)) return;
+            canvasRoot.SetActive(false);
+            Destroy(canvasRoot);
+        }
+
+        private void OnDisable() => UIFocusUtility.SetModal(this, null);
     }
 }
-

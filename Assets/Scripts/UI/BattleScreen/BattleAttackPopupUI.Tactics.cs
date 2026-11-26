@@ -28,7 +28,7 @@ namespace Game.UI
         private BattleHandUI _tacticHand;
         private CardHandUI _mapHand;
         private GameTurnController _tacticTurnController;
-        private PopupPanelUI _tacticInfoPopup;
+        [SerializeField] private PopupPanelUI _tacticInfoPopup;
         private int _tacticInfoDismissedFrame = -1;
         private bool _tacticInfoWasShowing;
         private int _tacticDecisionVersion;
@@ -56,7 +56,6 @@ namespace Game.UI
         {
             if (owner?.IsHuman != true || _automateHumanSides || panelRoot == null) return;
             _tacticTurnController = FindAnyObjectByType<GameTurnController>(FindObjectsInactive.Include);
-            _tacticInfoPopup = FindAnyObjectByType<PopupPanelUI>(FindObjectsInactive.Include);
             if (_tacticInfoPopup != null)
             {
                 _tacticInfoWasShowing = _tacticInfoPopup.IsShowing && !_tacticInfoPopup.IsOtherTurnShowing;
@@ -475,7 +474,6 @@ namespace Game.UI
             CloseTacticDecision();
             ResetTacticInput();
             if (_tacticInfoPopup != null) _tacticInfoPopup.VisibilityChanged -= OnTacticInfoVisibilityChanged;
-            _tacticInfoPopup = null;
             _tacticInfoWasShowing = false;
             if (_tacticHand != null)
             {

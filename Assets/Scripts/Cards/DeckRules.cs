@@ -139,13 +139,13 @@ namespace Game.Cards
         }
         // True when one more copy of the card fits: owned copies, copy limit and the deck point cap (via TryChange on a copy).
         public bool CanAdd(SavedDeck draft, string key, Func<string, int> owned)
-            => TryChange(CollectionProfile.CopyDeck(draft), key, 1, owned, out _);
+            => TryChange(draft?.Copy(), key, 1, owned, out _);
         public bool TryChange(SavedDeck draft, string key, int delta, Func<string, int> owned, out string reason)
         {
             reason = null;
             var card = Resolve(key);
             if (card == null || Category(card) == DeckCategory.System) { reason = "This card cannot be added to a deck."; return false; }
-            var candidate = CollectionProfile.CopyDeck(draft);
+            var candidate = draft?.Copy();
             var rows = Entries(candidate, Category(card));
             var row = rows.Find(e => e.cardKey == key);
             int count = (row?.count ?? 0) + delta;

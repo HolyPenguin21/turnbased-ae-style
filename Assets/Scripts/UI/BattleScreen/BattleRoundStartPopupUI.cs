@@ -64,6 +64,7 @@ namespace Game.UI
             {
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
             }
             if (roundTitleText != null)
                 roundTitleText.text = $"Round {round}";
@@ -138,6 +139,7 @@ namespace Game.UI
             }
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+                UIFocusUtility.SetModal(this, null);
         }
     }
 }

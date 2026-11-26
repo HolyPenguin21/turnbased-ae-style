@@ -25,6 +25,7 @@ namespace Game.UI
             if (tutorialHintsToggle != null) tutorialHintsToggle.onValueChanged.AddListener(OnTutorialHintsChanged);
             RefreshTutorialHints();
             if (backButton != null) backButton.onClick.AddListener(Close);
+            UIFocusUtility.SetModal(this, gameObject, ModalBlock.Full, masterVolumeSlider);
             var manager = GameAudioManager.Instance;
             if (manager == null) return;
             settings = manager.Settings;
@@ -33,7 +34,6 @@ namespace Game.UI
             if (musicEnabledToggle != null) musicEnabledToggle.onValueChanged.AddListener(OnMusicEnabled);
             if (musicVolumeSlider != null) musicVolumeSlider.onValueChanged.AddListener(OnMusicChanged);
             Refresh();
-            if (masterVolumeSlider != null) masterVolumeSlider.Select();
         }
         private void Refresh()
         {
@@ -58,8 +58,7 @@ namespace Game.UI
         private void OnTutorialHintsChanged(bool value) => TutorialHintProgress.Enabled = value;
         private void Update()
         {
-            if (GameMenuPanelUI.GameplayInputBlocked) return; // In-game Escape is owned by the menu stack.
-            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (UIFocusUtility.WasEscapePressed(this))
             {
                 GameAudioManager.Instance?.PlayClick(); Close();
             }
@@ -67,12 +66,13 @@ namespace Game.UI
         public void Close()
         {
             settings?.Save();
+            Closed?.Invoke();
             if (menuController != null) menuController.OnSettingsClosed();
             else gameObject.SetActive(false);
-            Closed?.Invoke();
         }
         private void OnDisable()
         {
+            UIFocusUtility.SetModal(this, null);
             TutorialHintProgress.Changed -= RefreshTutorialHints;
             if (tutorialHintsToggle != null) tutorialHintsToggle.onValueChanged.RemoveListener(OnTutorialHintsChanged);
             if (settings != null) { settings.Changed -= Refresh; settings.Save(); }

@@ -49,7 +49,13 @@ namespace Game.UI
                 nameField.onValueChanged.RemoveAllListeners();
                 nameField.onValueChanged.AddListener(OnValueChanged);
             }
+            UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision, nameField);
             VisibilityChanged?.Invoke();
+        }
+
+        private void Update()
+        {
+            if (UIFocusUtility.WasEscapePressed(this)) Hide();
         }
 
         public void Hide()
@@ -57,6 +63,7 @@ namespace Game.UI
             decision?.Cancel();
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+            UIFocusUtility.SetModal(this, null);
             // Same "closing resets cached fields" rule every other modal in this project follows
             // (see ArmyViewerModalUI/BaseViewerModalUI) — without this, a value-changed event that
             // fires after Hide (e.g. a framework flushing a pending edit on deactivation) would

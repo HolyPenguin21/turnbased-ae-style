@@ -740,9 +740,9 @@ namespace Game.Combat
                 int seed = 17;
                 seed = seed * 31 + (ownArmy?.Id ?? 0);
                 seed = seed * 31 + (enemyArmy?.Id ?? 0);
-                foreach (UnitData unit in ownArmy?.Members ?? new List<UnitData>())
+                foreach (UnitData unit in ownArmy?.Roster ?? System.Array.Empty<UnitData>())
                     seed = seed * 31 + unit.RuntimeId;
-                foreach (UnitData unit in enemyArmy?.Members ?? new List<UnitData>())
+                foreach (UnitData unit in enemyArmy?.Roster ?? System.Array.Empty<UnitData>())
                     seed = seed * 31 + unit.RuntimeId;
                 return seed;
             }

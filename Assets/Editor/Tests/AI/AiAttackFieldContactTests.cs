@@ -101,7 +101,7 @@ namespace Game.EditorTests
         public void ExecutionContact_UsesTheReinforcedLiveRosterRatherThanTheOldHostSnapshot()
         {
             var host = new ArmyData { Owner = Us, Hex = Origin };
-            host.Members.Add(new UnitData { Owner = Us, Attack = 1, Defense = 0,
+            host.AppendRosterMember(new UnitData { Owner = Us, Attack = 1, Defense = 0,
                 HitPointsMax = 2, HitPointsCurrent = 2, MoveMax = 3, MoveCurrent = 3 });
             ArmyRegistry.Register(host);
             ArmySnapshot before = WorldAnalysis.ToArmySnapshot(host, Us, true, 0, null);
@@ -109,7 +109,7 @@ namespace Game.EditorTests
             Assert.That(AttackTacticalOpportunity.Decide(snap, before, Main, -1, false, null, null).Kind,
                 Is.EqualTo(AttackLocalActionKind.Retreat));
             for (int i = 0; i < 2; i++)
-                host.Members.Add(new UnitData { Owner = Us, Attack = 40, Defense = 8,
+                host.AppendRosterMember(new UnitData { Owner = Us, Attack = 40, Defense = 8,
                     HitPointsMax = 120, HitPointsCurrent = 120, Initiative = 4, MoveMax = 3, MoveCurrent = 3 });
             var target = new AttackMissionTarget { Target = Main, Local = AttackLocalAction.Continue(),
                 OpportunisticStrikeTurn = -1 };

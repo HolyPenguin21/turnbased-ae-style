@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using Game.Styles;
 using System.Reflection;
 using Game.HexGrid;
 using Game.Map;

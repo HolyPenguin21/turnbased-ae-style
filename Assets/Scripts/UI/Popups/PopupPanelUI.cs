@@ -14,7 +14,7 @@ namespace Game.UI
     // GameTurnController.ShowSpawnHint, CardHandUI's card-play flow). Space bar does the same
     // thing as clicking Confirm, and the panel jumps to the front of the shared Canvas on every
     // show so it always wins over any other already-open modal.
-    public class PopupPanelUI : MonoBehaviour
+    public class PopupPanelUI : MonoBehaviour, Game.Audio.IInfoSoundSource
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private TMP_Text infoText;
@@ -42,11 +42,17 @@ namespace Game.UI
         public event Action Hidden;
         public event Action HumanTurnShown;
 
+        event Action Game.Audio.IInfoSoundSource.InfoSoundRequested
+        {
+            add => HumanTurnShown += value;
+            remove => HumanTurnShown -= value;
+        }
+
         private void Update()
         {
             if (confirmButton == null || !confirmButton.gameObject.activeInHierarchy || !confirmButton.interactable)
                 return;
-            if (UIFocusUtility.WasSpacePressed())
+            if (UIFocusUtility.WasSpacePressed(this))
                 confirmButton.onClick.Invoke();
         }
 
@@ -100,6 +106,7 @@ namespace Game.UI
             _isOtherTurn = false;
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+            UIFocusUtility.SetModal(this, null);
             VisibilityChanged?.Invoke();
             Hidden?.Invoke();
         }
@@ -166,6 +173,7 @@ namespace Game.UI
                 // that fight, not end up hidden behind whatever's already open.
                 panelRoot.transform.SetAsLastSibling();
             }
+            UIFocusUtility.SetModal(this, _isOtherTurn ? null : panelRoot, ModalBlock.Decision, confirmButton);
             if (infoText != null)
                 infoText.text = message;
             VisibilityChanged?.Invoke();
