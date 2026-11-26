@@ -91,8 +91,8 @@ namespace Game.Ai.V2
         }
     }
 
-    // ARCH-02 §35 / review r3 P0 — the per-step air-recon PLANNER. Every tactical decision that
-    // used to live inside ReconAirExecutor.RunActor is here: phase state machine (Outbound /
+    // The per-step air-recon PLANNER: every tactical decision of an airborne Recon step, so
+    // ReconAirExecutor.RunActorStep only executes. Phase state machine (Outbound /
     // Turning / Hold / Return), ReconMode resolution, the ReconAirStepPlanner.Pick call, the
     // Outbound->Turning->Return transitions, PickReturnStep + landing hysteresis, the activation
     // energy / affordability gates, and recoverable opportunistic strikes. It reads live world
