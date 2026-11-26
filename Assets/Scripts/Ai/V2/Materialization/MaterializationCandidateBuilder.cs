@@ -481,9 +481,7 @@ namespace Game.Ai.V2
 
         // The full set of PREFLIGHTED surplus materialization plans (each one already passed
         // CardPlayExecutor.Preflight + ReservesOkAfterChain). RankedSurplus returns the complete
-        // ordered set; the common arbiter picks the highest actionable DecisionScore; the reaction
-        // feasibility probe needs the WHOLE set so it can find the genuinely CHEAPEST feasible
-        // plan, not just the best-scored one.
+        // ordered set; the common arbiter picks the highest actionable DecisionScore.
 
         public static List<(MaterializationPlan plan, float utility)> RankedSurplus(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
@@ -514,8 +512,7 @@ namespace Game.Ai.V2
                 candidates.Select(p => (p, 0f)).ToList();
 
             // Scoring is SEPARATE from enumeration (DoD): the enumerator returns score-free plans;
-            // here every surviving plan gets the canonical StrategicCardEvaluator NetScore. The
-            // reaction feasibility probe consumes the same enumerator output and never reads .Score.
+            // here every surviving plan gets the canonical StrategicCardEvaluator NetScore.
             foreach (MaterializationPlan p in candidates)
             {
                 // Only a plan creating a solo scout can earn the Scout role and its scarcity/gap
@@ -594,9 +591,8 @@ namespace Game.Ai.V2
             ActorCommitments commitments = null)
             => MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx, commitments);
 
-        // ARCH-02 §45 — route through the one owner-aware spendability seam so a bounded reaction
-        // envelope (or any other explicit reservation) is respected here too, not just the legacy
-        // recon-air pool.
+        // ARCH-02 §45 — route through the one owner-aware spendability seam so every explicit
+        // reservation is respected here too, not just the legacy recon-air pool.
 
         // Phase A scoring is the shared StrategicCardEvaluator (Card x IntendedUse,
         // BaselineForceReadiness, no flat Hero bonus). This wrapper carries the Scout

@@ -16,9 +16,8 @@ namespace Game.Ai.V2
     //  MaterializationPlans (Card A -> Army 1 / Army 2 / Garrison …) and a naive subset search
     //  counts one card as two bumps.
     //
-    //  StrategicManager.BestInjectiveAssignment and the reaction materialization-closure DFS both
-    //  push/pop against this, so they can never disagree about what a portfolio physically
-    //  consumes. Push returns a Token that Pop consumes to reverse EXACTLY what was applied
+    //  StrategicManager.BestInjectiveAssignment pushes/pops against this, so it never disagrees
+    //  with execution about what a portfolio physically consumes. Push returns a Token that Pop consumes to reverse EXACTLY what was applied
     //  (a generation CardKey is only released by the push that first added it).
     // ===========================================================================================
     internal sealed class MaterializationConsumptionState

@@ -107,7 +107,7 @@ namespace Game.Ai.V2
         // into play. Null for every other demand.
         public CardData EconomySourceCard;
         // Continuity-owned, pre-intent wait pressure. It affects only Economy's within-lane
-        // admission order; BaseValue remains intrinsic so critical Defence/Reaction is untouched.
+        // admission order; BaseValue remains intrinsic so critical Defence is untouched.
         // Full intrinsic incumbent value witnessed during the same Base candidate scan.
         // Only non-null for the ONE selected challenger; never substitute site-only BuildValue.
         public float? EconomySwitchIncumbentValue;

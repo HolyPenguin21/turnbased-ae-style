@@ -181,7 +181,7 @@ namespace Game.Ai.V2
             // still price equipment after this shared tempo allowance has been exhausted.
             var tempo = StrategicTempoBudget.For(player, snap.TurnNumber);
             if (tempo.TotalCapHit) return false;
-            // Forecasts and reaction probes may know the count without the exact retry set.
+            // Forecasts may know the count without the exact retry set.
             // Each real attempt records one distinct source key. An incomplete projection cannot
             // prove an untried alternative: keep reserve value until the carried history is known.
             int attempts = System.Math.Max(reservation?.GenerationAttemptsUsed ?? 0,
@@ -248,8 +248,7 @@ namespace Game.Ai.V2
 
         // Every LEGAL non-combat play for the current hand (each already
         // resolved to a real placement / host / airfield slot / base slot by BuildPlayFor).
-        // Phase-B arbitration and reaction probes consume the whole set
-        // so it can find the genuinely CHEAPEST feasible reaction, not the best-scored card.
+        // Phase-B arbitration consumes the whole set, not only the best-scored card.
         internal static IEnumerable<NonCombatPlay> EnumeratePlays(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
             MaterializationReservation reservation = null, float? witnessedUsefulApDemand = null,

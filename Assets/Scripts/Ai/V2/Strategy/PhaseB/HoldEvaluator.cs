@@ -57,7 +57,7 @@ namespace Game.Ai.V2
                     continue;
                 anyInScope = true;
                 // The discretionary pool — what TurnResourceBook lets this spender use. Stock a
-                // build or reaction already holds is not Phase B's to keep or spend.
+                // build already holds is not Phase B's to keep or spend.
                 float stock = player != null && ctx != null
                     ? StrategicSpendability.SpendableAmount(player, root, ctx, rt)
                     : root.GetResource(rt);

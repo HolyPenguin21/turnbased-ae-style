@@ -124,8 +124,8 @@ namespace Game.Ai.V2
         public float AttackRefitFollowupAp;
 
         // --- current-stage accounting (ARCH-02 §13 — the canonical StrategicActionCost) -------------
-        //  One cost description per plan, consumed identically by Phase A, Phase B, the reaction
-        //  closure and the portfolio solver. AP = ApCost; Human/Energy/Materials/Tech = ResCost;
+        //  One cost description per plan, consumed identically by Phase A, Phase B and the
+        //  portfolio solver. AP = ApCost; Human/Energy/Materials/Tech = ResCost;
         //  GenerationAttempts = (Generation != null ? 1 : 0); HandSlotPeak = HandSlotsNeededAtPeak.
         //  No layer recomputes a "slightly different" cost of its own.
         public float ApCost;                      // current stage: Challenge / CreateArmy / attach / deploy AP

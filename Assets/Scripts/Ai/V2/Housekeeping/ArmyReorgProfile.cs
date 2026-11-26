@@ -160,7 +160,7 @@ namespace Game.Ai.V2
         public int EtaToGroup;
         // Diagnostic only — how far the enemy is from any friendly base. Housekeeping is same-hex
         // and task-neutral: it must never let another base's threat pressure a group it cannot
-        // move, so decision weighting uses EtaToGroup exclusively. Strategic reaction to base
+        // move, so decision weighting uses EtaToGroup exclusively. The strategic answer to base
         // threats belongs to Defence (Analysis/Threat → Defence Demand → Mission → Provisioning).
         public int EtaToNearestBase;
         public IReadOnlyList<WorthIt.DefenderProfile> Members = Array.Empty<WorthIt.DefenderProfile>();

@@ -19,13 +19,13 @@ namespace Game.Ai.V2
     // (PhaseACandidateRound, executed here), residual demands (PhaseAPass.PublishResiduals).
     public static class StrategicPhaseA
     {
-        // Re-entrant within a turn: the Main pass, every strategic re-admission, a reaction round
-        // and the cold residual call it. What carries between entries is `carriedReservation`
+        // Re-entrant within a turn: the Main pass, every strategic re-admission and the cold
+        // residual call it. What carries between entries is `carriedReservation`
         // (generator claims, build-card claims, residual demands), `apBudget` (follow-up AP
         // promises), the reservation ledger, the turn's tempo budget and `intentState`.
         //
         // admittedAxes — the axes whose demands this call re-evaluated: every axis for the Main
-        // pass and a reaction round (null = all), the dirty axes for a re-admission, the cold axes
+        // pass (null = all), the dirty axes for a re-admission, the cold axes
         // for the cold residual. `demands` holds only those axes' demands. For an admitted axis an
         // absent demand means "resolved"; for any other axis it means "not looked at". The entry
         // rewrites the residual demands of its admitted axes only, and only an entry that admits
@@ -68,7 +68,7 @@ namespace Game.Ai.V2
             IReadOnlyCollection<DesireAxis> admittedAxes = null, Radar radar = null,
             bool deferFreshZeroRadar = false)
         {
-            // One turn-scoped identity set must survive main, reaction and housekeeping entries:
+            // One turn-scoped identity set must survive every entry of the turn:
             // a failed generator/card pair is not a fresh candidate merely because Phase A re-entered.
             result.Reservation = carriedReservation ?? new MaterializationReservation();
             if (player == null || root == null || hand == null || apBudget == null || ctx == null)
@@ -103,7 +103,7 @@ namespace Game.Ai.V2
             PhaseAEconomyHolds.ProtectActiveBuilds(pass);
             PhaseAEconomyHolds.ClaimDemandBuildCards(pass);
             PhaseACandidateRound.MeasurePassWorkload(pass);
-            // One shared per-turn generation budget: a reaction-round Phase A must
+            // One shared per-turn generation budget: a re-entered Phase A must
             // not reset the Challenge count a main-pass generation already spent.
             result.Reservation.GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber);
             AiDebugLog.WriteDeduped("hand", $"[AI][V2]   strat.A - {player.Nickname} hand {AiCardLog.Hand(hand)}");

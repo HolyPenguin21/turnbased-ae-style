@@ -50,7 +50,7 @@ namespace Game.EditorTests
             // Physical aggregate preflight in the canonical executor. Strategic admission
             // checks the same base + immediate defender against owner-aware spendability first.
             ["Execution/BuildingPlayExecutor.cs"] = 2,
-            ["Execution/ReconAirExecutor.cs"] = 34,
+            ["Execution/ReconAirExecutor.cs"] = 10,
             ["Execution/ReconGroundExecutor.cs"] = 2,
             // +1 (T01): the preparation step measures its physical AP delta like every lane;
             // +1: the same physical after-read in that step's log line.
@@ -63,9 +63,7 @@ namespace Game.EditorTests
             ["Materialization/MaterializationExecutor.cs"] = 26,
             ["Missions/Raid/RaidRecoveryPlanner.cs"] = 1,
             // Pipeline.cs 6 -> 2: the admission-key reads moved with their owners (see the two files below).
-            // Moved, not new: the end-of-turn tempo re-run's AP before/after log reads (+2) left
-            // HousekeepingManager.cs (6 -> 3) with the reaction step they belong to.
-            ["Orchestration/AiStrategyV2Pipeline.cs"] = 4,
+            ["Orchestration/AiStrategyV2Pipeline.cs"] = 2,
             // Admission-key digest (ece0211c): the snapshot AP is one input of the Development key.
             ["Orchestration/DevelopmentAdmission.cs"] = 1,
             // Moved, not new: the Economy key reads the physical AP (it was inline in RunTurn).

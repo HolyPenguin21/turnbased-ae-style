@@ -148,7 +148,7 @@ namespace Game.Ai.V2
 
             bool underSiege = snapshot.Threat != null && snapshot.Threat.UnderSiege;
 
-            // Reaction refreshes objective facts but never advances Radar twice in one turn.
+            // A second evaluation in the same turn refreshes facts but never advances Radar twice.
             bool firstEvaluationThisTurn = state.LastTurn != snapshot.TurnNumber;
             float exploration = ReconExploration(snapshot);
             float blindness = ReconEnemyBlindness(snapshot);

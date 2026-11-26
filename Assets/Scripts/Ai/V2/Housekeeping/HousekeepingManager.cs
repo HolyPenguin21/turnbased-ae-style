@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  Analyzer -> pure Planner -> Executor, per own hex. It never chooses an objective or a
     //  mission, moves an army between hexes, plays a card or spends AP/resources; the AP check
-    //  below guards that boundary. The pending reaction and its tempo re-run run before it
+    //  below guards that boundary. Every AP-spending stage of the turn runs before it
     //  (AiStrategyV2Pipeline); the night fold after every end-of-turn measurement.
     // ===========================================================================================
     public sealed class HousekeepingResult

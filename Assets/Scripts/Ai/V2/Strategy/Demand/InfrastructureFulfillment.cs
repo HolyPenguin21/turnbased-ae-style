@@ -336,7 +336,7 @@ namespace Game.Ai.V2
             // the four, never a surplus one - EconomyResourceScarce) is one unit and pays off by
             // income, so like a build that completes now it may draw on OTHER builds' deferred holds (they shield
             // H/E/M/T from non-Economy spending; this IS Economy spending). Every other hold -
-            // reaction envelope, Attack continuation, its own build - still counts.
+            // Attack continuation, its own build - still counts.
             if (demand != null && demand.RequestingAxis == DesireAxis.Economy
                 && demand.Capability == CapabilityKind.CollectorCapability
                 && demand.EconomyResourceScarce)

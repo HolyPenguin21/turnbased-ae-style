@@ -244,7 +244,7 @@ namespace Game.Ai.V2
             }
             // Deferred demands never promoted this pass (no runnable window to try them, or no
             // deliverable candidate — AC7) are still real unmet strategic need; carry them into the
-            // same residual pool the reaction pass / Phase B read, so a later chance this turn is not
+            // same residual pool Phase B reads, so a later chance this turn is not
             // treated as if the need never existed.
             foreach (DemandState state in DeferredStates.Where(s => s.Remaining > 0f && !s.Demand.AttackLocalRefit))
                 Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));

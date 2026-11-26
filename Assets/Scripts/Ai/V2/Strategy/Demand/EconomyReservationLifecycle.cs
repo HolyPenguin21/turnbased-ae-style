@@ -226,7 +226,7 @@ namespace Game.Ai.V2
                     && liveAp + AiConfigV2.allocatorSliceEpsilon
                         >= build.BuildApCost + (route > 0 ? activationAp : 0f)
                     // Through TurnResourceBook: its own hold and other builds' deferred holds are
-                    // drawable, another owner's completion or the reaction envelope is not. The
+                    // drawable, another owner's completion is not. The
                     // completion (InfrastructureFulfillment.TryFulfill) funds a shortage through Trade.
                     && TradeFunding.CanFund(player, root, ctx, build.BuildResourceCost,
                         new SpendAuthority(owner, true));

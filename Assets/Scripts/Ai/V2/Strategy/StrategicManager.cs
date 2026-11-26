@@ -16,8 +16,7 @@ namespace Game.Ai.V2
     //   tempo action execution ........... TempoActionExecutor
     //   persistent-resource hold policy .. HoldEvaluator
     //   strategic spendability ........... StrategicSpendability
-    // This forwarder just keeps the two stable entry points the orchestrator and the reaction
-    // pass call, plus the named moments of the turn (the orchestrator reports
+    // This forwarder just keeps the two stable entry points the orchestrator calls, plus the named moments of the turn (the orchestrator reports
     // them, StrategicTurnLifecycle decides what the bank does). No logic lives here.
     public static class StrategicManager
     {

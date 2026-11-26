@@ -170,7 +170,7 @@ namespace Game.Ai.V2
                     // executor is ever created. Reporting that as Completed+ObjectiveSatisfied
                     // would make generic continuity retire the WHOLE Raid. Keep the campaign alive;
                     // ResolveActive owns the canonical CompleteRaidSupportReturn transition and will
-                    // consume this already-home fact on the next reconciliation/reaction pass.
+                    // consume this already-home fact on the next reconciliation.
                     if (MissionContinuityLayer.TryClassifySatisfiedDomainLeg(o))
                         break;
                     // Review P1 #2 — provisioning short-circuited because the focus hex was

@@ -165,7 +165,7 @@ namespace Game.Ai.V2
         // evaluator, no per-turn reservation registry — recomputed every turn.
         // The Energy an air claim (Recon sortie, Raid AirSupport) may still take this pass. Air is
         // non-Economy spending, so it must fit StrategicSpendability — owner-aware ledger holds
-        // (EconomyDeferredBuild/Completion, reaction envelope) are off limits — minus
+        // (EconomyDeferredBuild/Completion) are off limits — minus
         // session.EnergyClaimed: Provisioning never mutates world
         // resources, so sequential air claims in one pass would otherwise each see the same stock.
         // Only air missions set ClaimedEnergy, so this never double-counts an Economy ledger row.

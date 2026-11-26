@@ -11,7 +11,7 @@ namespace Game.EditorTests
     // and reach a live object only through its observer-scoped door, Game.Ai.V2.OwnWorld
     // (`snap.Own` / `OwnWorld.Of(player)`): own armies and buildings, the observer's own vision.
     // The registries themselves are read by Analysis and the live tiers (Continuity, Provisioning,
-    // Execution, Housekeeping, Reaction). A direct read here fails: route it through OwnWorld, or
+    // Execution, Housekeeping). A direct read here fails: route it through OwnWorld, or
     // move the code to the live tier it belongs to (ObjectiveLiveStatus, AviationRebaseExecutor).
     public class AiPlanningLiveReadBoundaryTests
     {

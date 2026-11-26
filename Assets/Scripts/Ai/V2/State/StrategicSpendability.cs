@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // The turn's operational mission loop has had its chance to fund and run every continuing
-    // operation. From then on (Phase B, housekeeping, reactions of the same turn) the Hard-operation
+    // operation. From then on (Phase B, housekeeping) the Hard-operation
     // continuation protection no longer holds AP: an operation still standing was not funded or
     // could not step, and freezing its AP would only waste it. Turn-stamped; lazily resets.
     internal static partial class OperationContinuationWindow
@@ -107,10 +107,10 @@ namespace Game.Ai.V2
     }
 
     // ARCH-02 §45/§47 — the ONE owner-aware strategic-spendability seam. Every "can I afford this
-    // persistent-resource cost right now" question in the strategic + materialization + reaction
+    // persistent-resource cost right now" question in the strategic + materialization
     // paths goes through SpendableAmount, which nets from the raw PlayerRoot stockpile:
     //   · StrategicResourceReservationLedger — the owner-aware explicit reservations (e.g. a
-    //     bounded reaction envelope), optionally excluding the caller's own owner key; and
+    //     completion), optionally excluding the caller's own owner key; and
     //   · the unpaid activation of continuing Hard ground-combat operations
     //     (OutstandingOperationContinuationAp, AP only).
     // Mandatory aviation (returns, committed rebases) holds nothing: it is settled before any card
@@ -173,7 +173,7 @@ namespace Game.Ai.V2
             if (movers.Count == 0 && !firstPreparationStep)
                 return 0f;
             // The continuation is the junior claim: it protects only the AP the ledger's committed
-            // AP rows (a build completing now, a reaction envelope) leave over, so the two
+            // AP rows (a build completing now) leave over, so the two
             // together never exceed the stock (2026-10-07 playtest: 4 completion + 3 continuation
             // against 6 AP).
             float ledgerCommittedAp = 0f;
@@ -306,8 +306,7 @@ namespace Game.Ai.V2
         // completion stage, its Execution re-check, or a Phase A on-hex build). Every other
         // owner's EconomyDeferredBuild hold is ignored — by contract such a hold belongs to a
         // build that cannot complete this turn and only shields H/E/M/T from non-Economy spending
-        // (cards, Phase B, reactions), which keep using FitsSpendableResources. Reaction holds,
-        // other builds' proven EconomyBuildCompletion rows and the operation-continuation hold
+        // (cards, Phase B), which keep using FitsSpendableResources. Other builds' proven EconomyBuildCompletion rows and the operation-continuation hold
         // still count, so two builds completing in the same turn are ordered by whoever claims first.
         internal static bool FitsSpendableForEconomyCompletion(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ResourceCost cost, string owner)
@@ -332,7 +331,7 @@ namespace Game.Ai.V2
 
         // Physical guard for a whole materialization chain: AP and every persistent resource
         // must fit the SAME owner-aware spendable pool. Raw AP is not available to a discretionary
-        // chain while another owner holds an explicit reaction/completion reservation. Callers
+        // chain while another owner holds an explicit completion reservation. Callers
         // without a turn-scoped owner retain the historical raw-AP fallback.
         // `excludeOwner` — see AxisDemand.EconomyHeroBuildOwner: a builder-hero chain may draw on its
         // own pending build's hold.

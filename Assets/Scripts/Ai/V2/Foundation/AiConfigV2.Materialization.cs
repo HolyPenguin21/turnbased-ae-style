@@ -14,7 +14,7 @@
         //  Both play cards ONLY through V2 CardPlayExecutor (the single authoritative V2 path).
         // =======================================================================================
         // Phase A — runaway-loop safety bound on card-arbitration actions in ONE FulfillDemands
-        // call (Main pass, each re-admission, a reaction round, the cold residual each get their
+        // call (Main pass, each re-admission, the cold residual each get their
         // own). Not a turn budget: what a turn may spend is bounded by AP and H/E/M/T, and the
         // turn-scoped tempo caps live in StrategicTempoBudget (owner decision 2026-10-24). The
         // infrastructure pre-pass and zero-Radar residual are outside it: each demand is tried

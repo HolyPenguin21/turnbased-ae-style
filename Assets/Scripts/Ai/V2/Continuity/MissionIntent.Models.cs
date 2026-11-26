@@ -480,8 +480,8 @@ namespace Game.Ai.V2
         public IMissionObjective Objective;
         public int CreatedTurn;
         public int TurnsActive;
-        // Reconciliation can run in the main pass and in up to two reaction rounds during one
-        // game turn. Age/stall clocks are turn-based and advance at most once for that turn.
+        // Reconciliation runs after every settled step and once at the end of the turn. Age/stall
+        // clocks are turn-based and advance at most once for that turn.
         public int LastReconciledTurn = -1;
         public int LastProgressTurn;
         // Separate from LastReconciledTurn on purpose — that field's own == turn check makes

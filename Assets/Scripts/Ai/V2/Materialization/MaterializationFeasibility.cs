@@ -204,7 +204,7 @@ namespace Game.Ai.V2
             if (need > axisBudget + eps) return;
             // Admission measures AP on the SAME owner-aware pool MaterializationExecutor re-checks
             // with (StrategicSpendability.ReservesOkAfterChain): another owner's AP hold (an Economy
-            // completion, a reaction envelope) and unpaid air-recovery activation are not
+            // completion) and unpaid air-recovery activation are not
             // available, so a chain is never admitted that execution must refuse.
             // The demand's ONE spend authority (AxisDemand.SpendAuthority): a builder-hero chain
             // may use its own pending build's hold, an Economy action that completes now is senior

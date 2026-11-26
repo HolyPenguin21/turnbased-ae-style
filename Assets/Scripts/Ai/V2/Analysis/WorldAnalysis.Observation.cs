@@ -353,7 +353,7 @@ namespace Game.Ai.V2
                     ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.IsStartingCitadel}:{x.IsBase}:"
                     + $"owner={x.Owner?.ColorIndex}:{x.Owner?.Nickname}:"
-                    // Defense is part of this key because Attack/Reaction combat estimates read it
+                    // Defense is part of this key because Attack and Recon combat estimates read it
                     // via AiMapMemory.KnownHexDefenseBonus. The owner of "did
                     // infrastructure change" is this comparison; it must cover every field a
                     // downstream consumer's fingerprint depends on.

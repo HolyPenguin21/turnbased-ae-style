@@ -27,7 +27,6 @@ Everything stays in namespace `Game.Ai.V2` (flat). Folders express ownership onl
 | `Missions/` | Objective → `MissionProposal` planners + admission. `Missions/Raid/` for raid assembly, `Missions/Attack/` for the Attack policies (march, preparation, secondary, intermediate Base, Base refit). |
 | `Allocation/` | The one `ResourceAllocator`. |
 | `Provisioning/` | Funded mission → actor binding → assembly → provisioned mission. Never plays strategic cards. |
-| `Reaction/` | Interrupt lifecycle coordinator + probe/witness/reservation/solver/executor. |
 | `Execution/` | Plan → canonical gameplay calls → structured result. Never re-plans or re-scores. |
 | `Continuity/` | Mission intent lifecycle: `ResolveActive` (before planning) and `Reconcile` (after execution). |
 | `Housekeeping/` | Zero-AP, task-neutral same-hex force packaging: the day pass (`HousekeepingManager` → `ArmyReorgAnalyzer` → `ArmyReorganizationPlanner` → `HousekeepingExecutor`), the night fold and morning restore (`HousekeepingNightFold`) and the operator stay-home release (`LocalOperatorRelease`). Never selects objectives, creates missions, moves armies between hexes, plays cards or spends resources. |
@@ -44,9 +43,7 @@ from the same `Missions/AggressionMissionPlanner`,
 scored by the same `TaskScore`, admitted by the same `GroundCombatAdmissionPolicy`
 thresholds and funded from the same Aggression slice. ActiveDefence is a durable
 threat-response mission (`Intercept`, or one army's `Return` to regroup/retreat) owned by Aggression, **not** a
-fifth axis and no longer the "reactive-only via `Reaction/`" stub older revisions of
-this document described: `Reaction/` remains the end-of-turn interrupt safety net
-only. Intercept skips a contact weaker than `activeDefenceMinEnemyPower` (10, by roster power, not skills), and past `activeDefenceLeashHexes` (4) from the nearest own Base/Citadel each hex lowers its `OwnTerritoryProximity` (`TaskScoreEvaluator.LeashedProximity`; a desire penalty, no gate). **ImmediateOpportunity (2026-10-09):** a separate, explicitly requested enumeration (`ActiveDefenceObjectiveEvaluator.EnumerateImmediate`; `Enumerate` is unchanged) admits a weak field army that is visible NOW (`ContactKnowledge.Exact` and a canonical sighting) — or, since 2026-11-05, last seen on an own structure it razed since our last turn (`OnFreshOwnRuin`: razing ends its movement, so the ruin is its honest position in fog; one snapshot rule `ImmediatePositionHonest` for the enumeration, `AssessImmediate` and both garrison-sortie readers, the live tiers OR `OnFreshOwnRuin` beside `VisionSystem.IsVisible` — 2026-11-06) when a free defender's Combat-profile route cost fits its CURRENT movement (`CanReachNow`, re-proved on the assembled roster in provisioning via `GroundCombatAssaultRequest.PreMutationVeto` and before every executor step). It only yields an Intercept (`ActiveDefenceInterceptPurpose.ImmediateOpportunity`, same enemy-id identity, `ImmediateTurn`); `asset_holds`, EnemyEta and the power/severity bars are not consulted, and it never produces Regroup, Shortage, Return, Demand or AirSupport. The intent ends with the turn that admitted it (no pursuit) and leaves the army where it stands. 2026-11-07: its intrinsic score carries the removed force as `PreventedDamage` (enemy power on the `SelfSnapshot.AttackPeak` scale); a formation the fight would leave where a known hostile player army reaches within `activeDefenceWithdrawMaxEnemyEta` turns and beats it above 1 - `activeDefenceHoldWinChance` is not used (`ActiveDefenceObjectiveEvaluator.LeavesForceExposed`, the `WithdrawalThreats` rule; reason `immediate_force_exposed_after_fight`); and the pending preparation's value charged to a leg that takes its host is released after Attack planning when no Attack proposal of that pass uses the host (`AggressionMissionLayer.ReleaseIdlePreparationHostCharges`). **2026-11-12 (hero displacement, extractor denial):** the contact may stand on a live opponent's extractor seen collecting (`BlocksImmediateIntercept`: every other foreign structure still blocks — Bases/Citadels are Attack's, a neutral/eliminated/idle one has no income to deny); the observed collection is scored as `EconomicHexBenefit` (`ExtractorDenial`) and the win razes the extractor. A hero-only contact (`GroundCombatActorEligibility.IsHeroOnlyOpposition`: no ground combatant after summons) may be displaced by a free solo scout (`AllowHeroDisplacement` + `CanDisplaceHeroes`) and — **2026-11-19 (owner, revises 2026-11-12)** — by any ActiveDefence field army as well: ready, same-hex assembled or a garrison sortie (a field army formed from the garrison; the garrison container itself never moves). Only Attack keeps the on-route rule (`AttackTacticalOpportunity.HeroDisplacementPays`). **2026-11-19 (structure value):** the immediate score also carries the own structure the contact can take within `immediateStructureThreatMaxEnemyEta` (1) of its turns — the threat model's own pair (`ThreatenedOwnStructure`, `PotentialDamage` > 0), priced by the strategic Intercept's formula (`AssetDefenceTerms`: StrategicRelevance, ThreatDirection, and the larger of the two PreventedDamage readings), since the strategic Intercept never lists a weak saboteur beside a Facility. A Regroup / withdrawal only answers a threat within `activeDefenceWithdrawMaxEnemyEta` turns of its asset; a farther one is deferred. Its win-chance gate selection (fresh start 0.80 vs. pinned continuation 0.55) is the
+fifth axis. Intercept skips a contact weaker than `activeDefenceMinEnemyPower` (10, by roster power, not skills), and past `activeDefenceLeashHexes` (4) from the nearest own Base/Citadel each hex lowers its `OwnTerritoryProximity` (`TaskScoreEvaluator.LeashedProximity`; a desire penalty, no gate). **ImmediateOpportunity (2026-10-09):** a separate, explicitly requested enumeration (`ActiveDefenceObjectiveEvaluator.EnumerateImmediate`; `Enumerate` is unchanged) admits a weak field army that is visible NOW (`ContactKnowledge.Exact` and a canonical sighting) — or, since 2026-11-05, last seen on an own structure it razed since our last turn (`OnFreshOwnRuin`: razing ends its movement, so the ruin is its honest position in fog; one snapshot rule `ImmediatePositionHonest` for the enumeration, `AssessImmediate` and both garrison-sortie readers, the live tiers OR `OnFreshOwnRuin` beside `VisionSystem.IsVisible` — 2026-11-06) when a free defender's Combat-profile route cost fits its CURRENT movement (`CanReachNow`, re-proved on the assembled roster in provisioning via `GroundCombatAssaultRequest.PreMutationVeto` and before every executor step). It only yields an Intercept (`ActiveDefenceInterceptPurpose.ImmediateOpportunity`, same enemy-id identity, `ImmediateTurn`); `asset_holds`, EnemyEta and the power/severity bars are not consulted, and it never produces Regroup, Shortage, Return, Demand or AirSupport. The intent ends with the turn that admitted it (no pursuit) and leaves the army where it stands. 2026-11-07: its intrinsic score carries the removed force as `PreventedDamage` (enemy power on the `SelfSnapshot.AttackPeak` scale); a formation the fight would leave where a known hostile player army reaches within `activeDefenceWithdrawMaxEnemyEta` turns and beats it above 1 - `activeDefenceHoldWinChance` is not used (`ActiveDefenceObjectiveEvaluator.LeavesForceExposed`, the `WithdrawalThreats` rule; reason `immediate_force_exposed_after_fight`); and the pending preparation's value charged to a leg that takes its host is released after Attack planning when no Attack proposal of that pass uses the host (`AggressionMissionLayer.ReleaseIdlePreparationHostCharges`). **2026-11-12 (hero displacement, extractor denial):** the contact may stand on a live opponent's extractor seen collecting (`BlocksImmediateIntercept`: every other foreign structure still blocks — Bases/Citadels are Attack's, a neutral/eliminated/idle one has no income to deny); the observed collection is scored as `EconomicHexBenefit` (`ExtractorDenial`) and the win razes the extractor. A hero-only contact (`GroundCombatActorEligibility.IsHeroOnlyOpposition`: no ground combatant after summons) may be displaced by a free solo scout (`AllowHeroDisplacement` + `CanDisplaceHeroes`) and — **2026-11-19 (owner, revises 2026-11-12)** — by any ActiveDefence field army as well: ready, same-hex assembled or a garrison sortie (a field army formed from the garrison; the garrison container itself never moves). Only Attack keeps the on-route rule (`AttackTacticalOpportunity.HeroDisplacementPays`). **2026-11-19 (structure value):** the immediate score also carries the own structure the contact can take within `immediateStructureThreatMaxEnemyEta` (1) of its turns — the threat model's own pair (`ThreatenedOwnStructure`, `PotentialDamage` > 0), priced by the strategic Intercept's formula (`AssetDefenceTerms`: StrategicRelevance, ThreatDirection, and the larger of the two PreventedDamage readings), since the strategic Intercept never lists a weak saboteur beside a Facility. A Regroup / withdrawal only answers a threat within `activeDefenceWithdrawMaxEnemyEta` turns of its asset; a farther one is deferred. Its win-chance gate selection (fresh start 0.80 vs. pinned continuation 0.55) is the
 same `GroundCombatAdmissionPolicy` pair Raid uses, applied identically in Missions,
 `State/GroundCombatAdmissionRegistry` and `Provisioning`.
 
@@ -167,7 +164,7 @@ available if no fresh operation is admitted.
 ```
 Orchestration
    ↓
-Strategy / Materialization / Missions / Allocation / Provisioning / Reaction / Continuity
+Strategy / Materialization / Missions / Allocation / Provisioning / Continuity
    ↓
 Analysis / Evaluation / Foundation / State
    ↓
@@ -201,7 +198,7 @@ whose units it transfers, the `BuildingData` whose slot it fills) it asks the on
 door `Analysis/OwnWorld` (`snap.Own`, or `OwnWorld.Of(player)`): own armies and buildings, plus the
 observer's own vision (`VisibleBuildingAt` only for a hex seen now). Foreign facts come from
 `AiMapMemory` / `WorldSnapshot.Known`. Live reads stay in Analysis and the live tiers (Continuity,
-Provisioning, Execution, Housekeeping, Reaction); the live objective checks are
+Provisioning, Execution, Housekeeping); the live objective checks are
 `Continuity/ObjectiveLiveStatus`, the aviation rebase execution is `Execution/AviationRebaseExecutor`
 and wing forming `Execution/AviationWingPreparation`. Canonical domain rules (`ArmyActions.Can*`,
 `ResearchProductionSystem` queries) remain callable — they are rules, not raw state.
@@ -233,7 +230,7 @@ a frame snapshot read the same view: Execution steps (`snapshot`), Provisioning 
 Housekeeping, Recon assignment, the admission fingerprints. `MissionIntentRegistry` itself is read
 only by: the store's owner Continuity (its writes); the turn session that binds it; the resource bank
 `StrategicSpendability` (called with `(player, root, ctx)` everywhere); entries without a frame
-(Initiative before the turn, the Reaction round's Phase A/witness writes); `PlayerForceAnalysis`
+(Initiative before the turn); `PlayerForceAnalysis`
 outside the AI turn; and Materialization paths whose snapshot is optional by contract
 (`MaterializationDeliveryPolicy`, `MaterializationFeasibility`).
 `AiPlanningLiveReadBoundaryTests.PlanningLayersAndAnalysis_ReceiveTheIntentStoreExplicitly` guards it.
@@ -250,7 +247,6 @@ vertical manager. Ownership remains:
 | `Strategy/` | Maps typed factual invalidations to dirty task families and re-runs only the existing affected policy. |
 | `State/` | Keeps turn-scoped reservations, commitments, state version and persistent no-op parking across cycles. |
 | Existing executors | Execute one admitted atomic task step through canonical gameplay calls and return one structured result. They never re-plan. |
-| `Reaction/` | End-of-turn safety net, bounded external-interrupt fallback and final reconciliation; not the ordinary post-step loop owner. |
 
 A **task step** contains at most one canonical state-changing gameplay operation,
 or one explicit no-op/blocked result. Its executor must wait until that operation
@@ -267,8 +263,7 @@ inside their mutation boundary.
 
 Phase A and Phase B are not deleted. Their existing policies remain the owners of
 capability fulfilment and surplus/tempo arbitration. They are re-entered only
-through bounded adapters and retain turn-scoped parking/reservation state; the
-terminal Phase-B/reaction path remains the final safety net.
+through bounded adapters and retain turn-scoped parking/reservation state.
 
 **One main loop (level 4).** `Orchestration/TurnLoop.Run` is the single owner of the turn's
 transitions after the first Phase A: it opens every operational admission pass (at the start,
@@ -284,9 +279,11 @@ mandatory aviation / mission selection, provisioning, execution, and the termina
 `ColdResidual` (`IColdWork`). Typed re-admission is `StrategicReadmissionRunner`; the settled-step trigger
 sequence (`StepTriggerSequence`) talks to the session, the `DecisionFrame` and the runner directly. Each
 work keeps its own observation/settle order. `Pipeline.RunTurn` assembles them: start of the turn, the
-loop, recall, final ownership, `SettleAfterTurn`, Housekeeping, audit and cleanup.
-`RecallUnsafeStrikes`, the end-of-turn reaction and Housekeeping stay outside the loop (the loop, not `RunTurn`:
-`EndOfTurnReaction` runs the pending reaction and, when it held AP, one bounded tempo re-run on the Phase B round recipe; then Housekeeping).
+loop, the aviation recalls, the end-of-turn facts, final ownership, `SettleAfterTurn`, Housekeeping, audit and
+cleanup. Facts still pending after the loop's last trigger take (the closing re-admission, the recalls) go
+through the same works once more: `StepTriggerSequence`, then `TurnLoop.RunEndOfTurn` (an admission pass for
+an operational share, exactly one Phase B round, no cold residual; only facts a consumer family takes count).
+The recalls and Housekeeping stay outside the loop.
 `TurnLoop` is the single owner of the *transitions* and the single *writer* of `TurnLoopState`: the work
 bodies return an outcome (`SettledStepDelta`, `NoProgressAfter`, `ResidualVerdict`, `ReturnsDeferred`) and
 `TurnLoop` applies it. Level boundaries are checked by `Tools/ai-v2-decoupling-verify/`.
@@ -313,8 +310,7 @@ moments and assembles components.
 
 Remaining by design: the axis admission keys and `AttackForceReadiness` / `RadarValueScale` in Orchestration,
 the delegates inside `StrategicReadmission.Decide` and the builder-readiness lambda in `TypedTriggerFanOut`
-(both for laziness), and `ReactionRoundExecutor` with its own copy of
-the frame recipe and the re-provisioning loop.
+(both for laziness).
 
 **Rollout is complete, not partial.** The bounded typed loop is the single production
 execution path. There is no runtime strategy/focus mode and no axis-scope filtering.
@@ -460,8 +456,6 @@ reactivate when important contact becomes stale or blind again.
 | A Scout's `TargetInvalidated` (execution or provisioning) | `Blocked`, never `Failed` (`MissionOutcomeLedger`): Continuity re-validates the objective (`IsIntentStillValid` → re-focus / retire) |
 | Support-local failure of a leg (never ends the operation) | `GroundCombatLegs.IsSupportLeg` / `RaidLegOf` / `AttackLegOf` — the ledger's execution and provisioning classifiers and `ReconcileOutcome` (`ReleaseInvalidSupport`) |
 | Strategic knowledge of an enemy army | `Analysis/AiMapMemory` sightings. Objectives, Missions, Provisioning and Execution read enemy existence/position only from there. A global `ArmyRegistry` sweep may confirm the outcome of a canonical operation the AI itself just performed (e.g. did the target survive the battle our army fought) — it may never stand in for knowledge of a hidden army, and "absent from the world" is never objective completion. |
-| Reaction feasibility evidence | `ReactionWitness` (struct in `Reaction/StrategicReactionPass.cs`) + `Reaction/ReactionOpportunityProbe` |
-| Reaction witness arbitration (§28) | `Reaction/ReactionWitnessSelector` |
 | Economy objective / key encoding (intent key, attempt key, reservation owner) | `MissionIntentKey.EconomyObjectiveId` + `MissionIntentKey.ForEconomy` / `StableMissionKey.ForEconomy`; a build's reservation owner is `InfrastructureFulfillment.EconomyBuildOwner` (= `EconomyMissionPlanner.OwnerKey` of the mission key) |
 | Which strategic reservations one demand-closing action may draw on | `StrategicSpendability.SpendAuthority` (Owner + EconomyCompletesNow), decided once by `InfrastructureFulfillment.SpendAuthorityFor` and read as `AxisDemand.SpendAuthority` by every stage: Phase-A admission (`MaterializationFeasibility`), pricing (`MaterializationCandidateBuilder`), portfolio (`MaterializationPortfolioSolver`), execution (`MaterializationExecutor`) and `InfrastructureFulfillment.TryFulfill` |
 | Putting a PlayerGlobal recurring-resource source (ApBonus / Produce*) from hand into play | `DemandLayer.GlobalResourceSourceDemands` — one Economy Phase-A demand per carrier card, pinned by `AxisDemand.EconomySourceCard`: `GlobalResourceFacility` → `InfrastructureFulfillment`, competing in Phase A's card arbitration like a Development step (intrinsic card score × Radar against the best chain, never a pre-pass ahead of it) (Economy completes now, so other builds' `EconomyDeferredBuild` holds do not block it; when every slot is locked it buys the Base upgrade chosen by `StrategicMaintenancePolicy.TryFindCapacityUnlock`, the same rule as the Phase-B capacity candidate), `GlobalResourceCarrier` (Unit/Hero) → the materialization chain, any placement, no follow-up AP; it competes for the card in the same injective Phase-A portfolio as every other demand, and is closed once the card is in play through any demand (a carrier hero may lead an army or build). Its card value is the canonical dynamic `StrategicEffectRegistry` contribution (yield, horizon, useful workload/deficit and saturation), counted once in every lane (Phase A, Phase-B surplus, non-combat Facility); Base carriers stay with FoundBase |
@@ -476,8 +470,7 @@ reactivate when important contact becomes stale or blind again.
 | Bounded delivery-failure streaks (Base per card+site, Extraction per resource+site) | `EconomyLifecycleState.DeliveryFailureStreaks` |
 | Is a mobile collector worth its site (admit / keep) | `EconomyResourceStanding.UsefulMarginalIncomeGain` / `UsefulRetainedIncomeGain` (same test without its own income) |
 | The physical pool an Economy mission is funded from | `AllocationSession.PhysicalAvailableFor` — raw stock minus every hold except EconomyDeferredBuild and its own owner; a funded completion owner's physical claim already reduces the remaining stock, so its completion hold is credited once, not subtracted again |
-| AP reserved by an Economy completion or reaction | `AllocationSession.Pack` (`ApAvailableFor`) reads the one `StrategicResourceReservationLedger` for every mission axis; funding an Economy owner's own completion credits only the AP that owner has claimed, leaving unclaimed AP protected |
-| When the bounded reaction spends its own reservation | `ReactionRoundExecutor.ExecuteRound` releases `StrategicReactionPass` rows after the feasibility recheck and before Phase A and mission allocation; Economy owners' rows survive |
+| AP reserved by an Economy completion | `AllocationSession.Pack` (`ApAvailableFor`) reads the one `StrategicResourceReservationLedger` for every mission axis; funding an Economy owner's own completion credits only the AP that owner has claimed, leaving unclaimed AP protected |
 | Threat contacts | `WorldAnalysis.BuildThreat` — honest contacts only (live sightings + AiReconMemory history), each with a position and an ETA. There is no hidden-army (cheat) contact; `ThreatModel.CitadelThreatSeverity` / `BaseThreatSeverity` are the highest Severity against the starting Citadel / any other own Base |
 | Ground arrival time (2026-11-19 audit D3) | `ActiveDefenceObjectiveEvaluator.GroundArrivalEta` / `ArrivalEta` / `CanArriveBeforeThreat` / `CanInterceptRosterBeforeThreat` — always the turn-optimal route execution walks (`AiTurnController.FindAffordableStep`); `CanReachNow` = arrival this own turn; one route walk `WalkGroundRoute`. Regroup, withdrawal and garrison relief used the cheapest-cost route before |
 | ActiveDefenceObjectiveEvaluator layout | partial files by responsibility: main (types, strategic `Enumerate`, shared predicates), `.Immediate`, `.Response`, `.Timing`, `.StrongholdPin`, `.Withdrawal`, `.Score`, `.Sortie` |
@@ -499,9 +492,9 @@ reactivate when important contact becomes stale or blind again.
 ## Verified boundary invariants (02F–02H audit)
 
 * **One `ResourceAllocator`** — no per-mission/per-axis allocator.
-* **One `StrategicCardEvaluator`** — no `Hero`/`Reaction`/`PhaseB`/`Aviation` card scorer.
-* **Executors do not plan or rescore** — `Execution/TaskExecutor`, `ReconGroundExecutor` and
-  `ReactionRoundExecutor` call canonical gameplay actions and return a structured result; the
+* **One `StrategicCardEvaluator`** — no `Hero`/`PhaseB`/`Aviation` card scorer.
+* **Executors do not plan or rescore** — `Execution/TaskExecutor` and `ReconGroundExecutor`
+  call canonical gameplay actions and return a structured result; the
   only evaluator calls are `Is*SatisfiedLive` completion checks (a legit §37 concern), never
   objective selection or replacement-mission synthesis (the stale-Explore replacement builder
   was removed — a stale-goal Scout is recorded and re-targeted by Continuity next pass).
@@ -522,7 +515,7 @@ reactivate when important contact becomes stale or blind again.
   canonical gameplay actions and records the resulting state changes.
 * **Provisioning plays no strategic cards** — `Provisioning/*` binds actors and locks; it never
   calls `MaterializationExecutor` / `StrategicPhaseA/B`.
-* **The strategic layer is skill-agnostic** — Strategy / Materialization / Missions / Reaction
+* **The strategic layer is skill-agnostic** — Strategy / Materialization / Missions
   branch only on the AI's own `CapabilityKind` taxonomy, never on a gameplay ability name
   (`Splash` / `Regen` / `Summon` / `AbilityKind.*`). Ability specifics stay behind
   `StrategicEffectRegistry.Roles(...)`, so a new effect needs a registry entry, not a manager
@@ -664,8 +657,7 @@ progress. Orchestration never selects donors; Housekeeping does not select proac
 Mission requirements retain the action's logical resources (including Energy for flight), while
 ResourceAllocator and provisioning claims reserve the external donor debit through TradeFunding.
 The allocator admits at most one conversion-dependent mission per portfolio and recomputes after
-execution at the new rate. Reaction follow-up envelopes likewise reserve full chain AP and external
-debit under their existing owner. Fractional forecasts are preserved when no conversion is needed.
+execution at the new rate. Fractional forecasts are preserved when no conversion is needed.
 
 Aviation placement, equipment, base/garrison and Development preflights may ignore current resource
 shortage only when the same selected action can be fully funded. Structural, ownership and AP checks

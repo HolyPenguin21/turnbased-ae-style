@@ -434,7 +434,7 @@ namespace Game.EditorTests
             }
             if (scenario == "partial_retry_history") {
                 StrategicTempoBudget.RecordGenerationAttempt(owner, snap.TurnNumber);
-                reservation.GenerationAttemptsUsed = 1; // reaction probe: count known, exact tried set unavailable
+                reservation.GenerationAttemptsUsed = 1; // a forecast: count known, exact tried set unavailable
             }
             if (scenario == "tried_source" || scenario == "tried_with_alternative") {
                 reservation.TriedGeneratorCards.Add(source.CardKey); reservation.GenerationAttemptsUsed = 1;

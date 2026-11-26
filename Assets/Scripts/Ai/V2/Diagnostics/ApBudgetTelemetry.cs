@@ -97,7 +97,7 @@ namespace Game.Ai.V2
                 AiConfigV2.apScarcityMultiplierMax);
 
             AiDebugLog.Write($"[AI][V2][ApBudget] {player.Nickname} T{ctx.TurnNumber} end - AP {m.StartAp}->{m.EndAp} "
-                + $"| spent {m.Spent}: task steps {F(steps)}, draws {draws} ({cardsDrawn}), cards, reaction & other {F(other)} "
+                + $"| spent {m.Spent}: task steps {F(steps)}, draws {draws} ({cardsDrawn}), cards & other {F(other)} "
                 + $"| unmet {F(m.Unmet)}: draws to {AiConfigV2.handReplenishTargetCards} cards {F(m.DrawsUnmet)} ({m.DrawsShort}), "
                 + $"affordable hand cards {F(m.CardsUnmet)} ({m.CardsAffordable}), budget-deferred missions "
                 + $"{F(m.MissionsUnmet)} ({m.MissionsDeferred}) | demand {F(m.Demand)} pressure {F(m.Pressure)} "

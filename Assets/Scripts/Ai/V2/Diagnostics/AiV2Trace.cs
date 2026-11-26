@@ -40,8 +40,8 @@ namespace Game.Ai.V2
     //  AiDebugLog — every write is wrapped).
     // ===========================================================================================
 
-    // One planning/execution scope (Main, or a bounded reaction round) for one AI player on one
-    // turn. Hands out the monotonic per-scope demand / mission-attempt ids.
+    // One planning/execution scope (the turn) for one AI player.
+    // Hands out the monotonic per-scope demand / mission-attempt ids.
     public sealed class V2TraceScope
     {
         public readonly string Id;

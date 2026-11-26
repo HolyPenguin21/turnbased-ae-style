@@ -18,7 +18,7 @@ namespace Game.Ai.V2
     //  what the observer's own vision shows right now; a foreign live object is never reachable
     //  from planning (foreign facts come from AiMapMemory / WorldSnapshot.Known). The registries
     //  are read here, in Analysis, and in the live tiers (Continuity, Provisioning, Execution,
-    //  Housekeeping, Reaction) — never directly by Strategy, Missions or Evaluation.
+    //  Housekeeping) — never directly by Strategy, Missions or Evaluation.
     //
     //  Reads are live (the same registries the planners read before), so this is a boundary, not
     //  a cache: a planner that runs after a mutation in the same cycle still sees the mutation.

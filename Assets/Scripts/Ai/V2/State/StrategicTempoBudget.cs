@@ -8,8 +8,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  ONE authoritative per-(player, turn) budget for every end-of-turn tempo action. All the
     //  hard caps are enforced against THIS, not against locals inside a single UseSurplus() call,
-    //  so re-entering the arbiter (main Phase B, bounded reaction round, reaction follow-up,
-    //  Housekeeping tempo re-run) can never buy more actions than the per-turn limit.
+    //  so re-entering the arbiter (every Phase B round, the end-of-turn round included) can never
+    //  buy more actions than the per-turn limit.
     //
     //    maxEndOfTurnTempoActionsPerTurn  <- TotalTempoActionsUsed   (every executed tempo action)
     //    maxTerminalDrawsPerTurn          <- DrawActionsUsed

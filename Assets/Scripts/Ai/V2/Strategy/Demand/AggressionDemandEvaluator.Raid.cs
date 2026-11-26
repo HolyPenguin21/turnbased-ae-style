@@ -72,8 +72,8 @@ namespace Game.Ai.V2
                     // Assault -> Reinforcement transition is RaidContinuity.AdvanceRaidPhase's
                     // job; the ReinforcementRequestedTurn dedup stamp is written only once a
                     // materialization for this exact ConsumerIntentKey is accepted/funded
-                    // (CapabilityDeliveryEvaluator.TryHandoffRaidSupport). Build also serves the
-                    // bounded reaction probe, which must never commit the real mission to anything.
+                    // (CapabilityDeliveryEvaluator.TryHandoffRaidSupport). Build never commits
+                    // the real mission to anything.
                     using var __shortage = new Game.Core.ProfileScope("AI/Aggr.BoundShortage");
                     AxisDemand raidShortage = GroundCombatDemandPolicy.BoundPrimaryShortage(snap, inv, commitments, i,
                         MissionKind.Raid, ri.Target.DiagnosticLabel, primaryId, ri.SupportArmyId,

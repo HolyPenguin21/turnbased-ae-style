@@ -110,8 +110,8 @@ namespace Game.Ai.V2
 
         internal void SeedHandSlots(int free) => _handSlotsFree = Mathf.Max(0, free);
 
-        // Seed an EXISTING recipient once from the live container: the one place both solvers
-        // read these facts, so Phase A and Reaction can never disagree on a recipient's base.
+        // Seed an EXISTING recipient once from the live container: the one place these facts are
+        // read.
         // Fresh (NewArmy / ReusableShell) recipients need no seed; they default to an empty
         // non-garrison container.
         internal void SeedRecipient(string key, ArmyData live)
