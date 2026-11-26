@@ -73,7 +73,7 @@ namespace Game.UI
             // A cost preview is now meaningful only for the Base/Citadel cell. Facility Improve
             // is intentionally not exposed until its gameplay contract is implemented.
             _actionHoverText = new CardActionHoverText(
-                titleRoot != null ? titleRoot : nameText?.gameObject, skillsText);
+                titleRoot != null ? titleRoot : nameText != null ? nameText.gameObject : null, skillsText);
             AddHoverTrigger(improveButton, ShowUpgradeCostPreview, HideUpgradeCostPreview);
         }
 
@@ -86,7 +86,7 @@ namespace Game.UI
             _modal = modal;
             _building = building;
             _facility = null;
-            selectionFrame?.SetActive(false);
+            if (selectionFrame != null) selectionFrame.SetActive(false);
 
             // See the class comment — a resource site has no base cell at all, so cellIndex 0
             // means its first Facility slot there, not "the building itself".
@@ -116,7 +116,7 @@ namespace Game.UI
                 skillsText.text = abilities;
                 skillsText.gameObject.SetActive(!string.IsNullOrEmpty(abilities));
             }
-            titleRoot?.SetActive(_occupied);
+            if (titleRoot != null) titleRoot.SetActive(_occupied);
             if (artImage != null)
             {
                 Sprite occupiedArt = isBaseCell ? building.Art : _facility != null ? _facility.Art : null;
@@ -177,7 +177,10 @@ namespace Game.UI
         }
 
         internal void RefreshSelection(FacilityData facility)
-            => selectionFrame?.SetActive(_occupied && (_isBaseCell ? facility == null : _facility == facility));
+        {
+            if (selectionFrame != null)
+                selectionFrame.SetActive(_occupied && (_isBaseCell ? facility == null : _facility == facility));
+        }
 
         public void OnPointerClick(PointerEventData eventData)
         {

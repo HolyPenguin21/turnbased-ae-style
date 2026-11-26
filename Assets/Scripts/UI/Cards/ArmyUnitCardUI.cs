@@ -270,7 +270,13 @@ namespace Game.UI
             RefreshSkillsText(card, config);
         }
 
-        internal void SetSelected(bool selected) => selectionFrame?.SetActive(selected);
+        // Optional: a collection/reward cell owns its own frame (CollectionRewardCardView), so the
+        // card's field stays unassigned there. A Unity null check, not `?.`: an unassigned
+        // serialized reference is a fake null in the editor and would throw on SetActive.
+        internal void SetSelected(bool selected)
+        {
+            if (selectionFrame != null) selectionFrame.SetActive(selected);
+        }
 
         internal void RefreshPreviewSelection(CardDefinition selected)
             => SetSelected(_previewMode && selected != null && selected == _previewCard);
