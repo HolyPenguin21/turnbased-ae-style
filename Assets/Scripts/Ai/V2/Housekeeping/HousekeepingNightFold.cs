@@ -243,6 +243,12 @@ namespace Game.Ai.V2
             }
 
             List<(int, int, int)> taken = moves;
+            // 2026-11-26 (owner) — a garrison is never left without a body while it can keep one
+            // (a weak scout must not walk into an empty Base): its last fighter stays, the
+            // weakest one, since the strongest leave first.
+            bool Takeable(ReorgUnit u, int from) =>
+                NightMovableBody(u) && !meta.ChargesActivationFor(u)
+                && !(v.Meta[from].IsGarrison && v.Roster[from].Count(x => x.IsGroundCombatant) <= 1);
             void FillBodies()
             {
                 var bodies = parts.Where(id => id != dstId)
@@ -253,7 +259,7 @@ namespace Game.Ai.V2
                 {
                     if (ReorgViability.Capacity(dst, meta.IsGarrison) < dst.Count + 1)
                         break;
-                    if (meta.ChargesActivationFor(u))
+                    if (!Takeable(u, from))
                         continue;
                     v.Roster[from].Remove(u);
                     ReorgViability.AddMemberSorted(dst, u, meta.IsGarrison);
@@ -265,8 +271,7 @@ namespace Game.Ai.V2
             // 2026-11-18 (owner) — a Support hero or an operator that does not command the formation
             // steps out to a hero-only bench on the hex (it keeps serving that hex) while bodies wait
             // for its slot; the bench is a night container left without fighters.
-            while (parts.Any(id => id != dstId && v.Roster[id].Any(u => NightMovableBody(u)
-                       && !meta.ChargesActivationFor(u)))
+            while (parts.Any(id => id != dstId && v.Roster[id].Any(u => Takeable(u, id)))
                    && ReorgViability.Capacity(dst, meta.IsGarrison) <= dst.Count)
             {
                 ReorgUnit commander = dst.FirstOrDefault(u => u.IsHero);

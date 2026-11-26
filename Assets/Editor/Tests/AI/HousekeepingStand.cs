@@ -707,6 +707,11 @@ namespace Game.EditorTests
                         Fail(t, $"night: Support hero {Label(u)} left #{d.Id} for a fighting army");
                 }
             }
+            // The garrison keeps a body at night when it had one by day (owner 2026-11-26).
+            StandArmy dayGarrison = t.After.Values.FirstOrDefault(a => a.IsGarrison);
+            if (dayGarrison != null && dayGarrison.Members.Any(u => u.IsGroundCombatant)
+                && !(t.Night.TryGetValue(dayGarrison.Id, out StandArmy ng) && ng.Members.Any(u => u.IsGroundCombatant)))
+                Fail(t, "night: the garrison was left without a body");
             int dayFormations = Formations(t.After), nightFormations = Formations(t.Night);
             if (nightFormations > dayFormations)
                 Fail(t, $"night: {nightFormations} fighting formations, {dayFormations} by day");
