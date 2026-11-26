@@ -212,7 +212,7 @@ namespace Game.EditorTests
             var army = new ArmyData { Owner = _owner }; army.Members.Add(unit); ArmyRegistry.Register(army);
             var play = new NonCombatCardPlayer.NonCombatPlay
                 { Card = card, Kind = NonCombatCardPlayer.PlayKind.Equipment, EquipHost = unit };
-            army.Members.Clear();
+            army.ReplaceRoster(null);
             var result = NonCombatPlayExecutor.Execute(play, null, _owner, _root, hand,
                 new AiTurnContext { TurnNumber = 1 });
             Assert.That(result.Played, Is.False);

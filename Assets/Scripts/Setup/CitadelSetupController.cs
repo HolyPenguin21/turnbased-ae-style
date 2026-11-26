@@ -136,6 +136,7 @@ namespace Game.Setup
 
         private IEnumerator Start()
         {
+            MatchSceneAssembly.ConfigureTutorial(turnController);
             if (hexSelectionController != null)
                 hexSelectionController.enabled = false;
 
@@ -391,7 +392,7 @@ namespace Game.Setup
                 definition.apCost, definition.resourceCost, definition.isAviation, definition.launchEnergyCost,
                 definition.turnsWithoutRefuel, definition.antiAirRadius, definition);
             if (leader == null) return;
-            garrison.AddMemberSorted(leader);
+            ArmyActions.AddSetupMember(garrison, leader);
             player.AiGrantedLeaderKey = definition.authoredKey;
             hexSelectionController.RestackArmiesOn(hex, null);
             VisionSystem.RecomputeFor(player);

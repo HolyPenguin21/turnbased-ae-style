@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -36,19 +35,11 @@ namespace Game.UI
         // The whole panel (menu/help buttons, play-pause, utility) sits over the battle screen,
         // so it is hidden for the duration of a battle.
         private CanvasGroup panelGroup;
-        private struct GroupState
-        {
-            public CanvasGroup Group;
-            public bool Interactable, BlocksRaycasts;
-        }
-        private readonly List<GroupState> groups = new List<GroupState>();
-        private GameObject previousSelection;
         private static GameMenuPanelUI instance;
-        private static int blockedThroughFrame = -1;
         public bool IsShowing { get; private set; }
         private bool BattleActive => battleScreen != null && battleScreen.IsShowing;
         public event Action VisibilityChanged;
-        public static bool GameplayInputBlocked => (instance != null && instance.IsShowing) || blockedThroughFrame == Time.frameCount;
+        internal static GameMenuPanelUI Current => instance;
         public static bool OwnsKeyboardSelection
         {
             get
@@ -59,7 +50,7 @@ namespace Game.UI
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics() { instance = null; blockedThroughFrame = -1; }
+        private static void ResetStatics() => instance = null;
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void RestoreInstance() => instance = UnityEngine.Object.FindAnyObjectByType<GameMenuPanelUI>();
         private void OnEnable()
@@ -69,11 +60,11 @@ namespace Game.UI
             if (turnController != null) turnController.TurnStateChanged += RefreshBattleAvailability;
             if (gearButton != null) gearButton.onClick.AddListener(OpenMenu);
             if (helpButton != null) helpButton.onClick.AddListener(OpenHelp);
-            if (helpPanel != null) helpPanel.Closed += ContinueGame;
+            if (helpPanel != null) helpPanel.Closed += OnHelpClosed;
             if (optionsButton != null) optionsButton.onClick.AddListener(OpenOptions);
             if (saveButton != null) saveButton.onClick.AddListener(OpenSave);
             if (loadButton != null) loadButton.onClick.AddListener(OpenLoad);
-            if (continueButton != null) continueButton.onClick.AddListener(ContinueGame);
+            if (continueButton != null) continueButton.onClick.AddListener(OnContinueClicked);
             if (exitButton != null) exitButton.onClick.AddListener(ExitMatch);
             if (optionsPanel != null) optionsPanel.Closed += OnOptionsClosed;
             if (saveSlots != null) saveSlots.Closed += OnSlotsClosed;
@@ -84,9 +75,8 @@ namespace Game.UI
         {
             if (saveButton != null) saveButton.interactable = turnController != null && turnController.CanSaveMatch(out _);
             if (loadButton != null) loadButton.interactable = turnController != null && turnController.SaveConfiguration != null;
-            bool ownsSlots = saveSlots != null && saveSlots.IsShowing;
             bool closeForTurn = BattleActive || (!ObserverMatch && !HumanTurn);
-            if (IsShowing && (closeForTurn || (!MenuAvailable && !ownsSlots))) ContinueGame();
+            if (IsShowing && closeForTurn) ContinueGame();
             SetPanelHidden(BattleActive);
             if (helpButton != null)
             {
@@ -115,38 +105,35 @@ namespace Game.UI
         {
             if (!MenuAvailable || !isActiveAndEnabled || IsShowing || helpPanel == null || !helpPanel.HasBindings) return;
             BeginModal();
-            helpPanel.Show();
+            helpPanel.Show(transform);
             VisibilityChanged?.Invoke();
             RefreshBattleAvailability();
         }
         private void BeginModal()
         {
             instance = this;
-            previousSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             IsShowing = true;
             turnController.SetAiObserverMenuHold(true);
-            BlockGameplayCanvases();
         }
         public void OpenMenu()
         {
             if (!MenuAvailable || !isActiveAndEnabled || IsShowing || blockingRoot == null || menuPanel == null) return;
             BeginModal();
-            if (gearButton != null) gearButton.gameObject.SetActive(false);
             blockingRoot.SetActive(true);
             menuPanel.SetActive(true);
             if (exitButtonText != null)
                 exitButtonText.text = CampaignMatchBridge.ReturnScene(GameSession.MatchId) == SceneNames.Campaign
                     ? "Campaign" : "Main Menu";
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
+            UIFocusUtility.SetModal(this, blockingRoot, ModalBlock.Full, optionsButton, transform);
             VisibilityChanged?.Invoke();
-            optionsButton?.Select();
             RefreshBattleAvailability();
         }
         private void OpenSave() => OpenSlots(true);
         private void OpenLoad() => OpenSlots(false);
         private void OpenSlots(bool saving)
         {
-            if (!IsShowing || saveSlots == null || turnController == null) return;
+            if (!IsShowing || !UIFocusUtility.IsTop(this) || saveSlots == null || turnController == null) return;
             if (saveSlots.Show(turnController.SaveConfiguration, turnController, saving)) menuPanel.SetActive(false);
         }
         private void OnSlotsClosed()
@@ -154,107 +141,75 @@ namespace Game.UI
             if (!isActiveAndEnabled || !IsShowing) return;
             menuPanel.SetActive(true);
             RefreshBattleAvailability();
-            if (IsShowing) loadButton?.Select();
         }
         public void OpenOptions()
         {
-            if (!IsShowing || optionsPanel == null) return;
-            menuPanel.SetActive(false);
+            if (!IsShowing || !UIFocusUtility.IsTop(this) || optionsPanel == null) return;
             optionsPanel.gameObject.SetActive(true);
+            menuPanel.SetActive(false);
         }
         private void OnOptionsClosed()
         {
             if (!IsShowing) return;
             menuPanel.SetActive(true);
-            optionsButton?.Select();
         }
-        public void ContinueGame()
+        private void OnContinueClicked()
+        {
+            if (UIFocusUtility.IsTop(this)) ContinueGame();
+        }
+
+        private void OnHelpClosed() => ContinueGame(helpButton);
+
+        public void ContinueGame() => ContinueGame(gearButton);
+
+        private void ContinueGame(Button returnButton)
         {
             if (!IsShowing) return;
-            blockedThroughFrame = Time.frameCount;
             IsShowing = false;
             if (turnController != null) turnController.SetAiObserverMenuHold(false);
             if (helpPanel != null) helpPanel.Close();
             if (saveSlots != null) saveSlots.Close();
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             if (blockingRoot != null) blockingRoot.SetActive(false);
-            RestoreGameplayCanvases();
+            UIFocusUtility.SetModal(this, null);
             RefreshBattleAvailability();
             VisibilityChanged?.Invoke();
-            var selectable = previousSelection != null ? previousSelection.GetComponent<Selectable>() : null;
-            if (selectable != null && selectable.isActiveAndEnabled && selectable.IsInteractable()) selectable.Select();
-            else if (MenuAvailable) gearButton?.Select();
-            previousSelection = null;
+            if (!UIFocusUtility.HasModal && MenuAvailable
+                && EventSystem.current != null && EventSystem.current.currentSelectedGameObject == null)
+                returnButton?.Select();
         }
 
         public void ExitMatch()
         {
-            if (!IsShowing) return;
+            if (!IsShowing || !UIFocusUtility.IsTop(this)) return;
             string destination = CampaignMatchBridge.ReturnScene(GameSession.MatchId);
             ContinueGame();
             if (turnController != null && turnController.RetryPendingMatchResult()) return;
             Game.Setup.MatchStateInventory.EndMatch(turnController);
             SceneManager.LoadScene(destination);
         }
-        private void BlockGameplayCanvases()
+        private void Update()
         {
-            groups.Clear();
-            var seen = new HashSet<CanvasGroup>();
-            foreach (var canvas in UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include))
-            {
-                if (canvas.gameObject.scene != gameObject.scene || canvas.transform.IsChildOf(transform)) continue;
-                if (canvas.transform.parent != null && canvas.transform.parent.GetComponentInParent<Canvas>(true) != null) continue;
-                BlockGameplayBranch(canvas.transform, seen);
-            }
+            if (IsShowing && UIFocusUtility.WasEscapePressed(this)) ContinueGame();
         }
-        private void BlockGameplayBranch(Transform root, HashSet<CanvasGroup> seen)
-        {
-            if (root == transform || root.IsChildOf(transform)) return;
-            if (transform.IsChildOf(root))
-            {
-                // The shared Canvas must stay enabled for the menu's own controls.
-                foreach (Transform child in root) BlockGameplayBranch(child, seen);
-                return;
-            }
-            if (root.GetComponent<CanvasGroup>() == null) root.gameObject.AddComponent<CanvasGroup>();
-            foreach (var group in root.GetComponentsInChildren<CanvasGroup>(true))
-            {
-                if (!seen.Add(group)) continue;
-                groups.Add(new GroupState { Group = group, Interactable = group.interactable, BlocksRaycasts = group.blocksRaycasts });
-                group.interactable = false; group.blocksRaycasts = false;
-            }
-        }
+
         private void LateUpdate()
         {
             // Popups reorder themselves on show; keep the gear/menu above those siblings.
             if (transform.parent != null && transform.GetSiblingIndex() != transform.parent.childCount - 1)
                 transform.SetAsLastSibling();
         }
-        private void RestoreGameplayCanvases()
-        {
-            // A spectated AI keeps acting until its next action boundary, so a group's owner may
-            // have set it again while the menu was open: only a value still blocked by the menu
-            // gets its snapshot back.
-            foreach (var state in groups)
-            {
-                if (state.Group == null) continue;
-                if (!state.Group.interactable) state.Group.interactable = state.Interactable;
-                if (!state.Group.blocksRaycasts) state.Group.blocksRaycasts = state.BlocksRaycasts;
-            }
-            groups.Clear();
-        }
         private void OnDisable()
         {
             ContinueGame();
-            RestoreGameplayCanvases();
             SetPanelHidden(false);
             if (gearButton != null) gearButton.onClick.RemoveListener(OpenMenu);
             if (helpButton != null) helpButton.onClick.RemoveListener(OpenHelp);
-            if (helpPanel != null) helpPanel.Closed -= ContinueGame;
+            if (helpPanel != null) helpPanel.Closed -= OnHelpClosed;
             if (optionsButton != null) optionsButton.onClick.RemoveListener(OpenOptions);
             if (saveButton != null) saveButton.onClick.RemoveListener(OpenSave);
             if (loadButton != null) loadButton.onClick.RemoveListener(OpenLoad);
-            if (continueButton != null) continueButton.onClick.RemoveListener(ContinueGame);
+            if (continueButton != null) continueButton.onClick.RemoveListener(OnContinueClicked);
             if (exitButton != null) exitButton.onClick.RemoveListener(ExitMatch);
             if (optionsPanel != null) optionsPanel.Closed -= OnOptionsClosed;
             if (saveSlots != null) saveSlots.Closed -= OnSlotsClosed;

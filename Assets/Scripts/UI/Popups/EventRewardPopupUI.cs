@@ -18,7 +18,7 @@ namespace Game.UI
     // EventChoicePopupUI (see EventChoicePopupUI.ResolvePortrait), one summary sentence
     // describing what was granted, and the rewarded card's own detail art if a card was part of
     // it — no per-reward row list. Reuses the project's established Space-confirm convention (see
-    // CLAUDE.md, UIFocusUtility.WasSpacePressed()) exactly like PopupPanelUI — a plain
+    // CLAUDE.md, UIFocusUtility.WasSpacePressed(this)) exactly like PopupPanelUI — a plain
     // acknowledgement, not a decision, unlike EventChoicePopupUI.
     public class EventRewardPopupUI : MonoBehaviour
     {
@@ -100,6 +100,7 @@ namespace Game.UI
             {
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
             }
             VisibilityChanged?.Invoke();
         }
@@ -175,6 +176,7 @@ namespace Game.UI
             if (panelRoot == null || !panelRoot.activeSelf)
                 return;
             panelRoot.SetActive(false);
+            UIFocusUtility.SetModal(this, null);
             VisibilityChanged?.Invoke();
         }
 
@@ -192,7 +194,7 @@ namespace Game.UI
                 return;
             if (okButton == null || !okButton.gameObject.activeInHierarchy || !okButton.interactable)
                 return;
-            if (UIFocusUtility.WasSpacePressed())
+            if (UIFocusUtility.WasSpacePressed(this))
             {
                 Game.Audio.GameAudioManager.Instance?.PlayClick();
                 Acknowledge();

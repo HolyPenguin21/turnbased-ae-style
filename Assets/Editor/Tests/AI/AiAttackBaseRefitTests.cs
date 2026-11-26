@@ -489,7 +489,7 @@ namespace Game.EditorTests
                 snap.Self.Hand = new[] { card };
                 Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, host,
                     taskTarget: goal) != null, Is.EqualTo(allowed), "the WAIT must name an executable delivery");
-                host.Members.RemoveAt(1);
+                host.RemoveRosterMember(host.Members[1]);
                 var direct = new MaterializationPlan { BaseCardInHand = card,
                     Deploy = new PlacementOption(Base, DeploymentKind.ExistingArmy, host) };
                 demand.ConsumerMissionKind = MissionKind.Attack; demand.ConsumerIntentKey = intent.IntentKey;

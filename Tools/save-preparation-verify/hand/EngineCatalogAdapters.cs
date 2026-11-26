@@ -53,7 +53,6 @@ namespace Game.Cards
         public bool TryBuildDeckPool(List<DeckCardEntry> entries, out List<CardDefinition> pool, out string error) =>
             throw new NotSupportedException("Deck construction requires the Unity suite.");
     }
-    public class DeckCardEntry { public string cardKey; public int count; }
     public sealed class DeckRules
     {
         public StartingDeckCatalog Starting;

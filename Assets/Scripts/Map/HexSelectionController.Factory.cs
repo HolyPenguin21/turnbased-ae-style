@@ -30,15 +30,10 @@ namespace Game.Map
         {
             if (map == null || army == null || army.Owner == null)
                 return null;
-            FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
-                ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
-                : null;
-            if (ownerCatalog == null || ownerCatalog.armyPrefab == null)
+            MapObjectVisual prefab = GetArmyMarkerPrefab(army.Owner, AviationRules.IsAirArmy(army));
+            if (prefab == null)
                 return null;
 
-            MapObjectVisual prefab = AviationRules.IsAirArmy(army) && ownerCatalog.airArmyPrefab != null
-                ? ownerCatalog.airArmyPrefab
-                : ownerCatalog.armyPrefab;
             MapObjectVisual marker;
             using (new Game.Core.ProfileScope("Map/Instantiate.ArmyMarker"))
                 marker = Instantiate(prefab);
@@ -58,19 +53,38 @@ namespace Game.Map
             return controller;
         }
 
-        // Registered before its marker existed (map content spawn): a viewer who already sees
-        // the hex recorded the sighting while there was nothing to clone. Project it now —
-        // otherwise the remembered marker waits for the next observation of this hex, and a
-        // save in between fails ValidateRememberedVisualCoverage. Never during a restore:
-        // remembered appearances come from the save there, not from a live marker.
+        private MapObjectVisual GetArmyMarkerPrefab(PlayerSetupData owner, bool airborne)
+        {
+            FactionCardCatalog catalog = cardHandUI?.StartingDeckCatalog?.GetCatalog(owner.Faction);
+            if (catalog == null || catalog.armyPrefab == null) return null;
+            return airborne && catalog.airArmyPrefab != null ? catalog.airArmyPrefab : catalog.armyPrefab;
+        }
+
+        // An observation can precede marker creation. Only copy live appearance when the
+        // viewer can still see it. For an older sighting use the observed owner and army type.
         private void ProjectSightingsOfNewMarker(ArmyData army)
         {
-            if (Game.Setup.MatchRestoreScope.IsRestoring)
-                return;
-            foreach (PlayerSetupData viewer in VisionSystem.ViewersOf(army.Hex))
-                if (HumanVisualMemory.TryGetArmySighting(viewer, army.Id, out HumanVisualMemory.ArmySighting sighting)
-                    && sighting.Hex.Equals(army.Hex))
-                    ProjectObservedHex(viewer, army.Hex);
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
+            HumanVisualMemory.ForEachSightingOfArmy(army.Id, (viewer, sighting) =>
+            {
+                if (sighting.Hex.Equals(army.Hex) && VisionSystem.IsVisible(viewer, army.Hex)
+                    && !StealthSystem.ArmyFullyHiddenFrom(army, viewer))
+                {
+                    UpdateRememberedArmyVisual(viewer, army);
+                    return;
+                }
+                if (sighting.Observed.Owner == null) return;
+                if (_rememberedArmyVisuals.TryGetValue(viewer, out var visuals)
+                    && visuals.TryGetValue(army.Id, out var known) && known?.Visual != null) return;
+                var observed = sighting.Observed;
+                MapObjectVisual prefab = GetArmyMarkerPrefab(observed.Owner, observed.IsAirArmy);
+                if (prefab == null) return;
+                var remembered = UpdateRememberedArmyVisual(viewer, sighting, prefab);
+                remembered.Visual.SetColor(PlayerColorPalette.Colors[observed.Owner.ColorIndex]);
+                remembered.Visual.SetSortingOrder(MapSortingOrder.ArmyCircle, MapSortingOrder.ArmyIcon);
+                if (!sighting.Hex.Equals(army.Hex))
+                    RestackArmiesOn(sighting.Hex, null);
+            });
         }
 
         public void RefreshArmyAirLook(ArmyData army)
@@ -123,7 +137,7 @@ namespace Game.Map
                 building.Visual = CreateBuildingMarker(building.Hex, building.Owner, catalog.basePrefab, catalog.citadelIcon);
         }
         internal GameConfig ExtractionConfig => gameConfig;
-        internal void BindExtractionVisual(BuildingData building)
+        private void BindExtractionVisual(BuildingData building)
         {
             FactionCardCatalog catalog = cardHandUI?.StartingDeckCatalog?.GetCatalog(building.Owner.Faction);
             if (gameConfig?.facilityMarkerPrefab != null)
@@ -148,14 +162,6 @@ namespace Game.Map
             return marker;
         }
 
-        public static bool HasOwnHeroArmyAt(HexCoord hex, PlayerSetupData player)
-        {
-            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-                if (army.Owner == player && army.Members.Exists(m => m.IsHero))
-                    return true;
-            return false;
-        }
-
         private void NotifyBuildBlocked(PlayerSetupData owner, string message)
         {
             if (owner != null && owner.IsHuman)
@@ -164,24 +170,16 @@ namespace Game.Map
                 AiDebugLog.Write($"[AI] {owner?.Nickname ?? "Neutral"}: extraction build rejected - {message}");
         }
 
+        internal InfrastructureBuildOutcome BuildExtractionSite(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
+            => InfrastructureActions.TryBuildExtractionSiteOnMap(Map, ExtractionConfig, definition, hex, owner,
+                BindExtractionVisual, () => RestackArmiesOn(hex, null));
+
         public bool TryBuildExtractionFacility(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
-            var result = InfrastructureActions.TryBuildExtractionSite(this, definition, hex, owner);
+            var result = BuildExtractionSite(definition, hex, owner);
             if (!result.Ok) NotifyBuildBlocked(owner, result.FailReason);
             else RefreshSelectedHexIf(hex);
             return result.Ok;
-        }
-
-        internal static void ApplyExtractionBuilderConsequences(ArmyData actingHeroArmy)
-        {
-            if (actingHeroArmy == null)
-                return;
-            foreach (UnitData member in actingHeroArmy.Members)
-                if (member != null)
-                    member.MoveCurrent = 0;
-            foreach (UnitData member in actingHeroArmy.Members)
-                if (member != null && member.IsHero)
-                    StealthSystem.ExitStealth(member);
         }
     }
 }

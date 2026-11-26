@@ -183,13 +183,7 @@ namespace Game.Turns
             || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
             || (aaChoicePopup != null && aaChoicePopup.IsShowing);
 
-        private bool IsMapModalShowing => (tradeModal != null && tradeModal.IsShowing) || UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
-            || (armyViewerModal != null && armyViewerModal.IsShowing)
-            || (baseViewerModal != null && baseViewerModal.IsShowing)
-            || (researchProductionModal != null && researchProductionModal.IsShowing)
-            || IsCombatPresentationActive
-            || (eventChoicePopup != null && eventChoicePopup.IsShowing)
-            || (eventRewardPopup != null && eventRewardPopup.IsShowing);
+        private bool IsMapModalShowing => UIFocusUtility.Blocks(ModalBlock.Map) || IsCombatPresentationActive;
 
         // The non-interactive "other player's turn" banner leaves the map visible.
         // Every actual modal/confirmation hides cosmetic radio messages immediately.
@@ -227,17 +221,8 @@ namespace Game.Turns
             }
 
             bool newInputBlocked = IsMapModalShowing || (popupPanel != null && popupPanel.IsShowing);
-            bool newCardDraggingBlocked = (tradeModal != null && tradeModal.IsShowing) || UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
-                || (popupPanel != null && popupPanel.IsShowing)
-                || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
-                // Research/Production picker is NOT a card drop-target (unlike Army/Base Viewer,
-                // which take Unit/Hero and Facility drops respectively), so the hand must be
-                // fully locked out — no draw, no drag, no play — while it's open, same as the
-                // battle/event modals.
-                || (researchProductionModal != null && researchProductionModal.IsShowing)
-                || combatShowing
-                || (eventChoicePopup != null && eventChoicePopup.IsShowing)
-                || (eventRewardPopup != null && eventRewardPopup.IsShowing);
+            bool newCardDraggingBlocked = UIFocusUtility.Blocks(ModalBlock.Hand) || combatShowing
+                || (popupPanel != null && popupPanel.IsOtherTurnShowing);
 
             if (newInputBlocked != _inputBlocked)
             {
@@ -323,6 +308,9 @@ namespace Game.Turns
         private bool exiting;
         public StrategicTurnPhase Phase {get;private set;}
 
+        internal CardHandUI SceneCardHand => cardHand;
+        internal ArmyViewerModalUI SceneArmyViewer => armyViewerModal;
+
         // Scene loading completes later. Disable the outgoing scene before its static world
         // is cleared: owners cancel movement/transactions in OnDisable and Unity stops their
         // coroutines. PlayerRoot data stays alive for the final statistics snapshot.
@@ -336,6 +324,7 @@ namespace Game.Turns
             _inputBlocked = true;
             _cardDraggingBlocked = true;
             StopAllCoroutines();
+            cameraController?.CancelPan();
             Game.Setup.MatchStateInventory.CancelWorldOperations();
             hexSelectionController?.CancelForExit();battleScreen?.CancelForExit();cardHand?.CancelForExit();
             popupPanel?.Hide();eventChoicePopup?.Hide();eventRewardPopup?.Hide();battleContactPopup?.Hide();
@@ -552,6 +541,7 @@ namespace Game.Turns
         // does.
         private void Update()
         {
+            UIFocusUtility.KeepFocusWithinModal();
             if (UIFocusUtility.IsGameplayShortcutBlocked) return;
             if (endTurnButton == null || !endTurnButton.gameObject.activeInHierarchy || !endTurnButton.interactable)
                 return;
@@ -1137,6 +1127,8 @@ namespace Game.Turns
 
         private void OnEndTurnClicked()
         {
+            if (!TurnConfirmed || InputBlocked || _attachModeActive || UIFocusUtility.ClosedThisFrame
+                || UIFocusUtility.Blocks(ModalBlock.EndTurn)) return;
             Game.UI.TutorialHintController.Complete(Game.UI.TutorialHintId.EndTurn);
             AdvanceToNextPlayer();
         }

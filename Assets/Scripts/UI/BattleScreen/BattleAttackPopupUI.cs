@@ -249,7 +249,7 @@ namespace Game.UI
         // this.
         private void Update()
         {
-            if (IsShowing && resultStateRoot != null && resultStateRoot.activeSelf && UIFocusUtility.WasSpacePressed())
+            if (IsShowing && resultStateRoot != null && resultStateRoot.activeSelf && UIFocusUtility.WasSpacePressed(this))
             {
                 Game.Audio.GameAudioManager.Instance?.PlayClick();
                 OnOkClicked();
@@ -325,6 +325,7 @@ namespace Game.UI
             {
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
             }
             VisibilityChanged?.Invoke();
             if (generation != _presentationGeneration) return;
@@ -487,6 +488,7 @@ namespace Game.UI
             // state. No-op once OnOkClicked already finalized. ResourceCost stays spent (§4).
             FinalizeResearchProduction(false);
             panelRoot.SetActive(false);
+            UIFocusUtility.SetModal(this, null);
             VisibilityChanged?.Invoke();
         }
     }

@@ -157,7 +157,7 @@ namespace Game.Setup
             PlayerSetupData data = _model.AddPlayer();
             if (data == null) return;
 
-            PlayerRowUI row = Instantiate(gameConfig.playerRowPrefab, playerListContainer);
+            PlayerRowUI row = Instantiate((PlayerRowUI)gameConfig.playerRowPrefab, playerListContainer);
             Game.Audio.SceneUIAudioBinder.BindCreatedRoot(row);
             row.Bind(data, RefreshButtons, OnRemoveRowClicked);
             row.ConfigureDeckSelection(gameConfig);

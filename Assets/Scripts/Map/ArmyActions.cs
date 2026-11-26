@@ -44,12 +44,15 @@ namespace Game.Map
                 }
                 if (!ArmyData.RosterFits(ArmyData.ProjectAdd(garrison.Members, hero, garrison.IsGarrison), garrison.IsGarrison))
                     continue;
-                prison.Members.Remove(hero);
+                prison.RemoveRosterMember(hero);
                 hero.Owner = originalOwner; hero.IsPrisoner = false; hero.CapturedFrom = null;
-                garrison.AddMemberSorted(hero);
+                garrison.InsertRosterMemberSorted(hero);
                 PublishRosterChange(prison, garrison, true);
             }
         }
+
+        internal static void AddSetupMember(ArmyData army, UnitData unit)
+            => army.InsertRosterMemberSorted(unit);
 
         // Battle summons deliberately bypass normal capacity, as before. The command owns
         // canonical membership/reconciliation; the engine owns the tactical grid and summon rule.
@@ -59,7 +62,7 @@ namespace Game.Map
                 || unit.Owner != army.Owner || army.IsPrison || army.Members.Contains(unit)
                 || ArmyRegistry.AllArmies().Any(a => a.Members.Any(m => m.RuntimeId == unit.RuntimeId))) return false;
             using var mutation = VisionSystem.BeginMutation();
-            army.AddMemberSorted(unit);
+            army.InsertRosterMemberSorted(unit);
             PublishRosterChange(army, army, true);
             return true;
         }
@@ -93,7 +96,7 @@ namespace Game.Map
             if (army == null || units == null) return 0;
             using var mutation = VisionSystem.BeginMutation();
             var removed = units.Where(u => u != null && army.Members.Contains(u)).Distinct().ToArray();
-            foreach (UnitData unit in removed) army.Members.Remove(unit);
+            foreach (UnitData unit in removed) army.RemoveRosterMember(unit);
             if (removed.Length == 0) return 0;
             army.NormalizeGarrisonOrder(); army.RefreshTransport();
             if (cleanup) foreach (UnitData unit in removed)
@@ -114,9 +117,9 @@ namespace Game.Map
             using var mutation = VisionSystem.BeginMutation();
             if (hero == null || source == null || prison == null || !prison.IsPrison
                 || !source.Members.Contains(hero) || prison.Members.Contains(hero)) return;
-            source.Members.Remove(hero);
+            source.RemoveRosterMember(hero);
             hero.CapturedFrom = hero.Owner; hero.Owner = prison.Owner; hero.IsPrisoner = true;
-            prison.Members.Add(hero); PublishRosterChange(source, prison, true);
+            prison.AppendRosterMember(hero); PublishRosterChange(source, prison, true);
         }
         public static void ChangeOwner(ArmyData army, PlayerSetupData owner)
         {
@@ -146,7 +149,7 @@ namespace Game.Map
             if (!ArmyRegistry.IsRegistered(army) || !CanReorderMembers(army, order, out failReason)) return false;
             if (army.Members.SequenceEqual(order)) return true;
             using var mutation = VisionSystem.BeginMutation();
-            var final = order.ToArray(); army.Members.Clear(); army.Members.AddRange(final);
+            army.ReplaceRoster(order.ToArray());
             PublishRosterChange(army, army, false); return true;
         }
         private static bool ValidateProjectedRoster(ArmyData army, IReadOnlyList<UnitData> roster, out string failure)
@@ -222,7 +225,7 @@ namespace Game.Map
             { failReason = $"Need {CreateArmyApCost} AP to create an army."; return null; }
             members = members.ToArray();
             root.SpendActionPoints(CreateArmyApCost);
-            foreach (UnitData unit in members) source.Members.Remove(unit);
+            foreach (UnitData unit in members) source.RemoveRosterMember(unit);
             ArmyData army = RegisterNewArmy(owner, hex, catalog, hexSelectionController, members);
             source.RefreshTransport(); army.RefreshTransport();
             foreach (UnitData unit in members) army.MarkUnitActivationPaid(unit);
@@ -247,7 +250,7 @@ namespace Game.Map
             // When the caller is creating a populated army, publish the FINAL roster to the
             // registry. Observers must never see a transient empty shell for one logical action.
             if (firstMembers != null)
-                foreach (UnitData unit in firstMembers) army.AddMemberSorted(unit);
+                foreach (UnitData unit in firstMembers) army.InsertRosterMemberSorted(unit);
             ArmyRegistry.Register(army);
             hexSelectionController?.CreateArmyMarker(army);
             return army;
@@ -529,7 +532,7 @@ namespace Game.Map
             }
             else
             {
-                destination.AddMemberSorted(spawned);
+                destination.InsertRosterMemberSorted(spawned);
                 resultingArmy = destination;
             }
 
@@ -722,13 +725,13 @@ namespace Game.Map
             List<UnitData> back = (displaced ?? System.Array.Empty<UnitData>())
                 .Where(u => u != null).Distinct().ToList();
             foreach (UnitData unit in units)
-                source.Members.Remove(unit);
+                source.RemoveRosterMember(unit);
             foreach (UnitData unit in back)
-                target.Members.Remove(unit);
+                target.RemoveRosterMember(unit);
             foreach (UnitData unit in units)
-                target.AddMemberSorted(unit);
+                target.InsertRosterMemberSorted(unit);
             foreach (UnitData unit in back)
-                source.AddMemberSorted(unit);
+                source.InsertRosterMemberSorted(unit);
             source.NormalizeGarrisonOrder();
             if (promoteToCommander != null && !target.IsGarrison
                 && target.Members.IndexOf(promoteToCommander) > 0)
@@ -790,16 +793,16 @@ namespace Game.Map
                 return false;
             }
             aircraft = aircraft.ToArray();
-            ground.Members.Clear();
+            ground.ReplaceRoster(null);
             foreach (UnitData unit in roster)
             {
-                garrison.AddMemberSorted(unit);
+                garrison.InsertRosterMemberSorted(unit);
                 garrison.MarkUnitActivationPaid(unit);
             }
             foreach (UnitData unit in aircraft)
             {
-                airfield.Members.Remove(unit);
-                ground.AddMemberSorted(unit);
+                airfield.RemoveRosterMember(unit);
+                ground.InsertRosterMemberSorted(unit);
                 ground.MarkUnitActivationPaid(unit);
             }
             AviationRules.SyncAirArmyShell(ground, hexSelection);

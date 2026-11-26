@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Game.UI;
 using UnityEngine;
@@ -10,16 +9,8 @@ namespace Game.Audio
 {
     public sealed class SceneUIAudioBinder : MonoBehaviour
     {
-        private sealed class PopupBinding
-        {
-            public Component Owner;
-            public Func<bool> IsShowing;
-            public Action<Action> Remove;
-            public Action Handler;
-            public bool WasShowing;
-        }
-        private readonly Dictionary<Component, PopupBinding> popups = new Dictionary<Component, PopupBinding>();
-        private readonly List<Component> removed = new List<Component>();
+        private readonly Dictionary<MonoBehaviour, IInfoSoundSource> cues = new Dictionary<MonoBehaviour, IInfoSoundSource>();
+        private readonly List<MonoBehaviour> removed = new List<MonoBehaviour>();
         private readonly List<AudioListener> removedListeners = new List<AudioListener>();
         private readonly Dictionary<AudioListener, bool> listenerStates = new Dictionary<AudioListener, bool>();
         private void OnEnable()
@@ -30,7 +21,10 @@ namespace Game.Audio
         }
         public void ResetBindings()
         {
-            OnDisable(); OnEnable(); Start();
+            if (!isActiveAndEnabled) return;
+            OnDisable();
+            OnEnable();
+            Start();
         }
         private void Start()
         {
@@ -48,14 +42,12 @@ namespace Game.Audio
         {
             if (root == null) return;
             BindButtons(root);
-            foreach (var popup in root.GetComponentsInChildren<BattleContactPopupUI>(true))
-                BindPopup(popup, () => popup.IsShowing, h => popup.VisibilityChanged += h, h => popup.VisibilityChanged -= h);
-            foreach (var popup in root.GetComponentsInChildren<EventChoicePopupUI>(true))
-                BindPopup(popup, () => popup.IsShowing, h => popup.VisibilityChanged += h, h => popup.VisibilityChanged -= h);
-            foreach (var popup in root.GetComponentsInChildren<AaChoicePopupUI>(true))
-                BindPopup(popup, () => popup.IsShowing, h => popup.VisibilityChanged += h, h => popup.VisibilityChanged -= h);
-            foreach (var popup in root.GetComponentsInChildren<PopupPanelUI>(true))
-                BindHumanTurnPopup(popup);
+            foreach (var view in root.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (!(view is IInfoSoundSource source) || cues.ContainsKey(view)) continue;
+                cues.Add(view, source);
+                source.InfoSoundRequested += PlayInfo;
+            }
         }
         private static void BindButtons(GameObject root)
         {
@@ -74,38 +66,17 @@ namespace Game.Audio
             if (binder != null) binder.BindSubtree(root.gameObject);
             else BindButtons(root.gameObject);
         }
-        private void BindHumanTurnPopup(PopupPanelUI popup)
-        {
-            if (popups.ContainsKey(popup)) return;
-            var binding = new PopupBinding { Owner = popup, Remove = h => popup.HumanTurnShown -= h };
-            binding.Handler = () => GameAudioManager.Instance?.PlayInfo();
-            popups.Add(popup, binding);
-            popup.HumanTurnShown += binding.Handler;
-        }
-        private void BindPopup(Component owner, Func<bool> isShowing, Action<Action> add, Action<Action> remove)
-        {
-            if (popups.ContainsKey(owner)) return;
-            var binding = new PopupBinding { Owner = owner, IsShowing = isShowing, Remove = remove, WasShowing = isShowing() };
-            binding.Handler = () =>
-            {
-                if (owner == null) return;
-                bool showing = binding.IsShowing();
-                bool opened = showing && !binding.WasShowing;
-                binding.WasShowing = showing;
-                if (opened) GameAudioManager.Instance?.PlayInfo();
-            };
-            popups.Add(owner, binding); add(binding.Handler);
-        }
+        private static void PlayInfo() => GameAudioManager.Instance?.PlayInfo();
+
         private void OnSceneUnloaded(Scene scene)
         {
             removed.Clear();
-            foreach (var pair in popups)
+            foreach (var pair in cues)
                 if (pair.Key == null || pair.Key.gameObject.scene == scene) removed.Add(pair.Key);
             foreach (var owner in removed)
             {
-                var binding = popups[owner];
-                if (binding.Owner != null) binding.Remove(binding.Handler);
-                popups.Remove(owner);
+                cues[owner].InfoSoundRequested -= PlayInfo;
+                cues.Remove(owner);
             }
             removedListeners.Clear();
             foreach (var pair in listenerStates)
@@ -143,8 +114,8 @@ namespace Game.Audio
             SceneManager.sceneLoaded -= OnSceneLoaded;
             SceneManager.sceneUnloaded -= OnSceneUnloaded;
             SceneManager.activeSceneChanged -= OnActiveSceneChanged;
-            foreach (var binding in popups.Values) if (binding.Owner != null) binding.Remove(binding.Handler);
-            popups.Clear();
+            foreach (var source in cues.Values) source.InfoSoundRequested -= PlayInfo;
+            cues.Clear();
             foreach (var pair in listenerStates) if (pair.Key != null) pair.Key.enabled = pair.Value;
             listenerStates.Clear();
         }

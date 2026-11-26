@@ -96,6 +96,7 @@ MonoBehaviour:
   cardsHost: {fileID: 1018}
   bodyRoot: {fileID: 1024}
   primaryButton: {fileID: 1041}
+  primaryLabel: {fileID: 1045}
   recipientImage: {fileID: 0}
   rewardImage: {fileID: 0}
 --- !u!1 &1005

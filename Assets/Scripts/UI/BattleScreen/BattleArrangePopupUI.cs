@@ -28,7 +28,7 @@ namespace Game.UI
         // instead (unlike RtsCameraController's WASD, which does need that guard).
         private void Update()
         {
-            if (IsShowing && UIFocusUtility.WasSpacePressed())
+            if (IsShowing && UIFocusUtility.WasSpacePressed(this))
             {
                 Game.Audio.GameAudioManager.Instance?.PlayClick();
                 OnOkClicked();
@@ -42,6 +42,7 @@ namespace Game.UI
             {
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
             }
         }
 
@@ -57,6 +58,7 @@ namespace Game.UI
         {
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+                UIFocusUtility.SetModal(this, null);
         }
     }
 }

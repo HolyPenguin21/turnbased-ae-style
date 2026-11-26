@@ -13,7 +13,7 @@ namespace Game.UI
     // reusing BattleAttackPopupUI's Roll state further: Skip here means "never even roll", not
     // "decline a Fate reroll"). An AI-owned AA unit never sees this at all — Game.Aviation.
     // AviationCombatPresenter always attacks on its behalf without ever showing it.
-    public class AaChoicePopupUI : MonoBehaviour
+    public class AaChoicePopupUI : MonoBehaviour, Game.Audio.IInfoSoundSource
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private Image aaUnitArtImage;
@@ -29,9 +29,11 @@ namespace Game.UI
         // IsShowing every frame (see GameTurnController.InputBlocked), same pattern every other
         // map-level popup already follows.
         public event Action VisibilityChanged;
+        public event Action InfoSoundRequested;
 
         public void Show(UnitData aaUnit, ArmyData airArmy, Action onAttack, Action onSkip, Action onCancelled = null)
         {
+            bool wasShowing = IsShowing;
             if (aaUnit == null || airArmy == null)
                 return;
             Hide();
@@ -76,8 +78,10 @@ namespace Game.UI
             {
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
             }
             VisibilityChanged?.Invoke();
+            if (!wasShowing && IsShowing) InfoSoundRequested?.Invoke();
         }
 
         private void Resolve(Action answer)
@@ -98,6 +102,7 @@ namespace Game.UI
                 if (panelRoot != null && panelRoot.activeSelf)
                 {
                     panelRoot.SetActive(false);
+                    UIFocusUtility.SetModal(this, null);
                     VisibilityChanged?.Invoke();
                 }
             }

@@ -92,6 +92,7 @@ namespace Game.UI
             {
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Viewer);
             }
             RefreshTitle();
             RefreshGrid();
@@ -104,6 +105,7 @@ namespace Game.UI
             bool wasShowing = IsShowing;
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+                UIFocusUtility.SetModal(this, null);
             ClearGrid();
             _currentBuilding = null;
             _readOnly = false;
@@ -116,8 +118,7 @@ namespace Game.UI
 
         private void Update()
         {
-            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
-            if (!IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (!IsShowing || !UIFocusUtility.WasEscapePressed(this))
                 return;
             Hide();
         }
@@ -139,14 +140,14 @@ namespace Game.UI
         private void RefreshGrid()
         {
             ClearGrid();
-            if (gridContainer == null || gameConfig == null || gameConfig.baseSlotCardPrefab == null || _currentBuilding == null)
+            if (gridContainer == null || gameConfig == null || (gameConfig.baseSlotCardPrefab as BaseSlotCardUI) == null || _currentBuilding == null)
                 return;
             int cellCount = _currentBuilding.HasTieredUnlock
                 ? _currentBuilding.TotalFacilitySlots + 1
                 : _currentBuilding.TotalFacilitySlots;
             for (int i = 0; i < cellCount; i++)
             {
-                BaseSlotCardUI card = Instantiate(gameConfig.baseSlotCardPrefab, gridContainer);
+                BaseSlotCardUI card = Instantiate((gameConfig.baseSlotCardPrefab as BaseSlotCardUI), gridContainer);
                 Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
                 card.Setup(this, i, _currentBuilding);
                 _cards.Add(card);

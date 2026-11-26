@@ -196,7 +196,7 @@ namespace Game.UI
             ClearButtons();
             ArmyButtonUI prefab = gameConfig == null ? null
                 : !_showStats && gameConfig.armyModalButtonPrefab != null
-                    ? gameConfig.armyModalButtonPrefab : gameConfig.armyButtonPrefab;
+                    ? gameConfig.armyModalButtonPrefab as ArmyButtonUI : gameConfig.armyButtonPrefab as ArmyButtonUI;
             if (buttonContainer != null && prefab != null)
             {
                 int end = Mathf.Min(_armies.Count, _scrollOffset + maxVisible);

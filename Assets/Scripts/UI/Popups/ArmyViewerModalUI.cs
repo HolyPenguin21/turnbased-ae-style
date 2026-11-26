@@ -304,6 +304,22 @@ namespace Game.UI
 
         private void OnTutorialScroll(Vector2 position) => TutorialHintController.Invalidate();
 
+        private void OnEnable() => UIFocusUtility.BlockingChanged += CancelCoveredDrag;
+
+        private void OnDisable()
+        {
+            UIFocusUtility.BlockingChanged -= CancelCoveredDrag;
+            UIFocusUtility.SetModal(this, null);
+            CancelCoveredDrag();
+        }
+
+        private void CancelCoveredDrag()
+        {
+            if (_dragPreviewOrder == null) return;
+            CancelReorderPreview();
+            foreach (var card in _cards) card.CancelDrag();
+        }
+
         private void OnDestroy()
         {
             if (tutorialScroll != null) tutorialScroll.onValueChanged.RemoveListener(OnTutorialScroll);
@@ -380,6 +396,7 @@ namespace Game.UI
             panelRoot.SetActive(true);
             UIUtility.FitPanelToAnchors(panelRoot.transform as RectTransform, referenceWindowSize);
             panelRoot.transform.SetAsLastSibling();
+            UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Viewer);
             VisibilityChanged?.Invoke();
         }
 
@@ -392,6 +409,7 @@ namespace Game.UI
                 && closingArmy.Members.Count > 0 ? closingArmy : null;
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+                UIFocusUtility.SetModal(this, null);
             if (renamePopup != null)
                 renamePopup.Hide();
             if (armyButtonRow != null)
@@ -434,18 +452,14 @@ namespace Game.UI
         // on the same keypress.
         private void Update()
         {
-            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
-            if (!IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (!IsShowing || !UIFocusUtility.WasEscapePressed(this))
                 return;
 
             // Esc cancels an in-progress equipment attach before it does anything to this modal.
             if (TryCancelAttach())
                 return;
 
-            if (renamePopup != null && renamePopup.IsShowing)
-                renamePopup.Hide();
-            else
-                Hide();
+            Hide();
         }
 
         // Called both by the in-modal army-button row (switching view without closing) and by
@@ -892,12 +906,12 @@ namespace Game.UI
         // Fate, Move) kept reading _currentArmy.Members directly, so a fully-hidden hero/unit
         // still shaped those numbers even though its card never showed (see the user's own
         // report: a mixed-visibility army's header still counted/leaked hidden members).
-        private List<UnitData> VisibleMembers()
+        private IReadOnlyList<UnitData> VisibleMembers()
         {
             if (_currentArmy == null)
                 return new List<UnitData>();
             if (!_readOnly)
-                return _currentArmy.Members;
+                return _currentArmy.Roster;
             Game.Players.PlayerSetupData viewer = _readOnlyObserver ?? Game.Map.VisionSystem.CurrentViewer;
             return _currentArmy.Members.Where(m => !Game.Map.StealthSystem.IsHiddenFrom(m, viewer)).ToList();
         }
@@ -911,7 +925,7 @@ namespace Game.UI
         // `members` is the unfiltered roster (owner/edit mode).
         // An airfield shows its stored aircraft plus the slots the one shared rule still leaves
         // free (AviationRules.FreeAirfieldCapacity — own wings standing on the hex land into it).
-        private int EffectiveCapacityFor(List<UnitData> members) =>
+        private int EffectiveCapacityFor(IReadOnlyList<UnitData> members) =>
             _currentArmy == null ? 0
             : _currentArmy.IsCarrierContainer ? AviationRules.ContainerCapacity(_currentArmy)
             : _currentArmy.IsAirfield || _currentArmy.IsCarrierFlightDeck
@@ -928,17 +942,17 @@ namespace Game.UI
         {
             TutorialHintController.Invalidate();
             ClearGrid();
-            if (gridContainer == null || gameConfig == null || gameConfig.armyUnitCardPrefab == null || _currentArmy == null)
+            if (gridContainer == null || gameConfig == null || (gameConfig.armyUnitCardPrefab as ArmyUnitCardUI) == null || _currentArmy == null)
                 return;
 
-            List<UnitData> shown = VisibleMembers();
+            var shown = VisibleMembers();
             if (_selectedUnit != null && !shown.Contains(_selectedUnit)) _selectedUnit = null;
             int slots = System.Math.Max(EffectiveCapacityFor(shown), shown.Count);
             FitGridContent(slots);
             for (int i = 0; i < slots; i++)
             {
                 UnitData member = i < shown.Count ? shown[i] : null;
-                ArmyUnitCardUI card = Instantiate(gameConfig.armyUnitCardPrefab, gridContainer);
+                ArmyUnitCardUI card = Instantiate((gameConfig.armyUnitCardPrefab as ArmyUnitCardUI), gridContainer);
                 Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
                 card.Setup(this, member);
                 card.SetSelected(member != null && member == _selectedUnit);
@@ -1002,7 +1016,7 @@ namespace Game.UI
             // VisibleMembers) — every stat below derives from THIS, not _currentArmy.Members
             // directly, so a fully-hidden hero/unit can never shape a number here that its own
             // card isn't shown for.
-            List<UnitData> members = VisibleMembers();
+            var members = VisibleMembers();
             int effectiveCapacity = EffectiveCapacityFor(members);
 
             if (_currentArmy.IsCarrierContainer)

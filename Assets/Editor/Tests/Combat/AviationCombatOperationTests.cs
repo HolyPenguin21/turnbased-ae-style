@@ -160,7 +160,7 @@ namespace Game.EditorTests
         [Test] public void EmptyMoverPublicStepStopsAndRemovesWing()
         {
             var owner = new PlayerSetupData(); var wing = Army(owner, Body(owner, true));
-            wing.Members.Clear(); wing.PendingAirStrikePolicy = AirStrikePolicy.Standard;
+            wing.ReplaceRoster(null); wing.PendingAirStrikePolicy = AirStrikePolicy.Standard;
             var outcome = new ArmyController.StepResolutionOutcome();
             AviationCombatHeadlessAdapter.Run(new AviationCombatOperation().ResolveStep(wing, _hex, outcome));
             Assert.That(outcome.StopMovement, Is.True);

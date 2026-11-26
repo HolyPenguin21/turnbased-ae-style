@@ -122,7 +122,7 @@ namespace Game.EditorTests
             BattleEncounterContext encounter = BattleEncounterCoordinator.PrepareCommittedEncounter(hero.Hex,
                 new List<ArmyData> { hero, hunter });
             var trace = new Game.Ai.AiMoveExecutionTrace();
-            hero.Members.Clear(); // captured or killed; the moving army is the target
+            hero.ReplaceRoster(null); // captured or killed; the moving army is the target
             trace.RecordResolvedEncounter(hero.Id, encounter.Initiator, encounter.Target);
             Assert.That(trace.WasDestroyedInOwnBattle(hunter.Id), Is.False);
             var hunterTrace = new Game.Ai.AiMoveExecutionTrace();

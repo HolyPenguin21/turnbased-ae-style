@@ -102,6 +102,9 @@ MonoBehaviour:
   - key: Materials/FogOfWar
     assets:
     - {fileID: 2100000, guid: f3bf9f380fd94fc3aa312732f2d0b29b, type: 2}
+  - key: Prefabs/Collection/MessageDialog
+    assets:
+    - {fileID: 1001, guid: 1ee4bc8c6bbc4dd396dea3b7326bed91, type: 3}
   - key: Prefabs/Rewards/CollectionRewardCard
     assets:
     - {fileID: 1001, guid: 377ba38ca73a43208b204a4b4de8c3bb, type: 3}

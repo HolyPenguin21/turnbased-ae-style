@@ -93,9 +93,64 @@ namespace Game.Map
         // Retained after take-off, when the wing becomes independent of its carrier.
         public UnitData LaunchCarrier;
         public bool WasCarrierWing => LaunchCarrier != null;
-        // Compatibility representation for shared consumers/codecs; new gameplay uses ArmyActions.
-        public readonly List<UnitData> Members = new List<UnitData>();
-        public IReadOnlyList<UnitData> Roster => Members.AsReadOnly();
+        private readonly List<UnitData> members = new List<UnitData>();
+        private MemberCollection memberCollection;
+        private IReadOnlyList<UnitData> readOnlyRoster;
+        public MemberCollection Members => memberCollection ??= new MemberCollection(this);
+        public IReadOnlyList<UnitData> Roster => readOnlyRoster ??= members.AsReadOnly();
+
+        // Detached planners and loaders can build a roster with the existing list helpers.
+        // The same handle rejects edits as soon as its army is registered.
+        public sealed class MemberCollection : IReadOnlyList<UnitData>
+        {
+            private readonly ArmyData army;
+            internal MemberCollection(ArmyData army) => this.army = army;
+            private List<UnitData> Items => army.members;
+            private List<UnitData> Detached
+            {
+                get { army.RequireDetachedRoster(); return Items; }
+            }
+
+            public int Count => Items.Count;
+            public UnitData this[int index]
+            {
+                get => Items[index];
+                set => Detached[index] = value;
+            }
+
+            public List<UnitData>.Enumerator GetEnumerator() => Items.GetEnumerator();
+            IEnumerator<UnitData> IEnumerable<UnitData>.GetEnumerator() => GetEnumerator();
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+            public bool Contains(UnitData unit) => Items.Contains(unit);
+            public int IndexOf(UnitData unit) => Items.IndexOf(unit);
+            public bool Exists(System.Predicate<UnitData> predicate) => Items.Exists(predicate);
+            public UnitData Find(System.Predicate<UnitData> predicate) => Items.Find(predicate);
+            public List<UnitData> FindAll(System.Predicate<UnitData> predicate) => Items.FindAll(predicate);
+            public UnitData[] ToArray() => Items.ToArray();
+            public void Add(UnitData unit) => Detached.Add(unit);
+            public void AddRange(IEnumerable<UnitData> units) => Detached.AddRange(units);
+            public void Insert(int index, UnitData unit) => Detached.Insert(index, unit);
+            public bool Remove(UnitData unit) => Detached.Remove(unit);
+            public void RemoveAt(int index) => Detached.RemoveAt(index);
+            public void RemoveRange(int index, int count) => Detached.RemoveRange(index, count);
+            public void Clear() => Detached.Clear();
+            public void Reverse() => Detached.Reverse();
+        }
+
+        private void RequireDetachedRoster()
+        {
+            if (ArmyRegistry.IsRegistered(this))
+                throw new System.InvalidOperationException("Use army commands to change a registered roster.");
+        }
+
+        internal void AppendRosterMember(UnitData unit) => members.Add(unit);
+        internal void RemoveRosterMember(UnitData unit) => members.Remove(unit);
+
+        internal void ReplaceRoster(IEnumerable<UnitData> roster)
+        {
+            members.Clear();
+            if (roster != null) members.AddRange(roster);
+        }
 
         // The player's own last battle-grid layout for this specific army (see
         // BattleScreenUI's Arrangement phase) — keyed by unit reference so it survives members
@@ -427,14 +482,20 @@ namespace Game.Map
         // the viewer therefore lasts until the next roster change.
         public void AddMemberSorted(UnitData unit)
         {
+            RequireDetachedRoster();
+            InsertRosterMemberSorted(unit);
+        }
+
+        internal void InsertRosterMemberSorted(UnitData unit)
+        {
             if (IsGarrison)
             {
-                Members.Add(unit);
+                members.Add(unit);
                 NormalizeGarrisonOrder();
                 return;
             }
             int index = unit.IsHero ? Members.Count(m => m.IsHero) : Members.Count;
-            Members.Insert(index, unit);
+            members.Insert(index, unit);
         }
 
         // Canonical garrison order: heroes first, stable by descending CommandRating, an equal
@@ -488,8 +549,7 @@ namespace Game.Map
             for (int i = 0; i < ordered.Count && same; i++)
                 same = ReferenceEquals(ordered[i], Members[i]);
             if (same) return false;
-            Members.Clear();
-            Members.AddRange(ordered);
+            ReplaceRoster(ordered);
             return true;
         }
 

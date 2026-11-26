@@ -98,6 +98,7 @@ namespace Game.UI
 
         public UnitData Unit { get; private set; }
         public bool IsDragging { get; private set; }
+        private uint _dragGeneration;
 
         // Preview mode (see SetupPreview) — this card is showing a static CardDefinition inside
         // ResearchProductionModalUI, not a live army member. In this mode every Army-specific
@@ -594,6 +595,7 @@ namespace Game.UI
             if (_previewMode || Unit == null || (_modal != null && _modal.IsReadOnly))
                 return;
             IsDragging = true;
+            _dragGeneration = UIFocusUtility.InputGeneration;
             if (_slotAnim != null)
             {
                 StopCoroutine(_slotAnim);
@@ -609,7 +611,8 @@ namespace Game.UI
 
         public void OnDrag(PointerEventData eventData)
         {
-            if (UIFocusUtility.IsGameplayInputBlocked) return;
+            if (UIFocusUtility.IsGameplayInputBlocked || _dragGeneration != UIFocusUtility.InputGeneration)
+            { CancelDrag(); return; }
             // IsDragging (not just Unit == null) — OnBeginDrag refuses to even start a drag on
             // a read-only modal (see its own comment), but EventSystem still calls this every
             // frame regardless of whether OnBeginDrag actually did anything; without this check
@@ -626,6 +629,7 @@ namespace Game.UI
         // picked up from) ever actually runs this card's own code afterward.
         public void OnEndDrag(PointerEventData eventData)
         {
+            if (_dragGeneration != UIFocusUtility.InputGeneration) { CancelDrag(); return; }
             if (!IsDragging)
                 return;
             bool moved = _modal != null && _modal.TryDropUnit(this, eventData.position);

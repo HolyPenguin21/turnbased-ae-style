@@ -51,7 +51,7 @@ namespace Game.UI
         }
         private void Update()
         {
-            if (IsShowing && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) Hide();
+            if (IsShowing && UIFocusUtility.WasEscapePressed(this)) Hide();
             if (Time.unscaledTime < nextAccessCheck) return;
             nextAccessCheck = Time.unscaledTime + 0.2f;
             var human = Game.Players.LocalSeat.Current;
@@ -71,6 +71,7 @@ namespace Game.UI
             if (settingsGeneration != generation) { give = receive = null; settingsGeneration = generation; }
             notice = null;
             panelRoot.SetActive(true); panelRoot.transform.SetAsLastSibling();
+            UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
             Refresh(); VisibilityChanged?.Invoke();
         }
         private void Bind(PlayerRoot value)
@@ -143,6 +144,7 @@ namespace Game.UI
         {
             bool shown = IsShowing;
             panelRoot.SetActive(false); Bind(null);
+            UIFocusUtility.SetModal(this, null);
             if (shown) VisibilityChanged?.Invoke();
         }
         private void OnDisable() => Hide();

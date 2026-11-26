@@ -317,8 +317,7 @@ namespace Game.Ai.V2
             if (player == null || root == null || ctx?.HexSelection == null || facilityDef == null)
                 return BuildingPlayResult.Fail("missing args");
 
-            InfrastructureBuildOutcome outcome = InfrastructureActions.TryBuildExtractionSite(
-                ctx.HexSelection, facilityDef, hex, player);
+            InfrastructureBuildOutcome outcome = ctx.HexSelection.BuildExtractionSite(facilityDef, hex, player);
             return new BuildingPlayResult
             {
                 Built = outcome.Ok,

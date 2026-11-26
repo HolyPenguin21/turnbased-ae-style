@@ -1,0 +1,6 @@
+{
+    "name": "Game.PresentationEffects",
+    "references": [
+        "Game.RuntimeAssets"
+    ]
+}

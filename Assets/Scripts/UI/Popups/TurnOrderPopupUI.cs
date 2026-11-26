@@ -63,7 +63,7 @@ namespace Game.UI
         {
             if (panelRoot != null && !panelRoot.activeSelf)
                 return;
-            if (!UIFocusUtility.WasSpacePressed())
+            if (!UIFocusUtility.WasSpacePressed(this))
                 return;
 
             Game.Audio.GameAudioManager.Instance?.PlayClick();
@@ -98,6 +98,7 @@ namespace Game.UI
 
             if (panelRoot != null)
                 panelRoot.SetActive(true);
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
 
             var buyers = players.FindAll(p => p != null && p.IsLocalHuman && !p.IsEliminated);
             if (buyers.Count > 1 && PlayerDecisionRouter.Handoff != null)
@@ -254,6 +255,7 @@ namespace Game.UI
                 return;
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+                UIFocusUtility.SetModal(this, null);
             _onResolved?.Invoke(order);
         }
 

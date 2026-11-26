@@ -69,7 +69,7 @@ namespace Game.EditorTests
                 case "sourceMoved": ArmyRegistry.MoveArmy(_source, new HexCoord(9, 0)); break;
                 case "sourceDead": _source.Members[0].HitPointsCurrent = 0; break;
                 case "targetMoved": ArmyRegistry.MoveArmy(_army, new HexCoord(9, 0)); break;
-                case "targetRemoved": _army.Members.Clear(); break;
+                case "targetRemoved": _army.ReplaceRoster(null); break;
                 case "targetDead": _unit.HitPointsCurrent = 0; break;
                 case "prisoner": _unit.IsPrisoner = true; break;
                 case "ap": _root.ActionPoints = 0; break;

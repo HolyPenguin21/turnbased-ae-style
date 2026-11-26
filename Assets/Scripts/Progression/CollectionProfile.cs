@@ -5,16 +5,6 @@ using Game.Players;
 
 namespace Game.Progression
 {
-    [Serializable] public sealed class SavedDeck
-    {
-        public string deckId;
-        public bool isStarter;
-        public string name;
-        public Faction faction;
-        public List<DeckCardEntry> mainCards = new List<DeckCardEntry>();
-        public List<DeckCardEntry> equipment = new List<DeckCardEntry>();
-        public List<DeckCardEntry> mutators = new List<DeckCardEntry>();
-    }
     [Serializable] public sealed class DeckSelection
     {
         public Faction faction;
@@ -54,7 +44,7 @@ namespace Game.Progression
         public CollectionProfile Copy()
         {
             var copy = (CollectionProfile)MemberwiseClone();
-            copy.ownedCards = CopyDeckEntries(ownedCards);
+            copy.ownedCards = DeckCardEntry.CopyEntries(ownedCards);
             copy.savedDecks = savedDecks?.ConvertAll(CopyDeck);
             copy.selectedDeckByFaction = selectedDeckByFaction?.ConvertAll(selection => selection == null ? null :
                 new DeckSelection { faction = selection.faction, deckId = selection.deckId });
@@ -64,14 +54,7 @@ namespace Game.Progression
                 new EventRewardReceipt { matchId = receipt.matchId, eventId = receipt.eventId, cardKey = receipt.cardKey });
             return copy;
         }
-        // Shared by profile editing and immutable match loadouts. Plain value copies avoid
-        // coupling a runtime snapshot to native JSON serialization or a mutable profile list.
-        public static SavedDeck CopyDeck(SavedDeck deck) => deck == null ? null : new SavedDeck
-        {
-            deckId = deck.deckId, isStarter = deck.isStarter, name = deck.name, faction = deck.faction,
-            mainCards = CopyDeckEntries(deck.mainCards), equipment = CopyDeckEntries(deck.equipment),
-            mutators = CopyDeckEntries(deck.mutators),
-        };
+        public static SavedDeck CopyDeck(SavedDeck deck) => deck?.Copy();
         internal static PendingReward CopyReward(PendingReward reward) => reward == null ? null : new PendingReward
         {
             matchId = reward.matchId,
@@ -81,8 +64,6 @@ namespace Game.Progression
             acquiredKeys = reward.acquiredKeys == null ? null : new List<string>(reward.acquiredKeys),
             claimed = reward.claimed,
         };
-        private static List<DeckCardEntry> CopyDeckEntries(List<DeckCardEntry> entries) => entries?.ConvertAll(
-            entry => entry == null ? null : new DeckCardEntry {cardKey=entry.cardKey,count=entry.count});
     }
     public enum MatchOutcome { Victory, Defeat, Draw }
     public readonly struct ParticipantResult

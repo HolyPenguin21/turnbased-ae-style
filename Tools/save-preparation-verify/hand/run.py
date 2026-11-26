@@ -16,6 +16,8 @@ SOURCES = [
     "Assets/Scripts/Cards/CardState.cs",
     "Assets/Scripts/Cards/DeckDraw.cs",
     "Assets/Scripts/Cards/MatchLoadout.cs",
+    "Assets/Scripts/DeckContracts/DeckCardEntry.cs",
+    "Assets/Scripts/DeckContracts/SavedDeck.cs",
     "Assets/Scripts/Progression/CollectionProfile.cs",
     "Assets/Scripts/Ai/AiHandData.cs",
     "Assets/Editor/Tests/Cards/PlayerHandStateTests.cs",

@@ -40,6 +40,7 @@ namespace Game.UI
         [SerializeField] private Button addToDeckButton;
         [Header("Deck panel")]
         [SerializeField] private TMP_Dropdown deckDropdown;
+        [SerializeField] private ScrollRect deckDropdownScroll;
         [SerializeField] private TMP_InputField deckNameInput;
         [SerializeField] private Button createButton, starterButton, copyButton, deleteButton, saveButton, backButton;
         [SerializeField] private TMP_Text pointsLabel, statusLabel, checksLabel;
@@ -114,12 +115,13 @@ namespace Game.UI
             gameObject.SetActive(true); transform.SetAsLastSibling();
             EnsureInitialized();
             active = this; open = true; collection = ProgressionContext.Collection;
-            hiddenPanel = panel; if (hiddenPanel != null) hiddenPanel.SetActive(false); closed = onClosed;
+            hiddenPanel = panel; closed = onClosed;
             ownership = 0; dirty = false; selected = null;
             status = ProgressionContext.Notice ?? "";
             if (startFaction.HasValue && Array.IndexOf(DeckRules.PlayableFactions, startFaction.Value) >= 0) faction = startFaction.Value;
             draft = (startDeckId != null ? collection.GetDeck(startDeckId, faction) : null) ?? collection.DefaultDeck(faction) ?? NewDeck();
-            UIFocusUtility.SetOverlay(this, true);
+            UIFocusUtility.SetModal(this, gameObject, ModalBlock.Full, backButton);
+            if (hiddenPanel != null) hiddenPanel.SetActive(false);
             collection.Changed += OnCollectionChanged;
             RefreshAll(true);
         }
@@ -133,7 +135,6 @@ namespace Game.UI
             factionDropdown.ClearOptions(); factionDropdown.AddOptions(DeckRules.PlayableFactions.Select(LabelFaction).ToList());
             categoryDropdown.ClearOptions(); categoryDropdown.AddOptions(new List<string> { "All Cards", "Heroes", "Units", "Buildings", "Equipment", "Mutators" });
             ownershipDropdown.ClearOptions(); ownershipDropdown.AddOptions(new List<string> { "All Cards", "Owned Cards", "Not Owned" });
-            CollectionUIElements.ApplyCollectionScrollSkin(transform);
             factionDropdown.onValueChanged.AddListener(value => Guard(() =>
             { faction = DeckRules.PlayableFactions[value]; selected = null; draft = collection.DefaultDeck(faction) ?? NewDeck(); dirty = false; RefreshAll(true); }));
             categoryDropdown.onValueChanged.AddListener(value => { category = value; RefreshCards(true); });
@@ -146,6 +147,11 @@ namespace Game.UI
             }));
             deckNameInput.onValueChanged.AddListener(value => { draft.name = value; MarkDirty(); });
             backButton.onClick.AddListener(() => Guard(Close));
+            if (addToDeckButton != null)
+                addToDeckButton.onClick.AddListener(() =>
+                {
+                    if (selected != null && CardInputAllowed()) Change(selected.authoredKey, 1);
+                });
             createButton.onClick.AddListener(() => Guard(() => { draft = NewDeck(); dirty = true; RefreshAll(); }));
             starterButton.onClick.AddListener(() => Guard(() =>
             {
@@ -174,7 +180,7 @@ namespace Game.UI
             unsavedCancelButton.onClick.AddListener(() => { CloseModal(); RefreshAll(); });
             confirmAcceptButton.onClick.AddListener(() => { var action = pendingAction; CloseModal(); action?.Invoke(); });
             confirmCancelButton.onClick.AddListener(CloseModal);
-            var ap = config != null && config.armyUnitCardPrefab != null ? config.armyUnitCardPrefab.ActionPointBadge : null;
+            var ap = (config != null ? config.armyUnitCardPrefab as ArmyUnitCardUI : null)?.ActionPointBadge;
             for (int i = 0; i < costIcons.Length; i++)
             {
                 var icon = costIcons[i];
@@ -262,14 +268,7 @@ namespace Game.UI
         // Details-panel "add to deck" button: hidden without a selected card, disabled when no further copy can be added.
         private void RefreshAddButton()
         {
-            if (addToDeckButton == null)
-            {
-                foreach (var b in GetComponentsInChildren<Button>(true))
-                    if (b.name == "Button_AddToDeck") { addToDeckButton = b; break; }
-                if (addToDeckButton == null) return;
-                addToDeckButton.onClick.AddListener(() =>
-                { if (selected != null && CardInputAllowed()) Change(selected.authoredKey, 1); });
-            }
+            if (addToDeckButton == null) return;
             addToDeckButton.gameObject.SetActive(selected != null);
             if (selected != null)
                 addToDeckButton.interactable = collection.Rules.CanAdd(draft, selected.authoredKey, collection.Owned);
@@ -279,32 +278,11 @@ namespace Game.UI
         private void FitDetailsContent()
         {
             if (detailsScroll == null || detailsScroll.content == null) return;
-            FitHeight(detailsScroll.content.gameObject);
-            if (cardTitle != null) FitHeight(cardTitle.gameObject);
-            if (cardType != null) FitHeight(cardType.gameObject);
-            if (cardDescription != null) FitHeight(cardDescription.gameObject);
             Canvas.ForceUpdateCanvases();
             LayoutRebuilder.ForceRebuildLayoutImmediate(detailsScroll.content);
         }
-        private static void FitHeight(GameObject go)
-        {
-            var fitter = go.GetComponent<ContentSizeFitter>() ?? go.AddComponent<ContentSizeFitter>();
-            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        }
-        private TMP_Text FindDetailText(string objectName)
-        {
-            foreach (var t in GetComponentsInChildren<TMP_Text>(true))
-                if (t.name == objectName) return t;
-            return null;
-        }
         private void RefreshDetails()
         {
-            if (detailsFactionLogo == null)
-                foreach (var t in GetComponentsInChildren<Image>(true))
-                    if (t.name == "Image_FactionLogo") { detailsFactionLogo = t; break; }
-            if (detailsCardFrame == null)
-                foreach (var t in GetComponentsInChildren<Transform>(true))
-                    if (t.name == "Image_CardFrame") { detailsCardFrame = t.gameObject; break; }
             // No card selected: the faction logo replaces the card art and its frame.
             if (selected == null)
             {
@@ -324,9 +302,6 @@ namespace Game.UI
             string title = selected == null ? LabelFaction(faction) : CollectionCardDetail.Title(selected);
             string type = selected == null ? string.Empty : CollectionCardDetail.Type(selected);
             string description = CollectionCardDetail.Description(selected, config, selected == null ? 0 : collection.Owned(selected.authoredKey));
-            if (cardTitle == null) cardTitle = FindDetailText("CardTitle");
-            if (cardType == null) cardType = FindDetailText("CardType");
-            if (cardDescription == null) cardDescription = FindDetailText("CardDescription");
             if (cardTitle != null) cardTitle.text = title;
             if (cardType != null) cardType.text = type;
             if (cardDescription != null) cardDescription.text = description;
@@ -348,7 +323,12 @@ namespace Game.UI
             if (key != deckNamesKey)
             {
                 deckNamesKey = key; deckDropdown.ClearOptions(); deckDropdown.AddOptions(deckNames);
-                CollectionUIElements.ConfigureDropdownScroll(deckDropdown);
+                bool needsScroll = deckNames.Count > 10;
+                deckDropdownScroll.vertical = needsScroll;
+                var viewport = deckDropdownScroll.viewport;
+                viewport.offsetMax = new Vector2(needsScroll ? -22f : -8f, viewport.offsetMax.y);
+                if (deckDropdownScroll.verticalScrollbar != null)
+                    deckDropdownScroll.verticalScrollbar.gameObject.SetActive(needsScroll);
             }
             deckDropdown.SetValueWithoutNotify(index); deckDropdown.RefreshShownValue();
             if (deckNameInput.text != draft.name) deckNameInput.SetTextWithoutNotify(draft.name);
@@ -434,32 +414,45 @@ namespace Game.UI
         private void Guard(Action action)
         {
             if (!dirty) { action(); return; }
-            pendingAction = action; ShowModal(unsavedModal);
+            pendingAction = action; ShowModal(unsavedModal, unsavedCancelButton);
         }
         private void Confirm(string text, Action action)
         {
-            pendingAction = action; confirmLabel.text = text; ShowModal(confirmModal);
+            pendingAction = action; confirmLabel.text = text; ShowModal(confirmModal, confirmCancelButton);
         }
-        private void ShowModal(GameObject window)
-        { modal = window; window.SetActive(true); window.transform.SetAsLastSibling(); }
+        private void ShowModal(GameObject window, Button cancel)
+        {
+            modal = window;
+            window.SetActive(true);
+            window.transform.SetAsLastSibling();
+            UIFocusUtility.SetNestedModal(this, window, cancel);
+        }
         private void CloseModal()
-        { if (modal != null) modal.SetActive(false); modal = null; pendingAction = null; }
+        {
+            if (modal != null) modal.SetActive(false);
+            modal = null;
+            pendingAction = null;
+            UIFocusUtility.SetNestedModal(this, null);
+        }
         private void Update()
         {
-            if (!open || CollectionMessageUI.IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame) return;
+            if (!open || !UIFocusUtility.WasEscapePressed(this)) return;
             if (modal != null) { CloseModal(); RefreshAll(); } else Guard(Close);
         }
         private void Close()
         {
-            collection.Changed -= OnCollectionChanged; UIFocusUtility.SetOverlay(this, false);
-            open = false; active = null; gameObject.SetActive(false);
+            collection.Changed -= OnCollectionChanged;
+            open = false; active = null;
             if (hiddenPanel != null) hiddenPanel.SetActive(true);
+            gameObject.SetActive(false);
+            UIFocusUtility.SetModal(this, null);
             closed?.Invoke();
         }
         private void OnDestroy()
         {
             if (collection != null) collection.Changed -= OnCollectionChanged;
-            UIFocusUtility.SetOverlay(this, false);
+            UIFocusUtility.SetNestedModal(this, null);
+            UIFocusUtility.SetModal(this, null);
             if (active == this) active = null;
         }
         private static string LabelFaction(Faction f) => f == Faction.IronConcord ? "Iron Concord" : f == Faction.Ashen ? "The Ashen" : "The Vessels";

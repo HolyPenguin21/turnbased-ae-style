@@ -45,6 +45,8 @@ for file in SOURCE.rglob('*.cs'):
 # Scene identity is the only native reset input adapted here.
 if 'gameObject.scene.handle' in (SOURCE/'Setup/CitadelSetupController.cs').read_text():
     edit('Setup/CitadelSetupController.cs',lambda t:t.replace('gameObject.scene.handle','IntegrationNative.SceneHandle++'))
+# Awake still resets the real session. Omit only its scene-owned loading curtain.
+edit('Setup/CitadelSetupController.cs',lambda t:re.sub(r'^ +SceneLoadCurtain\.Hold\(.*\);\n', '', t, flags=re.M))
 # Omit native rendering only, after opening the actual production decision.
 def omit_choice_rendering(t):
     a=t.rfind('\n',0,t.index('heroOrUnitArtImage',t.index('public void Show(')))+1
