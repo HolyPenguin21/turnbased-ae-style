@@ -31,35 +31,6 @@ namespace Game.Ai.V2
     //  factors are recomputed here ONLY for the arbiter-owned candidates (Draw / Hold / spend).
     public static class StrategicPhaseB
     {
-        // Repeated Phase-B passes replace one reaction's entire envelope. Upsert alone would
-        // retain a resource absent from the next witness (or a prior winner's owner), silently
-        // shielding stock that the new reaction does not need.
-        internal static void RefreshReactionReservation(PlayerSetupData player, int turn,
-            StrategicReactionOpportunity opportunity)
-        {
-            MissionLeaseBook.ReleaseReasonExceptOwner(player, turn,
-                StrategicReservationReason.StrategicReactionPass, opportunity.OwnerKey);
-            MissionLeaseBook.Upsert(player, turn,
-                new StrategicResourceReservation
-                {
-                    Identity = ReservationOwner.ForPass(opportunity.OwnerKey),
-                    Reason = StrategicReservationReason.StrategicReactionPass,
-                    Resource = StrategicReservedResource.ActionPoints,
-                    Amount = opportunity.ReservedApBudget,
-                    ExpirationStage = StrategicReservationExpiry.EndOfReaction,
-                });
-            foreach (ResourceType rt in ResourceBundle.All)
-                MissionLeaseBook.Upsert(player, turn,
-                    new StrategicResourceReservation
-                    {
-                        Identity = ReservationOwner.ForPass(opportunity.OwnerKey),
-                        Reason = StrategicReservationReason.StrategicReactionPass,
-                        Resource = StrategicResourceReservationLedger.Map(rt),
-                        Amount = opportunity.Envelope?.Get(rt) ?? 0,
-                        ExpirationStage = StrategicReservationExpiry.EndOfReaction,
-                    });
-        }
-
         public static System.Collections.IEnumerator UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
             MaterializationReservation carriedReservation, StrategicPhaseResult result,
@@ -71,38 +42,11 @@ namespace Game.Ai.V2
 
             // ONE turn-scoped budget for every tempo action. Every hard cap
             // (total actions / surplus card plays / draws / generation attempts) is enforced
-            // against this, so re-entering the arbiter (main Phase B, reaction round, reaction
-            // follow-up, Housekeeping tempo re-run) cannot buy more than the per-turn limit. Keep
-            // the internal generation counter in sync with the shared budget.
+            // against this, so every Phase B round of the turn (the end-of-turn round included)
+            // shares the per-turn limit. Keep the internal generation counter in sync with it.
             StrategicTempoBudget budget = StrategicTempoBudget.For(player, ctx.TurnNumber);
             result.Reservation.GenerationAttemptsUsed =
                 Mathf.Max(result.Reservation.GenerationAttemptsUsed, budget.GenerationAttemptsUsed);
-
-            // --- §7 reaction reservation: a BOUNDED AP BUDGET + the persistent H/E/M/T
-            //     ENVELOPE that a REAL feasibility probe proved is needed to keep at least one
-            //     feasible reaction possible. The budget stays generic (the replan picks its own
-            //     action) but is only created when the probe passes and the AP >= min feasible AP.
-            StrategicReactionOpportunity reactionOpp =
-                StrategicReactionPass.BuildReactionOpportunity(player, root, ctx, snap);
-            if (reactionOpp.IsActionable)
-            {
-                RefreshReactionReservation(player, ctx.TurnNumber, reactionOpp);
-                AiDebugLog.Write($"[AI][V2]   strat.B - reaction feasible ({reactionOpp.Kind}); reserve BOUNDED "
-                    + $"{F(reactionOpp.ReservedApBudget)} AP"
-                    + (reactionOpp.Envelope != null ? $" + envelope [{ResCostStr(reactionOpp.Envelope)}]" : "")
-                    + $" (owner={reactionOpp.OwnerKey} exp=EndOfReaction; {reactionOpp.Rationale}), spendable AP now "
-                    + $"{F(StrategicSpendability.SpendableAp(player, root, ctx))}.");
-            }
-            else
-            {
-                // spec §7 — an existing reaction budget reservation is released the moment no
-                // feasible same-turn reaction remains (same-turn re-arbitration is Housekeeping's re-run).
-                MissionLeaseBook.ReleaseByReason(player, ctx.TurnNumber,
-                    StrategicReservationReason.StrategicReactionPass);
-                if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
-                    AiDebugLog.Write($"[AI][V2]   strat.B - pending invalidation but no FEASIBLE reaction "
-                        + $"({reactionOpp.FailReason}); NOT reserving - tempo uses the full pool (spec §7)");
-            }
 
             AiDebugLog.Write($"[AI][V2]   strat.B - {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
@@ -220,11 +164,9 @@ namespace Game.Ai.V2
                         {
                             exec.Succeeded = exec.StateChanged = exec.Progressed = exec.Drawn = true;
                             result.CardsDrawn++;
-                            // A terminal-boundary draw may have registered a hand opportunity.
-                            // Hand it to the existing bounded reaction pass; this is not the
-                            // deferred per-task mid-turn loop.
-                            exec.Interrupt = StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber)
-                                && StrategicReactionPass.CanStrategicReactionPassRun(player, ctx);
+                            // A draw that left a pending fact stops the round: the turn loop
+                            // re-admits the affected families before more surplus is spent.
+                            exec.Interrupt = StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber);
                         }
                         else exec.FailReason = "TryCycle refused";
                         break;

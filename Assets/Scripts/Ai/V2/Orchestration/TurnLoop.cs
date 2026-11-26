@@ -8,11 +8,12 @@ namespace Game.Ai.V2
     public enum TurnPhase { Ordinary, CloseOrdinary, Tempo, Cold, Stop }
 
     // The turn's phase order after the first admission pass: Phase B rounds, then the cold residual
-    // once, then the end. Only moves forward.
+    // once, then the end. Only moves forward, except that the facts left at the end of the turn
+    // re-open the tempo stage for one round (TurnLoop.RunEndOfTurn).
     public enum TurnStage { Tempo, Cold, Done }
 
     // Why an operational admission pass was opened. Diagnostics and tests only: no decision reads it.
-    public enum AdmissionCause { None, Initial, PhaseBTrigger, PhaseBStateChanged, ReturnsReleased, ColdChanged }
+    public enum AdmissionCause { None, Initial, PhaseBTrigger, PhaseBStateChanged, ReturnsReleased, ColdChanged, EndOfTurnFacts }
 
     // What one Phase B round reported after its own trigger resolution.
     internal readonly struct TempoRoundOutcome
@@ -85,6 +86,8 @@ namespace Game.Ai.V2
         internal TurnStage Stage = TurnStage.Tempo;
         internal bool PassOpen;
         internal AdmissionCause PassCause;
+        // The facts left at the end of the turn are being settled: one tempo round, no cold stage.
+        internal bool EndOfTurn;
 
         // Return legs may still wait (LifecycleReturnPolicy): only before the first Phase B round
         // has settled. Replaces the former `lifecycleReturnsReleased` flag (it was set exactly when
@@ -242,6 +245,29 @@ namespace Game.Ai.V2
         internal static IEnumerator Run(TurnLoopState s, IAdmissionWork admission, ITempoWork tempo, IColdWork cold)
         {
             OpenPass(s, admission, AdmissionCause.Initial);
+            IEnumerator drive = Drive(s, admission, tempo, cold);
+            while (drive.MoveNext())
+                yield return drive.Current;
+        }
+
+        // The facts published after the loop's last trigger take (the closing re-admission, the
+        // recalls) were already taken and re-admitted by the caller (StepTriggerSequence): an
+        // operational share opens one more admission pass, then exactly one more Phase B round runs;
+        // the cold residual is not repeated. The step and no-progress bounds of the turn still hold.
+        internal static IEnumerator RunEndOfTurn(TurnLoopState s, IAdmissionWork admission, ITempoWork tempo,
+            StepTriggerOutcome facts)
+        {
+            s.EndOfTurn = true;
+            s.Stage = TurnStage.Tempo;
+            if (facts.Operational != StrategicInvalidationReason.None)
+                OpenPass(s, admission, AdmissionCause.EndOfTurnFacts);
+            IEnumerator drive = Drive(s, admission, tempo, null);
+            while (drive.MoveNext())
+                yield return drive.Current;
+        }
+
+        private static IEnumerator Drive(TurnLoopState s, IAdmissionWork admission, ITempoWork tempo, IColdWork cold)
+        {
             while (true)
             {
                 switch (Phase(s))
@@ -278,12 +304,14 @@ namespace Game.Ai.V2
                             AiDebugLog.Write("[AI][V2][Loop] lifecycle returns released after the tempo pass");
                         if (verdict.Cause != AdmissionCause.None)
                             OpenPass(s, admission, verdict.Cause);
-                        if (verdict.Closed)
+                        if (s.EndOfTurn)
+                            s.Stage = TurnStage.Done;
+                        else if (verdict.Closed)
                             s.Stage = TurnStage.Cold;
                         break;
                     }
                     case TurnPhase.Cold:
-                        if (ColdEligible(s, cold.AxisCount()))
+                        if (cold != null && ColdEligible(s, cold.AxisCount()))
                         {
                             var coldSink = new ColdSink();
                             yield return cold.Run(coldSink);

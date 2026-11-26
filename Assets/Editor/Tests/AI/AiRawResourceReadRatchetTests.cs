@@ -86,8 +86,6 @@ namespace Game.EditorTests
             ["Provisioning/ProvisioningManager.cs"] = 1,
             // Moved, not new (519f6893): the shared physical turn-AP-left pool of every lane.
             ["Provisioning/ProvisioningSession.cs"] = 1,
-            ["Reaction/ReactionRoundExecutor.cs"] = 2,
-            ["Reaction/StrategicReactionPass.cs"] = 1,
             ["Recon/AiAirSortiePlanner.cs"] = 1,
             ["Recon/AviationSortieReservationEvaluator.cs"] = 1,
             ["Recon/ReconAirCapacityPolicy.cs"] = 2,

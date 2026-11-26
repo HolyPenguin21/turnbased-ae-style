@@ -67,13 +67,13 @@ namespace Game.Ai.V2
     //      StepTriggerSequence: a resumed rebase takes one take->reenter pair, other work two.
     //      The works are components (AdmissionIteration, TempoRound, ColdResidual, with
     //      StrategicReadmissionRunner) over one DecisionFrame; RunTurn only assembles them.
-    //   3. End: air-support safety recall, final Continuity reconciliation, summary, Housekeeping
-    //      (which runs a pending Reaction pass), turn-end audit and reservation release, telemetry.
+    //   3. End: the aviation safety recalls; the facts still pending after them through the same
+    //      works once more (TurnLoop.RunEndOfTurn); final Continuity reconciliation, summary,
+    //      Housekeeping, turn-end audit and reservation release, telemetry.
     //  Remaining exceptions, by design: every work kind keeps its own observation/settle order
     //  (only trigger resolution is shared); the cold residual calls Phase A directly, without the
     //  re-admission key gate; the provisioning retry belongs to Provisioning (ProvisionNext) and runs
-    //  inside the mission step; the recall,
-    //  Housekeeping and Reaction stay outside the loop.
+    //  inside the mission step; the recalls and Housekeeping stay outside the loop.
     // ===========================================================================================
     public static partial class Pipeline
     {
@@ -311,45 +311,28 @@ namespace Game.Ai.V2
 
                 // The ONE main loop of the turn (TurnLoop): admission passes, Phase B rounds and the
                 // cold residual in their baseline order, each opened and closed by its single owner.
-                yield return TurnLoop.Run(loop,
-                    new AdmissionIteration(frame, turnSession, runner, telemetry, assessment.Breakdown,
-                        radar, trace, player, root, hand, ctx),
-                    new TempoRound(frame, turnSession, runner, phases, player, root, hand, ctx),
+                var admission = new AdmissionIteration(frame, turnSession, runner, telemetry, assessment.Breakdown,
+                    radar, trace, player, root, hand, ctx);
+                var tempoWork = new TempoRound(frame, turnSession, runner, phases, player, root, hand, ctx);
+                yield return TurnLoop.Run(loop, admission, tempoWork,
                     new ColdResidual(frame, phases, apBudget, radar, demandAxes, player, root, hand, ctx));
+                yield return RecallUnsafeWings(frame, player, root, hand, ctx);
 
-                // Air-support safety net: a wing still over its target that cannot safely end
-                // another turn there (its strike leg was not run, or found nothing) flies home now
-                // instead of taking fuel damage. Free: the sortie launch was already paid.
-                foreach (ArmyData unsafeWing in GroundCombatAirSupport.RecallUnsafeStrikes(player, ctx.Map))
+                // Facts published after the loop's last trigger take (the closing re-admission, the
+                // recalls) go through the same works once more: their re-admission, an admission pass
+                // when they are operational and one more Phase B round. Only the facts a consumer
+                // family takes count (External is nobody's). The recalls repeat after it; what they
+                // publish then is left to the next turn's scan.
+                if (TypedTriggerFanOut.Split(turnSession.PendingInvalidations.Reasons, frame.Intents,
+                        frame.Snapshot).Consumed != StrategicInvalidationReason.None)
                 {
-                    WorldAnalysis.StepObservationStamp beforeRecall =
-                        WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
-                    bool recallChanged = false;
-                    yield return AviationRebaseExecutor.ExecuteContinuation(
-                        player, root, ctx, unsafeWing, v => recallChanged = v);
-                    frame.ObserveSettled(beforeRecall, null);
-                    ReservationInvariants.CheckBoundary(player, root, ctx,
-                        $"air-support recall #{unsafeWing.Id}");
-                    yield return ctx.WaitAtObserverActionBoundary();
-                }
-
-                // The same safety net for recon wings left aloft without a driving mission: one
-                // recovery step at a time through the mandatory-aviation adapter; a step that makes
-                // no progress stalls the wing for the turn, so the loop always ends.
-                List<ArmyData> reconRecalls = ReconAirExecutor.RecallUnsafeReconWings(player, ctx);
-                for (int guard = 0; reconRecalls.Count > 0 && guard < 64; guard++)
-                {
-                    ArmyData wing = reconRecalls[0];
-                    WorldAnalysis.StepObservationStamp beforeRecall =
-                        WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
-                    bool recallChanged = false;
-                    yield return MandatoryAviation.Execute(MandatoryAviationKind.Recovery, wing,
-                        player, root, ctx, frame.Snapshot, v => recallChanged = v);
-                    frame.ObserveSettled(beforeRecall, null);
-                    AviationObligations.RecordSettledStep(player, ctx, wing.Id, recallChanged);
-                    ReservationInvariants.CheckBoundary(player, root, ctx, $"recon air recall #{wing.Id}");
-                    yield return ctx.WaitAtObserverActionBoundary();
-                    reconRecalls = ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
+                    AiDebugLog.Write("[AI][V2][Loop] end-of-turn facts - "
+                        + $"{turnSession.PendingInvalidations.Reasons}; one more admission + tempo round");
+                    var endFacts = new StepTriggerSink();
+                    yield return StepTriggerSequence.Run(StepTriggerSequence.StandardPairs, turnSession, frame,
+                        runner, endFacts);
+                    yield return TurnLoop.RunEndOfTurn(loop, admission, tempoWork, endFacts.Outcome);
+                    yield return RecallUnsafeWings(frame, player, root, hand, ctx);
                 }
 
                 // Cold Phase A and the following typed admissions may have created or
@@ -387,14 +370,12 @@ namespace Game.Ai.V2
                 + "blockedReasons=see strat.A/strat.B diag lines");
 
             // End-of-Main physical resource control totals (spec §2.7). Housekeeping is zero-AP by
-            // invariant and the bounded reaction pass logs its own [STATE]; captured here so the
-            // Main line means the main phase.
+            // invariant; captured here so the Main line means every AP-spending stage of the turn.
             AiV2Trace.LogState(trace.Id, stateStart, AiV2Trace.Stamp(root));
 
-            // 8. A pending strategic reaction, then off-budget Housekeeping (zero-AP same-hex
-            //    packaging; not an axis, cannot be out-competed).
+            // 8. Off-budget Housekeeping (zero-AP same-hex packaging; not an axis, cannot be
+            //    out-competed).
             yield return frame.Checkpoint();
-            yield return EndOfTurnReaction(frame, player, root, hand, ctx, phaseB.Reservation);
             var housekeeping = new HousekeepingResult();
             yield return HousekeepingManager.Run(frame.Snapshot, player, root, ctx, frame.PostCommitments, housekeeping);
             AiTurnSession.ReleaseCapabilityLeases(player, ctx.TurnNumber);
@@ -472,48 +453,43 @@ namespace Game.Ai.V2
             yield return null;
         }
 
-        // The pending discovery / hand reaction (Phase B kept its AP while the interrupt was
-        // pending), then the AP its reservation held and released re-enters the tempo arbiter THIS
-        // turn instead of being stranded to EndTurn: the same recipe as a Phase B round (TempoRound),
-        // without re-admission. Strategic pressure and maintenance are tempo candidates in that
-        // arbiter, so Housekeeping after this point owns no AP at all.
-        private static IEnumerator EndOfTurnReaction(DecisionFrame frame, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, MaterializationReservation carried)
+        // The aviation safety nets after the loop (each step observed and checked like a work step).
+        private static IEnumerator RecallUnsafeWings(DecisionFrame frame, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            carried = carried ?? new MaterializationReservation();
-            // Only the reaction's own AP counts: an Economy completion hold is not a reaction budget.
-            float reactionAp = TurnResourceBook.LedgerClaims(player, ctx.TurnNumber,
-                    StrategicReservedResource.ActionPoints)
-                .Where(c => c.Kind == ResourceClaimKind.Reaction)
-                .Sum(c => System.Math.Max(0f, c.Amount));
-            var reaction = new StrategicReactionResult();
-            yield return StrategicReactionPass.ExecuteIfPending(frame.Snapshot, player, root, ctx, reaction, carried);
-            if (reaction.Ran && hand != null)
-                frame.AcceptReaction();
-            if (hand == null || reactionAp <= 0f)
-                yield break;
-
-            MissionLeaseBook.ReleaseByReason(player, ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass);
-            for (int rerun = 0; rerun < AiConfigV2.maxEndOfTurnTempoReruns; rerun++)
+            // Air-support safety net: a wing still over its target that cannot safely end
+            // another turn there (its strike leg was not run, or found nothing) flies home now
+            // instead of taking fuel damage. Free: the sortie launch was already paid.
+            foreach (ArmyData unsafeWing in GroundCombatAirSupport.RecallUnsafeStrikes(player, ctx.Map))
             {
-                int apBeforeTempo = root.ActionPoints;
-                frame.PrepareTempoOwnership();
-                WorldAnalysis.StepObservationStamp before =
+                WorldAnalysis.StepObservationStamp beforeRecall =
                     WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
-                StrategicManager.BeforeTempoSpend(player, frame.IntentState, root, hand, ctx);
-                var tempo = new StrategicPhaseResult();
-                yield return StrategicManager.UseSurplus(frame.Snapshot, player, root, hand, ctx,
-                    frame.PostCommitments, carried, tempo, frame.Recon);
-                ReservationInvariants.CheckBoundary(player, root, ctx, "end-of-turn tempo re-run");
-                carried = tempo.Reservation;
-                frame.ObserveSettled(before, null);
-                if (tempo.StateChanged)
-                    frame.RefreshFinalOwnership();
-                AiDebugLog.Write($"[AI][V2] tempo - end-of-turn tempo re-run after reaction reservation "
-                    + $"released (reaction ran={(reaction.Ran ? 1 : 0)}); cardsPlayed {tempo.CardsPlayed}, "
-                    + $"drawn {tempo.CardsDrawn}, ap {apBeforeTempo}->{root.ActionPoints}");
-                if (!tempo.StateChanged || tempo.CardsPlayed + tempo.CardsDrawn == 0)
-                    break;
+                bool recallChanged = false;
+                yield return AviationRebaseExecutor.ExecuteContinuation(
+                    player, root, ctx, unsafeWing, v => recallChanged = v);
+                frame.ObserveSettled(beforeRecall, null);
+                ReservationInvariants.CheckBoundary(player, root, ctx,
+                    $"air-support recall #{unsafeWing.Id}");
+                yield return ctx.WaitAtObserverActionBoundary();
+            }
+
+            // The same safety net for recon wings left aloft without a driving mission: one
+            // recovery step at a time through the mandatory-aviation adapter; a step that makes
+            // no progress stalls the wing for the turn, so the loop always ends.
+            List<ArmyData> reconRecalls = ReconAirExecutor.RecallUnsafeReconWings(player, ctx);
+            for (int guard = 0; reconRecalls.Count > 0 && guard < 64; guard++)
+            {
+                ArmyData wing = reconRecalls[0];
+                WorldAnalysis.StepObservationStamp beforeRecall =
+                    WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
+                bool recallChanged = false;
+                yield return MandatoryAviation.Execute(MandatoryAviationKind.Recovery, wing,
+                    player, root, ctx, frame.Snapshot, v => recallChanged = v);
+                frame.ObserveSettled(beforeRecall, null);
+                AviationObligations.RecordSettledStep(player, ctx, wing.Id, recallChanged);
+                ReservationInvariants.CheckBoundary(player, root, ctx, $"recon air recall #{wing.Id}");
+                yield return ctx.WaitAtObserverActionBoundary();
+                reconRecalls = ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
             }
         }
 

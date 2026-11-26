@@ -311,15 +311,13 @@ namespace Game.EditorTests
                 "phaseA.Accumulate(opening)", "AcceptChangedPhaseA()", "RebuildDemandsPaced(demandAxes)",
                 "StrategicManager.FulfillDemandsPaced(");
 
-            // the tail of the turn: loop -> recall -> final ownership -> settle -> reaction + tempo re-run
-            // -> Housekeeping -> audit -> release
-            InOrder(Code("AiStrategyV2Pipeline.cs"), "end of the turn", "TurnLoop.Run(", "RecallUnsafeStrikes(",
-                "RefreshFinalOwnership()", "SettleAfterTurn(", "EndOfTurnReaction(", "HousekeepingManager.Run(",
+            // the tail of the turn: loop -> recalls -> the facts left go through the same works once more
+            // (their re-admission, an admission pass, one Phase B round) -> recalls -> final ownership
+            // -> settle -> Housekeeping -> audit -> release
+            InOrder(Code("AiStrategyV2Pipeline.cs"), "end of the turn", "TurnLoop.Run(", "RecallUnsafeWings(",
+                "TypedTriggerFanOut.Split(", "StepTriggerSequence.Run(", "TurnLoop.RunEndOfTurn(",
+                "RecallUnsafeWings(", "RefreshFinalOwnership()", "SettleAfterTurn(", "HousekeepingManager.Run(",
                 "AcceptHousekeeping()", "AuditTurnEnd(", "CompleteReservations()");
-            // the end-of-turn tempo re-run follows the Phase B round recipe (TempoRound)
-            InOrder(Code("AiStrategyV2Pipeline.cs"), "end-of-turn reaction", "StrategicReactionPass.ExecuteIfPending(",
-                "frame.AcceptReaction()", "frame.PrepareTempoOwnership()", "StrategicManager.BeforeTempoSpend(",
-                "StrategicManager.UseSurplus(", "frame.ObserveSettled(");
         }
 
         [Test]

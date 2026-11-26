@@ -185,10 +185,6 @@ namespace Game.EditorTests
 
             f.RefreshFinalOwnership();
             Assert.That(rig.Take(), Is.EqualTo("persistentActors"));
-            // After the end-of-turn reaction, Housekeeping reads the same canonical ownership as
-            // when no reaction ran.
-            f.AcceptReaction();
-            Assert.That(rig.Take(), Is.EqualTo("knowledge > persistentActors"));
         }
 
         [Test]
@@ -521,11 +517,9 @@ namespace Game.EditorTests
                 "AcceptChangedPhaseA", "RebuildDemandsPaced",                              // the demand-driven Phase A changed
                 "RefreshAfterFormation",                                                   // a wing was formed
                 "StartWithCredit",                                                         // the loop block begins
+                "RefreshFinalOwnership", "AcceptHousekeeping",                             // the end of the turn
                 "ObserveSettled",                                                          // air-support recall
                 "ObserveSettled",                                                          // recon air recall
-                "RefreshFinalOwnership", "AcceptHousekeeping",                             // the end of the turn
-                "AcceptReaction", "PrepareTempoOwnership", "ObserveSettled",               // reaction + tempo re-run
-                "RefreshFinalOwnership",
             }));
             Assert.That(Calls("StrategicReadmissionRunner.cs"), Is.EqualTo(new[]
             {
