@@ -183,14 +183,15 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void TheFirstPairConsumesOnlyWhatItWasGiven()
+        public void AStalePlanFactIsTakenWithTheOperationalShare()
         {
             StrategicInterruptRegistry.Record(_player, Turn, StrategicInvalidationReason.Hand);
-            // A fact outside every consumer mask is nobody's share: it must survive the consume.
+            // A stale plan (External) asks for an operational replan: it is taken, not left pending.
             StrategicInterruptRegistry.Record(_player, Turn, StrategicInvalidationReason.External);
             TypedTriggerSplit split = Take();
-            Assert.AreEqual(StrategicInvalidationReason.External, Pending & StrategicInvalidationReason.External);
+            Assert.AreEqual(StrategicInvalidationReason.External, split.Operational & StrategicInvalidationReason.External);
             Assert.AreEqual(StrategicInvalidationReason.None, Pending & split.Consumed);
+            Assert.AreEqual(StrategicInvalidationReason.None, Pending);
         }
     }
 }
