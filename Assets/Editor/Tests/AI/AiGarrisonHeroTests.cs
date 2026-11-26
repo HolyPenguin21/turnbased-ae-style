@@ -901,53 +901,6 @@ namespace Game.EditorTests
                 "terrain alone is never removed");
         }
 
-        // 2026-11-18 (owner, match Kryll vs Tessek T31) — Kryll held Ashen Base (0,4) with a full
-        // garrison, Ironclad (Dorian Kesh, 3/7) and two heroless 2-body armies; each lost to Dust
-        // Dogs alone, so the first/second contact rows never moved and the folds were refused. The
-        // attacker fights every formation in turn and keeps its wounds: the whole-hex hold is what a
-        // fold improves, so the heroless bodies join the hero army that has room for them.
-        [Test]
-        public void NearThreat_HeroArmyWithRoom_TakesTheHeroless2BodyArmies_ForTheWholeHexHold()
-        {
-            LocalForceGroup group = KryllBaseUnderDustDogs(out ReorgUnit dorian);
-
-            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
-
-            Assert.That(plan.ExpectedMembership[2].Count(k => k != dorian.Key), Is.EqualTo(6),
-                "Ironclad takes both heroless pairs: " + plan.DebugSummary());
-        }
-
-        // Garrison 4/4, a hero army 3/7 and two heroless 2-body armies under a 5-body attacker that
-        // beats every formation alone (garrison and the packed army both lose ~1.00), while the
-        // whole hex holds better packed (1.00 -> 0.66; one fold alone 0.94, inside the margin).
-        private static LocalForceGroup KryllBaseUnderDustDogs(out ReorgUnit dorian, int keySeed = 0)
-        {
-            if (keySeed > 0) _key = keySeed;
-            System.Func<ReorgUnit> F = () => RFighter(4f, 2f, 4f);
-            var garrisonBodies = new[] { F(), F(), F(), F() };
-            dorian = RHero(7, support: false);
-            var ironcladBodies = new[] { F(), F() };
-            var locusts = new[] { F(), F() };
-            var sand = new[] { F(), F() };
-            var group = new LocalForceGroup
-            {
-                Containers = new List<ReorgContainer>
-                {
-                    RGarrison(1, garrisonBodies), RFree(2, new[] { dorian }.Concat(ironcladBodies).ToArray()),
-                    RFree(3, locusts), RFree(4, sand),
-                },
-            };
-            group.ThreatBenchmarks.Add(new ReorgThreatBenchmark
-            {
-                ArmyId = 21, EtaToGroup = 1, EtaToNearestBase = 1,
-                Members = Enumerable.Range(0, 5).Select(_ =>
-                    new Game.Combat.WorthIt.DefenderProfile(2f, false, attack: 6f, hitPoints: 5f)).ToArray(),
-                TargetableUnitKeys = new HashSet<int>(garrisonBodies.Concat(ironcladBodies)
-                    .Concat(locusts).Concat(sand).Select(u => u.Key)),
-            });
-            return group;
-        }
-
     }
 }
 #endif

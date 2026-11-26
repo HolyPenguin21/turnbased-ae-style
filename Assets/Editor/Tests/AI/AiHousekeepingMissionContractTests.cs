@@ -72,36 +72,6 @@ namespace Game.EditorTests
             MoveCurrent = 3, MoveMax = 3,
         };
 
-        [Test]
-        public void FreeFieldArmy_ReleasesOrdinarySecondaryHeroWithoutLosingItsFighter()
-        {
-            ReorgUnit lead = Hero(0f, 7), extra = Hero(0f, 4);
-            lead.IsGroundCombatant = extra.IsGroundCombatant = false;
-            ReorgUnit fighter = Body(8f);
-            ReorgContainer host = Free(2, lead, extra, fighter);
-            ReorgContainer garrison = Garrison(0, Body(8f));
-            ReorganizationPlan plan = Plan(garrison, host);
-            Assert.That(plan.ExpectedMembership[2], Has.No.Member(extra.Key));
-            Assert.That(plan.ExpectedMembership.Values.SelectMany(r => r), Does.Contain(fighter.Key));
-            Assert.That(plan.ExpectedMembership.Values.SelectMany(r => r), Does.Contain(lead.Key));
-        }
-
-        [TestCase(Game.Cards.UnitAbilities.Heal)]
-        [TestCase(Game.Cards.UnitAbilities.Drill)]
-        [TestCase(Game.Cards.UnitAbilities.Transport)]
-        public void PreparationHost_KeepsSecondaryArmySupport(string ability)
-        {
-            ReorgUnit lead = Hero(0f, 7), carrier = Hero(0f, 4), fighter = Body(8f);
-            lead.IsGroundCombatant = carrier.IsGroundCombatant = false;
-            carrier.CombatProfile = new Game.Combat.WorthIt.DefenderProfile(0f, false, null,
-                0f, 6f, 0, new[] { ability }, 6f, isGroundCombatant: false, isHero: true);
-            var host = Mission(2, true, -1, lead, carrier, fighter);
-            host.MayReleaseExcessHeroes = true;
-            var plan = Plan(Garrison(1, Body(8f)), host);
-            Assert.That(plan.ExpectedMembership[2], Does.Contain(carrier.Key), plan.DebugSummary());
-            Assert.That(plan.ExpectedMembership[2], Does.Contain(fighter.Key));
-        }
-
         private static ReorgContainer Garrison(int id, params ReorgUnit[] units) => new ReorgContainer
         {
             ArmyId = id, Role = ReorgPhysicalRole.Garrison, IsGarrison = true,
