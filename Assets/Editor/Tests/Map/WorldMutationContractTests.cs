@@ -51,6 +51,19 @@ namespace Game.EditorTests
             Assert.Throws<NotSupportedException>(() => ((IList<UnitData>)army.Roster).Clear());
             Assert.That(army.Members.Count, Is.EqualTo(1));
         }
+        [Test] public void ADetachedRosterHandleCannotChangeTheRegisteredArmy()
+        {
+            var unit = Unit();
+            var army = new ArmyData { Owner = owner, Hex = hex };
+            var roster = army.Members;
+            roster.Add(unit);
+            using (MatchRestoreScope.Begin()) ArmyRegistry.Register(army);
+            Assert.Throws<InvalidOperationException>(() => roster.Clear());
+            Assert.Throws<InvalidOperationException>(() => roster[0] = Unit());
+            Assert.That(ArmyRegistry.FindArmyContaining(unit), Is.SameAs(army));
+            Assert.That(ArmyActions.RemoveMember(army, unit, cleanup: false), Is.True);
+            Assert.That(roster, Is.Empty);
+        }
         [Test] public void EmptyQueriesAreIndependent()
         {
             ArmyRegistry.AllAt(new HexCoord(90, 90)).Add(new ArmyData());
@@ -229,7 +242,7 @@ namespace Game.EditorTests
             var carrier = Unit(); carrier.AirfieldCapacity = 2; var host = Army(owner, carrier);
             AviationActions.EnsureCarrierContainers(host);
             var hangar = carrier.CarrierAirfield; var deck = carrier.CarrierFlightDeck;
-            hangar.Members.Add(Unit(true)); deck.Members.Add(Unit(true)); ArmyRegistry.Unregister(host);
+            hangar.AppendRosterMember(Unit(true)); deck.AppendRosterMember(Unit(true)); ArmyRegistry.Unregister(host);
             Assert.That(carrier.CarrierAirfield, Is.Null); Assert.That(carrier.CarrierFlightDeck, Is.Null);
             Assert.That(ArmyRegistry.IsRegistered(hangar), Is.False); Assert.That(ArmyRegistry.IsRegistered(deck), Is.False);
             Assert.That(owner.Hand.Hand.Count, Is.EqualTo(2));
@@ -326,7 +339,7 @@ namespace Game.EditorTests
             var ground = ArmyData.CreateVisualSnapshot(); ground.Owner = owner; ground.Hex = hex; ground.Members.Add(Unit());
             var garrison = ArmyData.CreateVisualSnapshot(); garrison.Owner = owner; garrison.Hex = hex; garrison.IsGarrison = true;
             var field = ArmyData.CreateVisualSnapshot(); field.Owner = owner; field.Hex = hex; field.IsAirfield = true;
-            var aircraft = Unit(true); field.Members.Add(aircraft);
+            var aircraft = Unit(true); field.AppendRosterMember(aircraft);
             Assert.That(ArmyActions.TryUnloadAndBoardAircraft(ground, garrison, field, new[] { aircraft }, null, out _), Is.False);
             Assert.That(ground.Members[0].IsAviation, Is.False); Assert.That(garrison.Members, Is.Empty);
         }
@@ -353,7 +366,7 @@ namespace Game.EditorTests
         [Test] public void BlastCompletionPublishesAfterDeadCarrierCargoReturns()
         {
             var carrier = Unit(); carrier.AirfieldCapacity = 2; var host = Army(owner, carrier);
-            AviationActions.EnsureCarrierContainers(host); carrier.CarrierAirfield.Members.Add(Unit(true));
+            AviationActions.EnsureCarrierContainers(host); carrier.CarrierAirfield.AppendRosterMember(Unit(true));
             var launcher = Unit(); launcher.Owner = capturer; launcher.Abilities.Add(UnitAbilities.Explosion10);
             var attacker = Army(capturer, launcher);
             var blast = new ExplosionAttack(launcher, hex, new Random(4), attacker, host);
@@ -449,7 +462,7 @@ namespace Game.EditorTests
         {
             var carrier = Unit(); carrier.AirfieldCapacity = 2; var host = Army(owner, carrier);
             AviationActions.EnsureCarrierContainers(host);
-            var aircraft = Unit(true); carrier.CarrierAirfield.Members.Add(aircraft);
+            var aircraft = Unit(true); carrier.CarrierAirfield.AppendRosterMember(aircraft);
             int calls = 0; bool final = false;
             Action<PlayerSetupData, HexCoord> changed = (viewer, at) =>
             {

@@ -44,7 +44,7 @@ namespace Game.UI
             RefreshLocalizedText();
             if (selectedIndex < 0 && topics.Count > 0) SelectTopic(0);
             else RebuildArticle();
-            closeButton.Select();
+            UIFocusUtility.SetModal(this, gameObject, ModalBlock.Full, closeButton);
         }
 
         // The future locale service supplies a key lookup and calls this when language changes.
@@ -150,6 +150,7 @@ namespace Game.UI
         private void OnEnable() { if (closeButton != null) closeButton.onClick.AddListener(Close); }
         private void Update()
         {
+            if (!UIFocusUtility.CanHandleInput(this)) return;
             var focused = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             if (focused != lastFocusedObject)
             {
@@ -157,7 +158,7 @@ namespace Game.UI
                 if (focused != null && topicsScroll != null && topicsScroll.viewport != null
                     && focused.transform.IsChildOf(topicsScroll.content)) RevealTopic(focused.transform);
             }
-            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (UIFocusUtility.WasEscapePressed(this))
             {
                 GameAudioManager.Instance?.PlayClick(); Close();
             }
@@ -176,6 +177,7 @@ namespace Game.UI
         public void Close() { if (gameObject.activeSelf) gameObject.SetActive(false); }
         private void OnDisable()
         {
+            UIFocusUtility.SetModal(this, null);
             if (closeButton != null) closeButton.onClick.RemoveListener(Close);
             Closed?.Invoke();
         }

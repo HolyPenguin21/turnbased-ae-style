@@ -75,7 +75,7 @@ namespace Game.EditorTests
             Assert.That(rewarded.GroundArmyPotential, Is.GreaterThan(damaged.GroundArmyPotential));
             Assert.That(hand.Count, Is.EqualTo(1));
             Assert.That(army.Members.Count, Is.EqualTo(1));
-            army.Members.Clear();
+            army.ReplaceRoster(null);
             Assert.That(PlayerForceAnalysis.Calculate(player, new[] { army }, hand, null).DeployedPower, Is.Zero);
         }
 

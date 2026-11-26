@@ -27,7 +27,7 @@ namespace Game.UI
     // Attack). Clicking one opens it via ArmyViewerModalUI.ShowLocked — own army or enemy's
     // alike, fully read-only, no switching to a different one of that owner's armies from
     // inside that view (that's this row's job, not the modal's).
-    public class BattleContactPopupUI : MonoBehaviour
+    public class BattleContactPopupUI : MonoBehaviour, Game.Audio.IInfoSoundSource
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private TMP_Text titleText;
@@ -93,52 +93,22 @@ namespace Game.UI
         // fires on an actual flip — see SetPanelActive, the one place panelRoot's active state
         // is ever touched from here on.
         public event Action VisibilityChanged;
+        public event Action InfoSoundRequested;
 
         private void SetPanelActive(bool active)
         {
             if (panelRoot == null || panelRoot.activeSelf == active)
                 return;
             panelRoot.SetActive(active);
+            UIFocusUtility.SetModal(this, active ? panelRoot : null);
             VisibilityChanged?.Invoke();
+            if (active && IsShowing) InfoSoundRequested?.Invoke();
         }
 
         private void Awake()
         {
-            ResolveFixedSlotBindings();
             if (armyViewerModal != null)
                 armyViewerModal.Closed += OnArmyModalClosed;
-        }
-
-        // The redesigned popup keeps the participant visuals as direct children instead of
-        // instantiating BattleParticipantColumn prefabs. Serialized references remain available
-        // for explicit Inspector wiring; these name-based fallbacks make the already-restructured
-        // scene safe to open before those references are assigned.
-        private void ResolveFixedSlotBindings()
-        {
-            if (fastResolveButton == null)
-                fastResolveButton = FindPanelComponent<Button>("Button_FastResolve");
-            if (attackerFactionLogo == null)
-                attackerFactionLogo = FindPanelComponent<Image>("Attacker_FactionLogo");
-            if (attackerCommanderArt == null)
-                attackerCommanderArt = FindPanelComponent<Image>("Attacker_CommanderArt");
-            if (attackerCommanderName == null)
-                attackerCommanderName = FindPanelComponent<TMP_Text>("Attacker_CommanderName");
-            if (attackerArmyInfo == null)
-                attackerArmyInfo = FindPanelComponent<TMP_Text>("Attacker_ArmyInfo");
-            if (defenderFactionLogo == null)
-                defenderFactionLogo = FindPanelComponent<Image>("Defender_FactionLogo");
-            if (defenderCommanderArt == null)
-                defenderCommanderArt = FindPanelComponent<Image>("Defender_CommanderArt");
-            if (defenderCommanderName == null)
-                defenderCommanderName = FindPanelComponent<TMP_Text>("Defender_CommanderName");
-            if (defenderArmyInfo == null)
-                defenderArmyInfo = FindPanelComponent<TMP_Text>("Defender_ArmyInfo");
-        }
-
-        private T FindPanelComponent<T>(string childName) where T : Component
-        {
-            Transform child = panelRoot != null ? panelRoot.transform.Find(childName) : null;
-            return child != null ? child.GetComponent<T>() : null;
         }
 
         private void OnDestroy()

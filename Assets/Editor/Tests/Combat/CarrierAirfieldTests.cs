@@ -42,7 +42,7 @@ namespace Game.EditorTests
                 army = new ArmyData { Owner = _owner, Hex = Home };
                 army.Members.Add(unit); ArmyRegistry.Register(army);
             }
-            else { army.Members.Add(unit); AviationActions.RefreshCarrierContainers(army); }
+            else { army.AppendRosterMember(unit); AviationActions.RefreshCarrierContainers(army); }
             return unit;
         }
 
@@ -89,7 +89,7 @@ namespace Game.EditorTests
         public void CarrierMovementMovesCargoAndReadyWing_WithoutSpendingTheirMovement()
         {
             UnitData c = Carrier(); UnitData stored = Plane(), ready = Plane();
-            c.CarrierAirfield.Members.Add(stored); c.CarrierFlightDeck.Members.Add(ready);
+            c.CarrierAirfield.AppendRosterMember(stored); c.CarrierFlightDeck.AppendRosterMember(ready);
             HexCoord destination = new HexCoord(1, 0);
             ArmyRegistry.MoveArmy(ArmyRegistry.FindArmyContaining(c), destination);
             Assert.That(c.CarrierAirfield.Hex, Is.EqualTo(destination));
@@ -104,7 +104,7 @@ namespace Game.EditorTests
         public void TakeOffDetachesWingAndRestoresExactlyOneEmptyDeck()
         {
             UnitData c = Carrier(); ArmyData departing = c.CarrierFlightDeck;
-            departing.Members.Add(Plane()); AviationActions.DetachCarrierWing(departing);
+            departing.AppendRosterMember(Plane()); AviationActions.DetachCarrierWing(departing);
             ArmyRegistry.MoveArmy(ArmyRegistry.FindArmyContaining(c), new HexCoord(1, 0));
             Assert.That(departing.Hex, Is.EqualTo(Home)); Assert.That(departing.IsCarrierContainer, Is.False);
             Assert.That(c.CarrierFlightDeck, Is.Not.SameAs(departing));
@@ -115,7 +115,7 @@ namespace Game.EditorTests
         [Test]
         public void LaunchUsesCarrierDeckAndRejectsDuplicateAircraft()
         {
-            UnitData c = Carrier(), p = Plane(); c.CarrierAirfield.Members.Add(p);
+            UnitData c = Carrier(), p = Plane(); c.CarrierAirfield.AppendRosterMember(p);
             Assert.That(AviationActions.TryLaunch(c.CarrierAirfield, new[] { p, p }, null, null,
                 out _, out _), Is.False);
             Assert.That(c.CarrierAirfield.Members.Count, Is.EqualTo(1));
@@ -129,7 +129,7 @@ namespace Game.EditorTests
         public void LaunchBesideOccupiedDeckFormsSeparateWingOfExactlySelectedAircraft()
         {
             UnitData c = Carrier(), ready = Plane(), next = Plane();
-            c.CarrierFlightDeck.Members.Add(ready); c.CarrierAirfield.Members.Add(next);
+            c.CarrierFlightDeck.AppendRosterMember(ready); c.CarrierAirfield.AppendRosterMember(next);
             Assert.That(AviationActions.TryLaunch(c.CarrierAirfield, new[] { next }, null, null,
                 out ArmyData wing, out _), Is.True);
             Assert.That(wing, Is.Not.SameAs(c.CarrierFlightDeck));
@@ -193,7 +193,7 @@ namespace Game.EditorTests
         public void ReadyWingAndHangarShareCapacity_AndTransfersDoNotNeedAnExtraSlot()
         {
             UnitData c = Carrier(); UnitData a = Plane(), b = Plane();
-            c.CarrierAirfield.Members.AddRange(new[] { a, b });
+            c.CarrierAirfield.AppendRosterMember(a); c.CarrierAirfield.AppendRosterMember(b);
             Assert.That(AviationRules.FreeAirfieldCapacity(Home, _owner), Is.EqualTo(0));
             Assert.That(ArmyActions.TransferMember(a, c.CarrierAirfield, c.CarrierFlightDeck, null, out _), Is.True);
             Assert.That(AviationRules.FreeAirfieldCapacity(Home, _owner), Is.EqualTo(0));
@@ -255,7 +255,7 @@ namespace Game.EditorTests
         public void TransferringCarrierPreservesBothContainers()
         {
             UnitData c = Carrier(); ArmyData hangar = c.CarrierAirfield, deck = c.CarrierFlightDeck;
-            hangar.Members.Add(Plane());
+            hangar.AppendRosterMember(Plane());
             var target = new ArmyData { Owner = _owner, Hex = Home }; ArmyRegistry.Register(target);
             Assert.That(ArmyActions.TransferMember(c, ArmyRegistry.FindArmyContaining(c), target, null, out _), Is.True);
             Assert.That(c.CarrierAirfield, Is.SameAs(hangar)); Assert.That(c.CarrierFlightDeck, Is.SameAs(deck));
@@ -267,15 +267,15 @@ namespace Game.EditorTests
         public void CarrierDeathRemovesOnlyItsContainers_WhileEscortAndAirborneWingSurvive()
         {
             UnitData c = Carrier(); ArmyData ground = ArmyRegistry.FindArmyContaining(c);
-            ground.Members.Add(new UnitData { Owner = _owner });
+            ground.AppendRosterMember(new UnitData { Owner = _owner });
             ArmyData hangar = c.CarrierAirfield, deck = c.CarrierFlightDeck;
             UnitData stored = Plane(); stored.OriginatingCard = new CardDefinition { displayName = "Plane" };
-            hangar.Members.Add(stored); ArmyData airborne = Wing(Plane());
+            hangar.AppendRosterMember(stored); ArmyData airborne = Wing(Plane());
             UnitData other = Carrier(); int returned = 0;
             _owner.Hand = new PlayerHandData(null, 0); // the human's match hand receives the card
             System.Action<PlayerSetupData, CardData> onReturned = (owner, card) => returned++;
             AviationActions.AircraftReturnedToHand += onReturned;
-            try { c.HitPointsCurrent = 0; ground.Members.Remove(c); StealthSystem.OnUnitRemoved(c); }
+            try { c.HitPointsCurrent = 0; ground.RemoveRosterMember(c); StealthSystem.OnUnitRemoved(c); }
             finally { AviationActions.AircraftReturnedToHand -= onReturned; }
             Assert.That(returned, Is.EqualTo(1)); Assert.That(ArmyRegistry.IsRegistered(hangar), Is.False);
             Assert.That(ArmyRegistry.IsRegistered(deck), Is.False); Assert.That(ArmyRegistry.IsRegistered(ground), Is.True);
@@ -307,7 +307,7 @@ namespace Game.EditorTests
         public void FlyingAaCanReactButStoredAaCannot()
         {
             UnitData c = Carrier(); UnitData stored = Plane(); stored.Abilities.Add(UnitAbilities.AntiAir);
-            c.CarrierFlightDeck.Members.Add(stored);
+            c.CarrierFlightDeck.AppendRosterMember(stored);
             UnitData escort = Plane(); escort.Abilities.Add(UnitAbilities.AntiAir); ArmyData escortWing = Wing(escort);
             var enemy = new PlayerSetupData();
             var target = new ArmyData { Owner = enemy, Hex = Home, IsAirArmy = true };
@@ -320,8 +320,8 @@ namespace Game.EditorTests
         [Test]
         public void ParkedAircraftAreNotIndependentStrikeTargets()
         {
-            UnitData c = Carrier(); c.CarrierAirfield.Members.Add(Plane());
-            c.CarrierFlightDeck.Members.Add(Plane()); ArmyData flying = Wing(Plane());
+            UnitData c = Carrier(); c.CarrierAirfield.AppendRosterMember(Plane());
+            c.CarrierFlightDeck.AppendRosterMember(Plane()); ArmyData flying = Wing(Plane());
             var targets = AviationCombatPresenter.FindAirStrikeTargetsAt(Home, new PlayerSetupData());
             Assert.That(targets, Has.Member(ArmyRegistry.FindArmyContaining(c)).And.Member(flying));
             Assert.That(targets, Has.No.Member(c.CarrierAirfield).And.No.Member(c.CarrierFlightDeck));
@@ -353,7 +353,7 @@ namespace Game.EditorTests
             });
             // No PlayerRoot exists, and all hypothetical physical stock is held by another owner.
             // Container creation, forming and replacement after take-off must still be free.
-            UnitData c = Carrier(), p = Plane(); c.CarrierAirfield.Members.Add(p);
+            UnitData c = Carrier(), p = Plane(); c.CarrierAirfield.AppendRosterMember(p);
             Assert.That(AviationWingPreparation.TryForm(_owner, null, c.CarrierAirfield, new[] { p },
                 null, out ArmyData wing, out _), Is.True);
             AviationActions.DetachCarrierWing(wing);

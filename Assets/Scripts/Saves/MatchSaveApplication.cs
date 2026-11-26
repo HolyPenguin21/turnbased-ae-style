@@ -7,7 +7,6 @@ using Game.Map;
 using Game.Setup;
 using Game.Turns;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 namespace Game.Saves
 {
     internal sealed class MatchSaveApplication : IMatchSaveApplication
@@ -17,14 +16,14 @@ namespace Game.Saves
         private readonly GameTurnController turns; private readonly HexSelectionController selection;
         private readonly Action<string> navigate;
         internal MatchSaveApplication(string directory,GameConfig config,HexMap map,GameTurnController turns,
-            HexSelectionController selection,Action<string> navigate=null)
+            HexSelectionController selection,Action<string> navigate)
         {
             store=new MatchSaveStore(directory);this.config=config;this.map=map;this.turns=turns;this.selection=selection;
-            this.navigate=navigate ?? (scene=>{if(scene==SceneNames.Game)Game.UI.SceneLoadCurtain.Show(config!=null?config.PickLoadingScreenImage():null);SceneManager.LoadScene(scene);});
+            this.navigate=navigate ?? throw new ArgumentNullException(nameof(navigate));
         }
-        internal static MatchSaveApplication ForScene(GameConfig config,GameTurnController turns) =>
+        internal static MatchSaveApplication ForScene(GameConfig config,GameTurnController turns,Action<string> navigate) =>
             new MatchSaveApplication(Path.Combine(Application.persistentDataPath,"Matches"),config,
-                UnityEngine.Object.FindAnyObjectByType<HexMap>(),turns,UnityEngine.Object.FindAnyObjectByType<HexSelectionController>());
+                UnityEngine.Object.FindAnyObjectByType<HexMap>(),turns,UnityEngine.Object.FindAnyObjectByType<HexSelectionController>(),navigate);
         internal static bool HasSavedMatches() => new MatchSaveStore(Path.Combine(Application.persistentDataPath,"Matches")).Slots().Length>0;
         public IReadOnlyList<MatchSaveSlot> ListSlots()
         {

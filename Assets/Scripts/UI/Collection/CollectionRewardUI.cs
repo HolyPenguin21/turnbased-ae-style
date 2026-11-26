@@ -94,7 +94,7 @@ namespace Game.UI
                 view = Instantiate(GameAssetCatalog.Load<GameObject>(RewardPanelKey).GetComponent<CollectionRewardView>(), canvas);
                 cardTemplate = GameAssetCatalog.Load<GameObject>(RewardCardKey).GetComponent<CollectionRewardCardView>();
             }
-            UIFocusUtility.SetOverlay(this, true);
+            UIFocusUtility.SetModal(this, canvas.gameObject, ModalBlock.Full, view.PrimaryButton);
             CollectionUIElements.Clear(view.CardsHost);
             view.CardsHost.gameObject.SetActive(true);
             view.BodyRoot.SetActive(false);
@@ -212,7 +212,7 @@ namespace Game.UI
 
         private void Close()
         {
-            UIFocusUtility.SetOverlay(this, false);
+            UIFocusUtility.SetModal(this, null);
             if (canvas != null)
             {
                 canvas.gameObject.SetActive(false);

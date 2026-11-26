@@ -82,7 +82,7 @@ namespace Game.EditorTests
             near.Hex = new HexCoord(5, 0);
             Assert.That(TacticalIntelligence.VisibleFieldCount(_observer, _enemy,
                 new[] { near, far }), Is.EqualTo(4));
-            far.Members.Clear();
+            far.ReplaceRoster(null);
             Assert.That(TacticalIntelligence.VisibleFieldCount(_observer, _enemy,
                 new[] { near, far }), Is.Zero);
         }

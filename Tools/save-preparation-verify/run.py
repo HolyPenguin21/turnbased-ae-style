@@ -99,6 +99,7 @@ def main():
             for f in dest.rglob('*.cs'):
                 s=f.read_text()
                 s=s.replace('FindObjectsInactive.Include, FindObjectsSortMode.None','FindObjectsSortMode.None')
+                s = s.replace("gameObject.scene.handle.GetRawData()", "(ulong)gameObject.scene.handle")
                 s=re.sub(r'(FindObjectsByType<[^>]+>\()FindObjectsInactive\.(?:Include|Exclude)(\))',r'\1FindObjectsSortMode.None\2',s)
                 f.write_text(s)
             compile(label,[*dest.rglob('*.cs'),work/'EngineStubs.cs'],refs+list(engine.glob('*.dll'))+[ui[0]],['-define:UNITY_EDITOR;UNITY_6000_0_OR_NEWER'],False)

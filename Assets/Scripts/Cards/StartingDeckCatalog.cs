@@ -5,16 +5,6 @@ using UnityEngine;
 
 namespace Game.Cards
 {
-    // A deck row references CardDefinition.authoredKey when available. Legacy
-    // "<catalog.displayName>/<card.displayName>" references remain readable while existing
-    // cards acquire stable identities; new authored references survive display-name changes.
-    [System.Serializable]
-    public class DeckCardEntry
-    {
-        public string cardKey;
-        public int count = 1;
-    }
-
     // One named deck a player of `faction` starts the game with — several copies of the same
     // card are several DeckCardEntry rows worth of count, not a separate "duplicates" concept.
     [System.Serializable]

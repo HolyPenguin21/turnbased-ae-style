@@ -174,6 +174,7 @@ namespace Game.Campaign
         }
         private void Update()
         {
+            UIFocusUtility.KeepFocusWithinModal();
             if (continueAfterCapture)
             {
                 if (map.IsCapturePlaying) return;
@@ -187,8 +188,8 @@ namespace Game.Campaign
                 return;
             }
             bool escape = UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame;
-            if (escape && !ModalOpen && !rewardOpen && selected.HasValue) { selected = null; hovered = null; Render(); return; }
-            if (escape && ModalOpen)
+            if (escape && !UIFocusUtility.IsGameplayShortcutBlocked && !ModalOpen && !rewardOpen && selected.HasValue) { selected = null; hovered = null; Render(); return; }
+            if (ModalOpen && UIFocusUtility.WasEscapePressed(this))
             {
                 cancelModal?.Invoke();
                 // Results require explicit Continue; ESC never acknowledges an operation.
@@ -414,13 +415,13 @@ namespace Game.Campaign
             CloseModal();
             cancelModal = onCancel;
             modalBackdrop.SetActive(true); window.SetActive(true); modalContent = (RectTransform)window.transform;
-            UIFocusUtility.SetOverlay(this, true); RefreshMap();
+            UIFocusUtility.SetModal(this, window, ModalBlock.Full); RefreshMap();
         }
         private void CloseModal()
         {
-            UIFocusUtility.SetOverlay(this, false);
             foreach (var window in new[] { confirmWindow, deckWindow, resultWindow, errorWindow }) window.SetActive(false);
             modalBackdrop.SetActive(false); modalContent = null; cancelModal = null; retryAction = null;
+            UIFocusUtility.SetModal(this, null);
         }
         private void CancelAttackConfirmation() { CloseModal(); RefreshMap(); }
         private void ConfirmAttack(int from, int target)

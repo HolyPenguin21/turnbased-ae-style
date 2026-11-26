@@ -155,7 +155,7 @@ namespace Game.EditorTests
             // Mirrors BattleEngine's post-combat ordering: roster reaches terminal state first,
             // then the still-visible hex publishes its final content before an empty shell is
             // unregistered and may remove the loser's vision.
-            enemy.Members.Clear();
+            enemy.ReplaceRoster(null);
             VisionSystem.NotifyContentChanged(hex);
 
             Assert.That(AiMapMemory.KnownEnemySightingAt(observer, hex).HasValue, Is.False);
@@ -179,7 +179,7 @@ namespace Game.EditorTests
             ArmyRegistry.Register(winningArmy);
 
             winningArmy.Members[0].HitPointsCurrent = 2;
-            losingArmy.Members.Clear();
+            losingArmy.ReplaceRoster(null);
 
             // BattleEngine.FinalizeEncounter intentionally publishes this while the empty losing
             // shell is still registered, so its owner has one last honest observation.

@@ -155,7 +155,7 @@ namespace Game.EditorTests
         [Test] public void InfrastructureFailureRefundsButPaidProductionLossAndSingleUseDoNot()
         {
             var a = Garrison(); a.IsGarrison = false;
-            var hero = new UnitData { Owner = owner, IsHero = true }; a.Members.Add(hero);
+            var hero = new UnitData { Owner = owner, IsHero = true }; a.AppendRosterMember(hero);
             using (MatchRestoreScope.Begin()) BuildingRegistry.Unregister(hex);
             string before = Snapshot();
             var failed = InfrastructureActions.TryFoundBaseOnMap(map,
@@ -260,7 +260,7 @@ namespace Game.EditorTests
         }
         [Test] public void ExtractionQuoteAndApplyUseSharedMarginalIncomeAndSpendBeforePublishing()
         {
-            var a = Garrison(); a.Members.Add(new UnitData { Owner = owner, IsHero = true, MoveMax = 4, MoveCurrent = 4 });
+            var a = Garrison(); a.AppendRosterMember(new UnitData { Owner = owner, IsHero = true, MoveMax = 4, MoveCurrent = 4 });
             using (MatchRestoreScope.Begin()) BuildingRegistry.Unregister(hex);
             var config = ScriptableObject.CreateInstance<GameConfig>();
             try
@@ -286,7 +286,7 @@ namespace Game.EditorTests
         public void DeploymentCapacityUsesAttachmentAdjustedCommander(int command, bool expected)
         {
             var a = Garrison(); a.IsGarrison = false;
-            a.Members.Add(new UnitData { Owner = owner }); a.Members.Add(new UnitData { Owner = owner });
+            a.AppendRosterMember(new UnitData { Owner = owner }); a.AppendRosterMember(new UnitData { Owner = owner });
             var card = Card(CardType.Hero); card.Definition.commandRating = command == 1 ? 5 : 1;
             card.Equipment = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.CommandRating, command, true);
             string before = Snapshot();
@@ -301,7 +301,7 @@ namespace Game.EditorTests
             owner.IsHuman = false;
             var a = Garrison();
             var hero = new UnitData { Owner = owner, IsHero = true, HitPointsCurrent = 1, IsHidden = true };
-            hero.Abilities.Add(UnitAbilities.Researcher); a.Members.Add(hero);
+            hero.Abilities.Add(UnitAbilities.Researcher); a.AppendRosterMember(hero);
             var b = BuildingRegistry.FindAt(hex); var lab = new FacilityData(); lab.Abilities.Add(UnitAbilities.Research);
             b.FacilitySlots[0] = lab;
             var blueprint = Card(CardType.Equipment).Definition;
@@ -412,7 +412,7 @@ namespace Game.EditorTests
             var a = Garrison();
             var hero = new UnitData { Owner = owner, IsHero = true, HitPointsCurrent = 3 };
             if (unitCollects) hero.Abilities.Add(UnitAbilities.CollectTech);
-            a.Members.Add(hero); root.ActionPoints = ap;
+            a.AppendRosterMember(hero); root.ActionPoints = ap;
             map.SetTerrainAt(hex, new TerrainTypeEntry { resourceYields = new ResourceYields { tech = 1 } });
             var holder = new GameObject("inactive callback presenter"); holder.SetActive(false);
             var selection = holder.AddComponent<HexSelectionController>();

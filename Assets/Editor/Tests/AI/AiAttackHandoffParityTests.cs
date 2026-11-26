@@ -248,7 +248,7 @@ namespace Game.EditorTests
                         Snapshot(support), Site(), allowCommandHandover: commandAllowed,
                         rosterAdmissible: admissible), Is.True,
                         "planning admits the same useful alternate roster as the handoff");
-                support.Members.Remove(fast);
+                support.RemoveRosterMember(fast);
                 Assert.That(GroundCombatReinforcement.PlanAttackHandoff(host, support, Site(), 0f,
                     false, out _, rosterAdmissible: admissible), Is.Null);
             }

@@ -32,18 +32,20 @@ namespace Game.UI
         private int page, selected = -1, deleting = -1;
         private List<int> slots = new List<int>();
         private UnityAction[] rowHandlers;
-        private GameObject previousSelection;
         public bool IsShowing { get; private set; }
         public event Action Closed;
         public event Action SlotsChanged;
 
         internal bool Show(GameConfig configuration, GameTurnController turnController, bool save)
         {
-            if (IsShowing || configuration == null || UIFocusUtility.HasOverlay) return false;
+            if (IsShowing || configuration == null || (UIFocusUtility.HasModal && !UIFocusUtility.IsTop(GameMenuPanelUI.Current))) return false;
             if (save && (turnController == null || !turnController.CanSaveMatch(out _))) return false;
             if (!HasBindings()) { Debug.LogError("Save/Load window has missing prefab bindings.", this); return false; }
-            application=MatchSaveApplication.ForScene(configuration,turnController);saving=save;
-            previousSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+            application=MatchSaveApplication.ForScene(configuration, turnController, scene =>
+            {
+                if (scene == SceneNames.Game) SceneLoadCurtain.Show(configuration.PickLoadingScreenImage());
+                UnityEngine.SceneManagement.SceneManager.LoadScene(scene);
+            });saving=save;
             page = 0; selected = deleting = -1; overwriteArmed = false; slots.Clear();
             deleteConfirmation.SetActive(false);
             contentGroup.interactable = contentGroup.blocksRaycasts = true;
@@ -53,7 +55,7 @@ namespace Game.UI
                 : "Choose a match to load. Current unsaved progress will be replaced.";
             IsShowing = true;
             gameObject.SetActive(true);
-            UIFocusUtility.SetOverlay(this, true);
+            UIFocusUtility.SetModal(this, gameObject, ModalBlock.Full, cancel);
             try { ReloadSlots(); Draw(); }
             catch (Exception ex) { slots.Clear(); Draw(); status.text = "Could not read save slots: " + ex.Message; }
             cancel.Select();
@@ -148,14 +150,14 @@ namespace Game.UI
             if (!IsShowing || deleting >= 0 || selected < 0 || !deleteButton.interactable) return;
             deleting = selected; overwriteArmed = false; Draw();
             deleteMessage.text = "Delete slot " + Number(deleting) + " and its saved match? This cannot be undone.";
-            contentGroup.interactable = contentGroup.blocksRaycasts = false;
-            deleteConfirmation.SetActive(true); cancelDeleteButton.Select();
+            deleteConfirmation.SetActive(true);
+            UIFocusUtility.SetNestedModal(this, deleteConfirmation, cancelDeleteButton);
         }
         private void CancelDelete()
         {
             if (deleting < 0) return;
             deleting = -1; deleteConfirmation.SetActive(false);
-            contentGroup.interactable = contentGroup.blocksRaycasts = true;
+            UIFocusUtility.SetNestedModal(this, null);
             deleteButton.Select();
         }
         private void ConfirmDelete()
@@ -209,7 +211,7 @@ namespace Game.UI
         }
         private void Update()
         {
-            if (!IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame) return;
+            if (!IsShowing || !UIFocusUtility.WasEscapePressed(this)) return;
             if (deleting >= 0) CancelDelete(); else Close();
         }
         public void Close() { if (IsShowing) gameObject.SetActive(false); }
@@ -226,10 +228,8 @@ namespace Game.UI
             bool wasShowing = IsShowing;
             IsShowing = false; selected = deleting = -1; overwriteArmed = false;
             if (!wasShowing) return;
-            UIFocusUtility.SetOverlay(this, false);
-            var selection = previousSelection != null ? previousSelection.GetComponent<Selectable>() : null;
-            if (selection != null && selection.isActiveAndEnabled && selection.IsInteractable()) selection.Select();
-            previousSelection = null;
+            UIFocusUtility.SetNestedModal(this, null);
+            UIFocusUtility.SetModal(this, null);
             Closed?.Invoke();
         }
     }

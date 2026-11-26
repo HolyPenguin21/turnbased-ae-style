@@ -1,43 +1,258 @@
+using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Shared by every global keyboard-polling system that must not fire while the player is
-    // typing into a text field (GameSetupController's Start-Game shortcut, GameTurnController's
-    // End-Turn shortcut, RtsCameraController's WASD pan) — none of those read input through the
-    // UI event system, so a focused TMP_InputField doesn't stop them on its own; each has to
-    // check this explicitly instead.
+    [Flags]
+    internal enum ModalBlock
+    {
+        Map = 1,
+        Camera = 2,
+        Hand = 4,
+        EndTurn = 8,
+        Overlay = 16,
+        Viewer = Map | EndTurn,
+        Decision = Viewer | Hand,
+        Full = Decision | Camera | Overlay
+    }
+
     public static class UIFocusUtility
     {
-        private static readonly System.Collections.Generic.HashSet<UnityEngine.Object> overlays = new System.Collections.Generic.HashSet<UnityEngine.Object>();
-        private static int blockedThroughFrame = -1;
-        public static event System.Action BlockingChanged;
-        public static bool HasOverlay { get { overlays.RemoveWhere(o => o == null); return overlays.Count > 0; } }
-        public static void SetOverlay(UnityEngine.Object owner, bool showing)
+        private sealed class Window
         {
-            bool changed = showing ? overlays.Add(owner) : overlays.Remove(owner);
-            if (!showing) blockedThroughFrame = Time.frameCount;
-            if (changed) BlockingChanged?.Invoke();
+            public MonoBehaviour Owner;
+            public GameObject Root;
+            public GameObject PreviousFocus;
+            public Selectable DefaultFocus;
+            public ModalBlock Blocks;
+            public bool Nested;
         }
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetOverlays() { overlays.Clear(); BlockingChanged = null; blockedThroughFrame = -1; }
-        public static bool IsGameplayInputBlocked => HasOverlay || blockedThroughFrame == Time.frameCount || GameMenuPanelUI.GameplayInputBlocked;
-        public static bool IsGameplayShortcutBlocked => IsGameplayInputBlocked || GameMenuPanelUI.OwnsKeyboardSelection;
+
+        private struct GroupState
+        {
+            public bool Interactable;
+            public bool BlocksRaycasts;
+        }
+
+        private static readonly List<Window> windows = new List<Window>();
+        private static readonly Dictionary<CanvasGroup, GroupState> suspended = new Dictionary<CanvasGroup, GroupState>();
+        private static int closedFrame = -1;
+
+        public static event Action BlockingChanged;
+        internal static uint InputGeneration { get; private set; }
+        private static Window Top => windows.Count == 0 ? null : windows[windows.Count - 1];
+        private static GameObject Selection => EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+
+        internal static bool ClosedThisFrame => closedFrame == Time.frameCount;
+        internal static bool HasModal { get { Prune(); return Top != null; } }
+        public static bool HasOverlay => Blocks(ModalBlock.Overlay);
+        public static bool IsGameplayInputBlocked => HasOverlay || ClosedThisFrame;
+        public static bool IsGameplayShortcutBlocked => HasModal || ClosedThisFrame || GameMenuPanelUI.OwnsKeyboardSelection;
+
+        internal static bool Blocks(ModalBlock capability)
+        {
+            Prune();
+            foreach (var window in windows)
+                if ((window.Blocks & capability) != 0) return true;
+            return false;
+        }
+
+        internal static bool Contains<T>() where T : MonoBehaviour
+        {
+            Prune();
+            foreach (var window in windows)
+                if (window.Owner is T) return true;
+            return false;
+        }
+
+        public static void SetOverlay(MonoBehaviour owner, bool showing)
+            => SetModal(owner, showing && owner != null ? owner.gameObject : null, ModalBlock.Full);
+
+        internal static void SetModal(MonoBehaviour owner, GameObject root,
+            ModalBlock blocks = ModalBlock.Decision, Selectable defaultFocus = null)
+            => SetWindow(owner, root, blocks, defaultFocus, nested: false);
+
+        internal static void SetNestedModal(MonoBehaviour owner, GameObject root, Selectable defaultFocus = null)
+            => SetWindow(owner, root, ModalBlock.Full, defaultFocus, nested: true);
+
+        private static void SetWindow(MonoBehaviour owner, GameObject root, ModalBlock blocks, Selectable focus, bool nested)
+        {
+            if (ReferenceEquals(owner, null)) return;
+            int index = windows.FindIndex(window => ReferenceEquals(owner, window.Owner) && window.Nested == nested);
+            if (owner == null || root == null || !owner.isActiveAndEnabled || !root.activeInHierarchy)
+            {
+                if (index < 0) return;
+                bool wasTop = windows[index] == Top;
+                var previous = Remove(index);
+                UpdateInput(wasTop, previous);
+                return;
+            }
+            if (index >= 0) return;
+
+            Prune();
+            windows.Add(new Window
+            {
+                Owner = owner, Root = root, PreviousFocus = Selection,
+                DefaultFocus = focus, Blocks = blocks, Nested = nested
+            });
+            UpdateInput(restoreFocus: true, preferred: null);
+        }
+
+        private static GameObject Remove(int index)
+        {
+            var window = windows[index];
+            if (index + 1 < windows.Count)
+            {
+                var next = windows[index + 1];
+                if (next.PreviousFocus == null || Contains(window.Root, next.PreviousFocus))
+                    next.PreviousFocus = window.PreviousFocus;
+            }
+            windows.RemoveAt(index);
+            closedFrame = Time.frameCount;
+            return window.PreviousFocus;
+        }
+
+        private static void Prune()
+        {
+            Window formerTop = Top;
+            GameObject previous = null;
+            bool removed = false;
+            for (int i = windows.Count - 1; i >= 0; i--)
+            {
+                var window = windows[i];
+                if (window.Owner != null && window.Owner.isActiveAndEnabled
+                    && window.Root != null && window.Root.activeInHierarchy) continue;
+                var focus = Remove(i);
+                if (window == formerTop || (removed && Contains(window.Root, previous))) previous = focus;
+                removed = true;
+            }
+            if (removed) UpdateInput(formerTop != Top, previous);
+        }
+
+        private static bool Contains(GameObject root, GameObject child)
+            => root != null && child != null && child.transform.IsChildOf(root.transform);
+
+        private static void UpdateInput(bool restoreFocus, GameObject preferred)
+        {
+            RestoreGroups();
+            var top = Top;
+            if (top != null)
+                foreach (var window in windows)
+                    if (window != top && !Contains(top.Root, window.Root))
+                        SuspendBranch(window.Root.transform, top.Root.transform);
+            InputGeneration++;
+            if (restoreFocus) Focus(preferred, top);
+            BlockingChanged?.Invoke();
+        }
+
+        private static void SuspendBranch(Transform branch, Transform top)
+        {
+            if (branch == top) return;
+            if (top.IsChildOf(branch))
+            {
+                foreach (Transform child in branch) SuspendBranch(child, top);
+                return;
+            }
+
+            var group = branch.GetComponent<CanvasGroup>();
+            if (group == null) group = branch.gameObject.AddComponent<CanvasGroup>();
+            Suspend(group);
+            // Some authored groups opt out of their parent's raycast and navigation settings.
+            foreach (var descendant in branch.GetComponentsInChildren<CanvasGroup>(true))
+                if (descendant.ignoreParentGroups) Suspend(descendant);
+        }
+
+        private static void Suspend(CanvasGroup group)
+        {
+            if (suspended.ContainsKey(group)) return;
+            suspended.Add(group, new GroupState { Interactable = group.interactable, BlocksRaycasts = group.blocksRaycasts });
+            group.interactable = false;
+            group.blocksRaycasts = false;
+        }
+
+        private static void RestoreGroups()
+        {
+            foreach (var pair in suspended)
+            {
+                if (pair.Key == null) continue;
+                pair.Key.interactable = pair.Value.Interactable;
+                pair.Key.blocksRaycasts = pair.Value.BlocksRaycasts;
+            }
+            suspended.Clear();
+        }
+
+        private static GameObject ValidFocus(GameObject target, Window window)
+        {
+            if (target == null || !target.activeInHierarchy || (window != null && !Contains(window.Root, target))) return null;
+            var control = target.GetComponent<Selectable>();
+            return control != null && control.isActiveAndEnabled && control.IsInteractable() ? target : null;
+        }
+
+        private static void Focus(GameObject preferred, Window window)
+        {
+            var events = EventSystem.current;
+            if (events == null || events.alreadySelecting) return;
+            var target = ValidFocus(preferred, window) ?? ValidFocus(Selection, window);
+            if (target == null && window != null)
+            {
+                target = ValidFocus(window.DefaultFocus != null ? window.DefaultFocus.gameObject : null, window);
+                if (target == null)
+                    foreach (var control in window.Root.GetComponentsInChildren<Selectable>())
+                    {
+                        target = ValidFocus(control.gameObject, window);
+                        if (target != null) break;
+                    }
+            }
+            if (events.currentSelectedGameObject != target) events.SetSelectedGameObject(target);
+        }
+
+        internal static void KeepFocusWithinModal()
+        {
+            Prune();
+            if (Top != null && Selection != null && !Contains(Top.Root, Selection)) Focus(null, Top);
+        }
+
+        internal static bool IsTop(MonoBehaviour owner)
+        {
+            Prune();
+            return Top != null && ReferenceEquals(Top.Owner, owner);
+        }
+
+        internal static bool CanHandleInput(MonoBehaviour owner) => IsTop(owner) && !ClosedThisFrame;
+        internal static bool WasEscapePressed(MonoBehaviour owner)
+            => CanHandleInput(owner) && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
+
         public static bool IsTextFieldFocused()
         {
-            GameObject selected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+            var selected = Selection;
             return selected != null && selected.GetComponent<TMP_InputField>() != null;
         }
+        public static bool WasSpacePressed()
+            => !IsGameplayShortcutBlocked && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame
+                && !IsTextFieldFocused();
 
-        // The "Space bar as a shortcut for whatever this popup's own primary button does" check,
-        // duplicated identically across half a dozen popups (PopupPanelUI,
-        // BattleArrangePopupUI, TurnOrderPopupUI, MainMenuController) before being pulled out
-        // here — each caller still owns its OWN guard conditions (is the popup showing, is the
-        // button interactable, etc.), only the actual key-poll was ever truly identical.
-        public static bool WasSpacePressed() => !IsGameplayShortcutBlocked && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
+        internal static bool WasSpacePressed(MonoBehaviour owner)
+            => CanHandleInput(owner) && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame
+                && !IsTextFieldFocused();
+
+        private static void OnSceneUnloaded(Scene scene) => Prune();
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetOverlays()
+        {
+            RestoreGroups();
+            windows.Clear();
+            BlockingChanged = null;
+            closedFrame = -1;
+            InputGeneration = 0;
+            SceneManager.sceneUnloaded -= OnSceneUnloaded;
+            SceneManager.sceneUnloaded += OnSceneUnloaded;
+        }
     }
 }
-

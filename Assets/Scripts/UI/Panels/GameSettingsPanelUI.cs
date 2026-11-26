@@ -25,6 +25,7 @@ namespace Game.UI
             if (tutorialHintsToggle != null) tutorialHintsToggle.onValueChanged.AddListener(OnTutorialHintsChanged);
             RefreshTutorialHints();
             if (backButton != null) backButton.onClick.AddListener(Close);
+            UIFocusUtility.SetModal(this, gameObject, ModalBlock.Full, masterVolumeSlider);
             var manager = GameAudioManager.Instance;
             if (manager == null) return;
             settings = manager.Settings;
@@ -58,8 +59,7 @@ namespace Game.UI
         private void OnTutorialHintsChanged(bool value) => TutorialHintProgress.Enabled = value;
         private void Update()
         {
-            if (GameMenuPanelUI.GameplayInputBlocked) return; // In-game Escape is owned by the menu stack.
-            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (UIFocusUtility.WasEscapePressed(this))
             {
                 GameAudioManager.Instance?.PlayClick(); Close();
             }
@@ -73,6 +73,7 @@ namespace Game.UI
         }
         private void OnDisable()
         {
+            UIFocusUtility.SetModal(this, null);
             TutorialHintProgress.Changed -= RefreshTutorialHints;
             if (tutorialHintsToggle != null) tutorialHintsToggle.onValueChanged.RemoveListener(OnTutorialHintsChanged);
             if (settings != null) { settings.Changed -= Refresh; settings.Save(); }

@@ -92,14 +92,14 @@ namespace Game.EditorTests
             Assert.That(UnitRepair.CanRepair(mechanic, army), Is.True);
             Assert.That(UnitRepair.ApCost(mechanic), Is.EqualTo(1));
             var cost = UnitRepair.ResourceCost(mechanic);
-            army.Members.RemoveAt(1);
+            army.RemoveRosterMember(army.Members[1]);
             Assert.That(UnitRepair.CanRepairAt(Field, _owner), Is.True);
             Assert.That(UnitRepair.ResourceCost(mechanic), Is.SameAs(cost));
         }
         [Test] public void TransferAndRelocationUseCurrentMembershipWithoutStaleHexState()
         {
             var mechanic = Unit(true); var first = Army(mechanic); var second = Army(Unit());
-            first.Members.Remove(mechanic); second.Members.Add(mechanic);
+            first.RemoveRosterMember(mechanic); second.AppendRosterMember(mechanic);
             Assert.That(UnitRepair.CanRepairAt(Field, _owner), Is.True);
             var next = new HexCoord(6, 2);
             Armies[Field].Remove(second); second.Hex = next; Armies[next] = new List<ArmyData> { second };
@@ -121,7 +121,7 @@ namespace Game.EditorTests
                 case "prisoner": target.IsPrisoner = true; break;
                 case "foreign": target.Owner = _enemy; break;
                 case "unregistered": Armies[Field].Remove(army); break;
-                case "removed": army.Members.Remove(target); break;
+                case "removed": army.RemoveRosterMember(target); break;
                 case "prison": army.IsPrison = true; break;
             }
             Assert.That(UnitRepair.CanRepair(target, army), Is.False);
@@ -151,7 +151,7 @@ namespace Game.EditorTests
             var mechanic = Unit(true); var army = Army(mechanic); var other = Army(Unit());
             var before = WorldAnalysis.ToArmySnapshot(army, _owner, true, 1, null);
             Assert.That(before.RepairSourceCount, Is.EqualTo(1));
-            army.Members.Remove(mechanic); other.Members.Add(mechanic);
+            army.RemoveRosterMember(mechanic); other.AppendRosterMember(mechanic);
             Assert.That(WorldAnalysis.ToArmySnapshot(army, _owner, true, 1, null).RepairSourceCount, Is.Zero);
             Assert.That(WorldAnalysis.ToArmySnapshot(other, _owner, true, 1, null).RepairSourceCount, Is.EqualTo(1));
             mechanic.HitPointsCurrent = 0;

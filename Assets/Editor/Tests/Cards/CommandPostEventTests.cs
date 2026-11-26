@@ -124,7 +124,7 @@ namespace Game.EditorTests
             var guard = new ArmyData { Owner = entry.GuardOwner, Hex = hex, Name = entry.GuardArmyName };
             guard.Members.Add(new UnitData { Owner = guard.Owner, HitPointsCurrent = 4, HitPointsMax = 4 });
             ArmyRegistry.Register(guard);
-            explorer.Members.Clear();
+            explorer.ReplaceRoster(null);
             var result = BattleEngine.FinalizeEncounter(new BattleState(hex, explorer, guard, new BattleGrid(), 123), selection);
             Assert.That(result.Survivor, Is.SameAs(guard));
             Assert.That(BattleEncounterCoordinator.ResolveContinuation(hex, guard).CanTriggerEvent, Is.False);

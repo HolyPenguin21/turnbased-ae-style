@@ -93,7 +93,7 @@ namespace Game.Map
             BuildingData existing = BuildingRegistry.FindAt(hex);
             if (existing != null && (existing.Owner != owner || !CanMergeIntoResourceSite(existing)))
             { reason = "This hex already has a building."; return false; }
-            if (!HexSelectionController.HasOwnHeroArmyAt(hex, owner))
+            if (!HasOwnHeroArmyAt(hex, owner))
             { reason = "Move one of your armies with a hero onto this hex."; return false; }
             if (BattleInitiator.FindEnemyAt(hex, owner) != null)
             { reason = "An enemy army controls this hex."; return false; }
@@ -203,9 +203,8 @@ namespace Game.Map
                     foreach (UnitData unit in unitsBefore)
                         army.MarkUnitActivationPaid(unit,
                             coverageBefore.TryGetValue(army, out var covered) && covered.Contains(unit));
-                    army.Members.Clear();
-                    if (rostersBefore.TryGetValue(army, out UnitData[] members))
-                        army.Members.AddRange(members);
+                    rostersBefore.TryGetValue(army, out UnitData[] members);
+                    army.ReplaceRoster(members);
                     army.RefreshTransport();
                 }
                 using (Game.Setup.MatchRestoreScope.Begin())
@@ -479,7 +478,8 @@ namespace Game.Map
         public static InfrastructureBuildOutcome TryBuildExtractionSite(HexSelectionController hexSelection,
             CardDefinition facilityDefinition, HexCoord hex, PlayerSetupData owner)
             => TryBuildExtractionSiteOnMap(hexSelection?.Map, hexSelection?.ExtractionConfig,
-                facilityDefinition, hex, owner, hexSelection);
+                facilityDefinition, hex, owner, hexSelection == null ? null : hexSelection.BindExtractionVisual,
+                hexSelection == null ? null : () => hexSelection.RestackArmiesOn(hex, null));
 
         public static bool CanBuildExtractionSite(HexMap map, IExtractionSiteRules config, CardDefinition definition,
             HexCoord hex, PlayerSetupData owner, out PaymentQuote quote, out string reason,
@@ -494,7 +494,10 @@ namespace Game.Map
             quote = new PaymentQuote(definition?.apCost ?? 0, definition?.resourceCost);
             reason = "Cannot build this resource facility here.";
             if (map == null || config == null || definition == null || definition.cardType != CardType.Facility
-                || owner == null || !map.CanEnter(hex) || !HexSelectionController.HasOwnHeroArmyAt(hex, owner)) return false;
+                || owner == null || !map.CanEnter(hex)) return false;
+            actor = ArmyRegistry.At(hex).Where(a => IsOwnedHeroArmy(a, owner))
+                .OrderBy(a => a.CurrentMovement).ThenBy(a => a.Id).FirstOrDefault();
+            if (actor == null) return false;
             building = BuildingRegistry.FindAt(hex);
             if (building != null && building.Owner != owner) return false;
             building = building ?? new BuildingData(totalFacilitySlots: 4)
@@ -521,13 +524,12 @@ namespace Game.Map
             if (slot < 0) { reason = $"No free facility slots in {building.Name}."; return false; }
             if (requireCurrentBudget && !quote.CanDebit(PlayerRootRegistry.FindFor(owner), out PaymentFailure failure))
             { reason = failure == PaymentFailure.ActionPoints ? $"Not enough AP to build {definition.displayName}." : $"Not enough resources to build {definition.displayName}."; return false; }
-            actor = ArmyRegistry.At(hex).Where(a => a.Owner == owner && a.Members.Any(m => m != null && m.IsHero))
-                .OrderBy(a => a.CurrentMovement).ThenBy(a => a.Id).FirstOrDefault();
             reason = null; return true;
         }
 
         public static InfrastructureBuildOutcome TryBuildExtractionSiteOnMap(HexMap map, IExtractionSiteRules config,
-            CardDefinition definition, HexCoord hex, PlayerSetupData owner, HexSelectionController presentation = null)
+            CardDefinition definition, HexCoord hex, PlayerSetupData owner,
+            Action<BuildingData> bindVisual = null, Action refreshVisual = null)
         {
             using var mutation = VisionSystem.BeginMutation();
             if (!PrepareExtraction(map, config, definition, hex, owner, out var building, out int slot,
@@ -539,18 +541,36 @@ namespace Game.Map
             // Prepare optional visuals before debit; a presentation failure cannot charge a failed action.
             if (newSite)
             {
-                try { presentation?.BindExtractionVisual(building); }
+                try { bindVisual?.Invoke(building); }
                 catch (Exception e) { return InfrastructureBuildOutcome.Fail("Could not display this resource site: " + e.Message); }
             }
             if (!quote.TryDebit(PlayerRootRegistry.FindFor(owner), out _, out _))
                 return InfrastructureBuildOutcome.Fail("The resource facility cost is no longer affordable.");
             building.FacilitySlots[slot] = facility;
             if (newSite) BuildingRegistry.Register(hex, building);
-            HexSelectionController.ApplyExtractionBuilderConsequences(actor);
+            ApplyExtractionBuilderConsequences(actor);
             StealthSystem.RunChecksForNewVisionSource(building, facility);
             VisionSystem.NotifyContentChanged(hex);
-            VisionSystem.PublishAfterMutation(() => presentation?.RestackArmiesOn(hex, null));
+            if (refreshVisual != null) VisionSystem.PublishAfterMutation(refreshVisual);
             return InfrastructureBuildOutcome.Success(building, slot, quote.Ap);
+        }
+
+        public static bool HasOwnHeroArmyAt(HexCoord hex, PlayerSetupData player)
+            => ArmyRegistry.At(hex).Any(army => IsOwnedHeroArmy(army, player));
+
+        private static bool IsOwnedHeroArmy(ArmyData army, PlayerSetupData player)
+            => army.Owner == player && army.Members.Exists(member => member != null && member.IsHero);
+
+        private static void ApplyExtractionBuilderConsequences(ArmyData actingHeroArmy)
+        {
+            if (actingHeroArmy == null)
+                return;
+            foreach (UnitData member in actingHeroArmy.Members)
+                if (member != null)
+                    member.MoveCurrent = 0;
+            foreach (UnitData member in actingHeroArmy.Members)
+                if (member != null && member.IsHero)
+                    StealthSystem.ExitStealth(member);
         }
 
         private static int[] SnapshotResources(PlayerRoot root)

@@ -70,16 +70,16 @@ namespace Game.EditorTests
             var other = new UnitData { Name = "operator", IsHero = true };
             var source = new ArmyData();
             var destination = new ArmyData();
-            source.Members.Add(hero);
-            source.Members.Add(other);
+            source.AppendRosterMember(hero);
+            source.AppendRosterMember(other);
             string heroKey = GenerationSource.StableHeroKey(hero);
             string productionKey = GenerationSource.StableGeneratorUseKey(
                 ResearchProductionMode.Production, hero);
 
-            source.Members.Remove(hero);
+            source.RemoveRosterMember(hero);
             destination.Members.Add(hero);
-            source.Members.Remove(other);
-            source.Members.Add(other);
+            source.RemoveRosterMember(other);
+            source.AppendRosterMember(other);
 
             Assert.That(GenerationSource.StableHeroKey(hero), Is.EqualTo(heroKey),
                 "Moving an existing operator into another army must not reset its attempt identity");

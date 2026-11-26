@@ -721,7 +721,7 @@ namespace Game.EditorTests
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn });
             Assert.That(ActiveDefenceProvisioner.Provision(owner, world.Root, world.Context, session, funded).Success, Is.False);
             StrategicResourceReservationLedger.ClearAll();
-            enemyArmy.Members.RemoveRange(2, enemyArmy.Members.Count - 2);
+            enemyArmy.ReplaceRoster(enemyArmy.Members.Take(2).ToArray());
             Observe(enemyArmy);
             Assert.That(ActiveDefenceProvisioner.Provision(owner, world.Root, world.Context, session, funded).Success, Is.False,
                 "the old funded snapshot cannot justify a now-useless missile");

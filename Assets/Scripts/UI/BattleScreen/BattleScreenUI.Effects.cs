@@ -1,3 +1,4 @@
+using Game.Presentation;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -181,6 +182,7 @@ namespace Game.UI
         }
         private void OnDisable()
         {
+            UIFocusUtility.SetModal(this, null);
             CancelAiArrangement();
             CancelMovePresentation();
             CancelAttackPresentation();

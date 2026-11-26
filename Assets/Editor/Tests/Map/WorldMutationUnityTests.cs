@@ -47,7 +47,7 @@ namespace Game.EditorTests
             var hand = handObject.AddComponent<CardHandUI>(); Bind(hand, "startingDeckCatalog", decks);
             Bind(selection, "map", map); Bind(selection, "gameConfig", config); Bind(selection, "cardHandUI", hand);
             hero = new UnitData { Owner = owner, IsHero = true, CommandRating = 12, HitPointsCurrent = 4, MoveMax = 3, MoveCurrent = 3 };
-            source = new ArmyData { Owner = owner, Hex = hex }; source.Members.Add(hero); ArmyRegistry.Register(source);
+            source = new ArmyData { Owner = owner, Hex = hex }; source.AppendRosterMember(hero); ArmyRegistry.Register(source);
         }
         [TearDown] public void TearDown()
         {
@@ -154,7 +154,7 @@ namespace Game.EditorTests
             var carrier = new UnitData { Owner = owner, HitPointsCurrent = 4, AirfieldCapacity = 2 };
             var remote = new ArmyData { Owner = owner, Hex = new HexCoord(2, 1) }; remote.Members.Add(carrier); ArmyRegistry.Register(remote);
             var hangar = carrier.CarrierAirfield; var deck = carrier.CarrierFlightDeck;
-            var cargo = new UnitData { Owner = owner, IsAviation = true }; hangar.Members.Add(cargo);
+            var cargo = new UnitData { Owner = owner, IsAviation = true }; hangar.AppendRosterMember(cargo);
             bool transferred = false;
             var result = InfrastructureActions.TryFoundBase(selection, BaseCard(), hex, owner, 2, new ResourceCost(), building =>
             {
@@ -368,7 +368,7 @@ namespace Game.EditorTests
         [Test] public void DeclinedFoundingRestoresRetiredCarrierWingController()
         {
             var carrier = new UnitData { Owner = owner, HitPointsCurrent = 4, AirfieldCapacity = 2 };
-            source.Members.Add(carrier); AviationActions.EnsureCarrierContainers(source);
+            source.AppendRosterMember(carrier); AviationActions.EnsureCarrierContainers(source);
             var plane = new UnitData { Owner = owner, IsAviation = true, HitPointsCurrent = 3, SortieLaunchPaid = true };
             var wing = new ArmyData { Owner = owner, Hex = hex, IsAirArmy = true, LaunchCarrier = carrier };
             wing.Members.Add(plane); ArmyRegistry.Register(wing);

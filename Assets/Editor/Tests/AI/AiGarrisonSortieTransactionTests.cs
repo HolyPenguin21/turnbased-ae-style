@@ -149,8 +149,8 @@ namespace Game.EditorTests
             switch (change)
             {
                 case "ap": root.ActionPoints = 0; break;
-                case "body": donor.Members.Remove(strong); break;
-                case "cover": donor.Members.Remove(cover); break;
+                case "body": donor.RemoveRosterMember(strong); break;
+                case "cover": donor.RemoveRosterMember(cover); break;
                 case "shell": shell.Members.Add(Body(owner, 2, 2, 5)); break;
                 case "activated": shell.MarkActivated(); break;
                 case "moved": ArmyRegistry.MoveArmy(enemy, new HexCoord(42, 40)); break;
@@ -190,9 +190,9 @@ namespace Game.EditorTests
                 actor.Hex, actor.Members, out _), Is.True);
             switch (change)
             {
-                case "body": actor.Members.Clear(); break;
+                case "body": actor.ReplaceRoster(null); break;
                 case "added": actor.Members.Add(Body(owner, 1, 1, 5)); break;
-                case "cover": donor.Members.Remove(cover); break;
+                case "cover": donor.RemoveRosterMember(cover); break;
                 case "moved": ArmyRegistry.MoveArmy(enemy, new HexCoord(42, 40)); break;
                 case "cooccupant": var other = new ArmyData { Owner = enemyOwner, Hex = Goal };
                     other.Members.Add(Body(enemyOwner, 100, 100, 200)); ArmyRegistry.Register(other); break;
@@ -207,7 +207,7 @@ namespace Game.EditorTests
         [Test] public void DomainBatchCreation_RejectsOversizeRosterBeforeCreatingOrCharging()
         {
             var roster = donor.Members.ToList();
-            roster.Add(Body(owner, 2, 2, 5)); donor.Members.Add(roster.Last());
+            roster.Add(Body(owner, 2, 2, 5)); donor.AppendRosterMember(roster.Last());
             int before = root.ActionPoints, armies = ArmyRegistry.AllForOwner(owner).Count();
             Assert.That(ArmyActions.CreateArmyWithMembers(owner, Home, cards, donor, roster, selector, out _), Is.Null);
             Assert.That(root.ActionPoints, Is.EqualTo(before)); Assert.That(donor.Members, Is.EqualTo(roster));

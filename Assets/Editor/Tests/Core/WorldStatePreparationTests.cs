@@ -20,7 +20,7 @@ namespace Game.EditorTests
         [Test] public void ActivationRestoreRetainsPaidDepartedUnitAndRejectsMissingReferenceAtomically()
         {
             var army = new ArmyData(); var departed = new UnitData();
-            army.Members.Add(departed); army.MarkActivated(); army.Members.Clear();
+            army.Members.Add(departed); army.MarkActivated(); army.ReplaceRoster(null);
             UnitData included = null;
             var state = army.CaptureActivationState(unit => included = unit); army.ResetActivationForNewTurn();
             Assert.That(included, Is.SameAs(departed), "An entity codec must discover paid units even after they departed.");
@@ -238,7 +238,7 @@ namespace Game.EditorTests
             { army.Members.Add(new UnitData()); ArmyRegistry.Register(army); }
             DelayedBattleRegistry.Add(new PendingBattle { Hex = firstHex, Participants = new List<ArmyData> { attacker, removed } });
             DelayedBattleRegistry.Add(new PendingBattle { Hex = secondHex, Participants = new List<ArmyData> { otherAttacker, otherDefender } });
-            removed.Members.Clear(); ArmyRegistry.Unregister(removed);
+            removed.ReplaceRoster(null); ArmyRegistry.Unregister(removed);
 
             var retained = new Dictionary<int, ArmyData>();
             var state = DelayedBattleRegistry.CaptureState(army => retained.Add(army.Id, army));

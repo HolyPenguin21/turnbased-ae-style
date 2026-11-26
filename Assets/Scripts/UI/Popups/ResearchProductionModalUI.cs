@@ -139,6 +139,7 @@ namespace Game.UI
                 // Draw order on this project's single shared Canvas is sibling order — force to
                 // the end so this renders over whatever else is up, same as ArmyViewerModalUI.
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
             }
             if (titleText != null)
                 titleText.text = mode == ResearchProductionMode.Research ? "Research" : "Production";
@@ -161,6 +162,7 @@ namespace Game.UI
             bool wasShowing = IsShowing;
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+                UIFocusUtility.SetModal(this, null);
             ClearGrid();
 
             _hero = null;
@@ -179,8 +181,7 @@ namespace Game.UI
         // Research/Production Challenge is running (_busy).
         private void Update()
         {
-            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
-            if (_busy || !IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (_busy || !IsShowing || !UIFocusUtility.WasEscapePressed(this))
                 return;
             Hide();
         }
@@ -255,7 +256,7 @@ namespace Game.UI
         private void RefreshGrid()
         {
             ClearGrid();
-            if (gridContainer == null || gameConfig == null || gameConfig.armyUnitCardPrefab == null)
+            if (gridContainer == null || gameConfig == null || (gameConfig.armyUnitCardPrefab as ArmyUnitCardUI) == null)
                 return;
 
             int start = _page * PageSize;
@@ -263,7 +264,7 @@ namespace Game.UI
             for (int i = start; i < end; i++)
             {
                 CardDefinition card = _cards[i];
-                ArmyUnitCardUI view = Instantiate(gameConfig.armyUnitCardPrefab, gridContainer);
+                ArmyUnitCardUI view = Instantiate((gameConfig.armyUnitCardPrefab as ArmyUnitCardUI), gridContainer);
                 Game.Audio.SceneUIAudioBinder.BindCreatedRoot(view);
                 view.SetupPreview(card, gameConfig, OnCardClicked);
                 view.SetSlot(SlotPosition(i - start) + FitToCell(view), animated: false);

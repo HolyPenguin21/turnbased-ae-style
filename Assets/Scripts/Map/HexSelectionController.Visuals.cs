@@ -113,13 +113,19 @@ namespace Game.Map
             if (source?.Controller?.Visual == null
                 || !HumanVisualMemory.TryGetArmySighting(viewer, source.Id, out HumanVisualMemory.ArmySighting sighting))
                 return;
+            UpdateRememberedArmyVisual(viewer, sighting, source.Controller.Visual);
+        }
+
+        private RememberedArmyVisual UpdateRememberedArmyVisual(PlayerSetupData viewer,
+            HumanVisualMemory.ArmySighting sighting, MapObjectVisual appearance)
+        {
             HexCoord hex = sighting.Hex;
             if (!_rememberedArmyVisuals.TryGetValue(viewer, out Dictionary<int, RememberedArmyVisual> visuals))
             {
                 visuals = new Dictionary<int, RememberedArmyVisual>();
                 _rememberedArmyVisuals[viewer] = visuals;
             }
-            bool alreadyRemembered = visuals.TryGetValue(source.Id, out RememberedArmyVisual remembered);
+            bool alreadyRemembered = visuals.TryGetValue(sighting.SourceArmyId, out RememberedArmyVisual remembered);
             if (alreadyRemembered && remembered != null && !remembered.Hex.Equals(hex))
             {
                 HexCoord vacatedHex = remembered.Hex;
@@ -132,22 +138,23 @@ namespace Game.Map
             {
                 MapObjectVisual visual;
                 using (new Game.Core.ProfileScope("Map/Instantiate.RememberedArmy"))
-                    visual = source.Controller.Visual.CreateFrozenSnapshot(transform);
+                    visual = appearance.CreateFrozenSnapshot(transform);
                 remembered = new RememberedArmyVisual { Visual = visual };
-                visuals[source.Id] = remembered;
+                visuals[sighting.SourceArmyId] = remembered;
             }
             remembered.Hex = hex;
             remembered.Observation = sighting.Observed;
             remembered.Snapshot = sighting.Army;
-            remembered.Visual.transform.rotation = source.Controller.transform.rotation;
-            remembered.Visual.transform.localScale = source.Controller.transform.localScale;
-            remembered.Visual.CopyAppearanceFrom(source.Controller.Visual);
+            remembered.Visual.transform.rotation = appearance.transform.rotation;
+            remembered.Visual.transform.localScale = appearance.transform.localScale;
+            remembered.Visual.CopyAppearanceFrom(appearance);
             remembered.Visual.SetVisible(false);
             AddRememberedArmyToHexIndex(viewer, remembered);
             // Position last, after the hex index is up to date — see ReapplyRememberedLayout's
             // own comment for why a remembered building+army pair is safe to lay out for real
             // instead of collapsing to centre (per the project owner's own 2026-08-26 follow-up).
             ReapplyRememberedLayout(viewer, hex);
+            return remembered;
         }
 
         // Computes the SAME per-owner offset layout the live map uses (HexObjectLayout), but from

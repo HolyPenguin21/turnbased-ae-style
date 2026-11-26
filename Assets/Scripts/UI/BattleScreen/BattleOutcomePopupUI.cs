@@ -39,7 +39,7 @@ namespace Game.UI
         // already used by BattleArrangePopupUI/BattleAttackPopupUI's own Result state.
         private void Update()
         {
-            if (IsShowing && UIFocusUtility.WasSpacePressed())
+            if (IsShowing && UIFocusUtility.WasSpacePressed(this))
             {
                 Game.Audio.GameAudioManager.Instance?.PlayClick();
                 OnOkClicked();
@@ -60,6 +60,7 @@ namespace Game.UI
             {
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot, ModalBlock.Decision);
             }
             if (messageText != null)
                 messageText.text = title;
@@ -98,6 +99,7 @@ namespace Game.UI
             }
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+                UIFocusUtility.SetModal(this, null);
         }
     }
 }

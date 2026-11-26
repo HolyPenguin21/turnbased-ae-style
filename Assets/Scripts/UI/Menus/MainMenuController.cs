@@ -30,7 +30,6 @@ namespace Game.UI
         [SerializeField] private Button campaignOverwriteCancelButton;
         [SerializeField] private Button continueCampaignButton;
         [SerializeField] private MatchSaveSlotsUI saveSlots;
-        private GameObject campaignPreviousSelection;
         private Game.Players.Faction campaignPendingFaction;
         private void Awake()
         {
@@ -120,7 +119,8 @@ namespace Game.UI
 
         private void Update()
         {
-            if (campaignRoot != null && campaignRoot.activeSelf && UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame)
+            UIFocusUtility.KeepFocusWithinModal();
+            if (campaignRoot != null && campaignRoot.activeSelf && UIFocusUtility.WasEscapePressed(this))
             { CloseCampaignSetup(); return; }
             // Guarded by mainMenuPanel's own active state — this component isn't disabled
             // when the setup screen takes over, so Space would otherwise keep re-triggering
@@ -144,9 +144,8 @@ namespace Game.UI
         public void OnNewCampaignClicked()
         {
             if (campaignRoot == null || campaignRoot.activeSelf) return;
-            campaignPreviousSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             campaignRoot.SetActive(true);
-            UIFocusUtility.SetOverlay(this, true);
+            UIFocusUtility.SetModal(this, campaignRoot, ModalBlock.Full);
             ShowCampaignFactions();
         }
         private void ShowCampaignFactions()
@@ -205,10 +204,7 @@ namespace Game.UI
         private void CloseCampaignSetup()
         {
             if (campaignRoot == null || !campaignRoot.activeSelf) return;
-            UIFocusUtility.SetOverlay(this, false); campaignRoot.SetActive(false);
-            if (EventSystem.current != null && campaignPreviousSelection != null && campaignPreviousSelection.activeInHierarchy)
-                EventSystem.current.SetSelectedGameObject(campaignPreviousSelection);
-            campaignPreviousSelection = null;
+            campaignRoot.SetActive(false); UIFocusUtility.SetModal(this, null);
         }
         public void OnContinueCampaignClicked()
         {

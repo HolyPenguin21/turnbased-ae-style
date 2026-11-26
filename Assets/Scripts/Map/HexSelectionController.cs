@@ -922,7 +922,7 @@ namespace Game.Map
                         () => TryBuildExtractionFacility(captured, coord, human), captured));
                 }
             }
-            infoPanel?.SetResourceActions(actions, gameConfig != null ? gameConfig.resourceActionButtonPrefab : null);
+            infoPanel?.SetResourceActions(actions, gameConfig != null ? gameConfig.resourceActionButtonPrefab as ResourceActionButtonUI : null);
         }
 
         // Eligibility (ResearchProductionSystem.IsEligible: on the human's own turn, an OWN

@@ -234,6 +234,7 @@ namespace Game.UI
             {
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
+                UIFocusUtility.SetModal(this, panelRoot);
             }
             VisibilityChanged?.Invoke();
             if (generation != _presentationGeneration) return;

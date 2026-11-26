@@ -452,7 +452,7 @@ namespace Game.EditorTests
             ArmyData wing = Wing(new HexCoord(1, 0), Plane(1, 1));
             AirSortieRegistry.Add(_owner, new AirSortie { Army = wing, LandingHex = home });
             Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(1));
-            wing.Members.Clear();
+            wing.ReplaceRoster(null);
             Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(2));
             wing.AddMemberSorted(Plane(1, 1));
             AirSortieRegistry.Clear();
@@ -1066,7 +1066,7 @@ namespace Game.EditorTests
             {
                 ArmyData field = Airfield(default, 2);
                 UnitData aircraft = Plane(1, 1);
-                field.Members.Add(aircraft);
+                field.AppendRosterMember(aircraft);
                 var snap = new WorldSnapshot { Observer = _owner, Known = new KnownSnapshot {
                     AirSightings = System.Array.Empty<AiMapMemory.KnownAirSighting>() } };
                 var request = new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(7),
@@ -1874,7 +1874,7 @@ namespace Game.EditorTests
                 missile.Abilities.Add(UnitAbilities.SingleUse);
                 missile.MoveMax = missile.MoveCurrent = 4;
                 missile.TurnsWithoutRefuel = 1;
-                Airfield(default, 1).Members.Add(missile);
+                Airfield(default, 1).AppendRosterMember(missile);
                 Airfield(new HexCoord(8, 0), 1);
                 var stop = AviationRebasePlanner.DeliveryStops(default, new[] { missile }, map, _owner)
                     .Single(s => s.Hex.Equals(new HexCoord(8, 0)));
@@ -1900,7 +1900,7 @@ namespace Game.EditorTests
                 missile.Abilities.Add(UnitAbilities.SingleUse);
                 missile.MoveMax = missile.MoveCurrent = 4;
                 missile.TurnsWithoutRefuel = endurance;
-                Airfield(default, 1).Members.Add(missile);
+                Airfield(default, 1).AppendRosterMember(missile);
                 Airfield(new HexCoord(4, 0), 1);
                 UnitData carrier = new UnitData { Owner = _owner, AirfieldCapacity = 1,
                     HitPointsMax = 10, HitPointsCurrent = 10 };

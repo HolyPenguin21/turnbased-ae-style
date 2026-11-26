@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using Game.Presentation;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -39,6 +40,7 @@ public static class GameAssetCatalogBuilder
         // Reward prefabs live with the other UI prefabs; keys keep their old Prefabs/Rewards names.
         ("Assets/Prefabs/UI/Cards/Card_Reward.prefab", CollectionRewardUI.RewardCardKey),
         ("Assets/Prefabs/UI/Panels/CollectionRewards.prefab", CollectionRewardUI.RewardPanelKey),
+        ("Assets/Prefabs/UI/Panels/CollectionMessageDialog.prefab", CollectionMessageUI.MessageDialogKey),
         ("Assets/Prefabs/UI/Panels/RewardDialog.prefab", CollectionMessageUI.RewardDialogKey),
     };
 

@@ -39080,6 +39080,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 269af0fb2e7bd089178670f8a6f0ca75, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BattleScreenUI
+  battleHand: {fileID: 8880000000000000090}
   panelRoot: {fileID: 8880000000000000031}
   gameConfig: {fileID: 11400000, guid: 7eb9ac8d630ddb848b7ffe51f03f4b75, type: 2}
   startingDeckCatalog: {fileID: 11400000, guid: 6ae207ae03ca453cae0b8ec5f668372d, type: 2}
@@ -46692,6 +46693,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3392c314b64b356ec07b980367619b09, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BattleAttackPopupUI
+  _tacticInfoPopup: {fileID: 6660000000000040004}
   tacticalCardInput: {fileID: 1266070869}
   currentResultText: {fileID: 449339845}
   panelRoot: {fileID: 8880000000000000180}

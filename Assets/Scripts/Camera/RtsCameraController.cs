@@ -55,6 +55,7 @@ namespace Game.Cameras
         private Vector3 _groundTarget;
         private Vector3 _forward;
         private Coroutine _panRoutine;
+        private uint _panGeneration, _modalInputGeneration;
         private bool _panningEnabled = true;
         private bool _isDragging;
         // The ground-plane point that was under the cursor when the middle-mouse drag started —
@@ -108,10 +109,18 @@ namespace Game.Cameras
         // has arrived, instead of at the same time it starts moving.
         public void PanTo(Vector3 worldPosition, float duration = 1.5f, Action onComplete = null)
         {
+            CancelPan();
+            if (!isActiveAndEnabled) return;
             InitializeForMatch();
-            if (_panRoutine != null)
-                StopCoroutine(_panRoutine);
-            _panRoutine = StartCoroutine(PanRoutine(worldPosition, duration, onComplete));
+            var target = new Vector3(worldPosition.x, 0f, worldPosition.z);
+            if (!(duration > 0f))
+            {
+                _groundTarget = target;
+                ApplyPosition();
+                onComplete?.Invoke();
+                return;
+            }
+            _panRoutine = StartCoroutine(PanRoutine(target, duration, _panGeneration, onComplete));
         }
 
         // Player zoom setting and the zoom-out limit, for scripted framing (setup intro).
@@ -123,21 +132,27 @@ namespace Game.Cameras
         public void SetFraming(Vector3 worldPosition, float size)
         {
             InitializeForMatch();
-            if (_panRoutine != null)
-            {
-                StopCoroutine(_panRoutine);
-                _panRoutine = null;
-            }
+            CancelPan();
             _groundTarget = new Vector3(worldPosition.x, 0f, worldPosition.z);
             if (_camera != null)
                 _camera.orthographicSize = size;
             ApplyPosition();
         }
 
-        private IEnumerator PanRoutine(Vector3 worldPosition, float duration, Action onComplete)
+        internal void CancelPan()
+        {
+            _panGeneration++;
+            _isDragging = false;
+            if (_panRoutine == null) return;
+            StopCoroutine(_panRoutine);
+            _panRoutine = null;
+        }
+
+        private void OnDisable() => CancelPan();
+
+        private IEnumerator PanRoutine(Vector3 target, float duration, uint generation, Action onComplete)
         {
             Vector3 start = _groundTarget;
-            Vector3 target = new Vector3(worldPosition.x, 0f, worldPosition.z);
             float elapsed = 0f;
 
             while (elapsed < duration)
@@ -149,6 +164,7 @@ namespace Game.Cameras
                 yield return null;
             }
 
+            if (generation != _panGeneration) yield break;
             _groundTarget = target;
             ApplyPosition();
             _panRoutine = null;
@@ -157,7 +173,14 @@ namespace Game.Cameras
 
         private void Update()
         {
-            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) { _isDragging = false; return; }
+            uint generation = UIFocusUtility.InputGeneration;
+            if (_modalInputGeneration != generation)
+            {
+                _modalInputGeneration = generation;
+                _isDragging = false;
+            }
+            if (UIFocusUtility.ClosedThisFrame || UIFocusUtility.Blocks(ModalBlock.Camera))
+            { _isDragging = false; return; }
             if (_panRoutine != null)
                 return;
 
