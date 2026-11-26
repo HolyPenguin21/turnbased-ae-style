@@ -57,17 +57,13 @@ Scene-stage failure uses the existing partial-world cleanup and returns to Main 
 All commands accept the existing external .NET/NUnit cache; no Unity editor was installed in this environment.
 
 ```sh
+# .NET SDK 8 (e.g. DOTNET=C:/dotnet8/dotnet.exe on the dev machine).
 export DOTNET=/path/to/dotnet
 export DOTNET_BIN="$DOTNET"
 export NUGET_PACKAGES=/path/to/nuget/cache
 python Tools/match-save-verify/run-files.py
-python Tools/match-save-verify/audit-world/native-run.py
-python Tools/match-save-verify/visual-role-audit/run.py
 python Tools/match-save-verify/integration-run.py
 python Tools/save-preparation-verify/ai/run.py
-python Tools/save-preparation-verify/hand/run.py
-python Tools/save-preparation-verify/world/run.py
-python Tools/save-preparation-verify/presentation/run.py
 python Tools/collection-verify/run.py
 python -m unittest discover -s Tools/save-preparation-verify -p 'test_*.py'
 python Tools/save-preparation-verify/run.py --binding --base <immutable-baseline-commit> --packages "$NUGET_PACKAGES"

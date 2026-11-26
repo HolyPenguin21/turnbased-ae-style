@@ -75,7 +75,7 @@ def main():
         out = compile(name,[HERE/(name+'.cs'),*[ROOT/'Assets/Scripts'/p for p in source]])
         subprocess.run([str(dotnet),str(out)],check=True)
     roslyn = sdk/'Roslyn/bincore'
-    out = compile('SyntaxChecks',[ROOT/'Tools/responsive-ui-verify/SyntaxChecks.cs'], refs+[roslyn/'Microsoft.CodeAnalysis.dll',roslyn/'Microsoft.CodeAnalysis.CSharp.dll'])
+    out = compile('SyntaxChecks',[HERE/'SyntaxChecks.cs'], refs+[roslyn/'Microsoft.CodeAnalysis.dll',roslyn/'Microsoft.CodeAnalysis.CSharp.dll'])
     for name in ['Microsoft.CodeAnalysis.dll','Microsoft.CodeAnalysis.CSharp.dll']:shutil.copy2(roslyn/name,work/name)
     subprocess.run([str(dotnet),str(out),str(ROOT/'Assets')],check=True)
     if args.binding:

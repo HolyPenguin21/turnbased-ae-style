@@ -15,7 +15,7 @@ The harness runs `Assets/Editor/Tests/Cards/LibraryRewardReceiptTests.cs` with r
 profile writes, reads, backup recovery, migration, reward selection and receipt replay.
 `Adapters.cs` supplies only Unity objects/logging and minimal card/catalog/player dependency
 surfaces for these transaction tests; it does not replace receipt or collection logic.
-The JSON adapter is shared with `Tools/campaign-verify/PortableJson.cs`.
+The JSON adapter is `PortableJson.cs` (formerly shared with the removed campaign-verify).
 
 This is not a full project compile. Native Unity serialization, actual catalog resolution,
 scene objects, the hand/UI and the `UnityScene` replay case in `LibraryEventTests.cs`

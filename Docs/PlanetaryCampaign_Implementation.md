@@ -204,7 +204,7 @@ Vessels 136.05 / 140.99, Ashen 172.34 / 172.29, Concord 176.86 / 180.27.
 
 Переносимый запуск использует управляемые vector/JSON/Mathf адаптеры **только в
 копии источников вне Assets**. Файловые операции реальные. Это не проверка native
-JsonUtility или рендера Unity. В Tools/campaign-verify/README.md описаны границы.
+JsonUtility или рендера Unity. Переносимый раннер `Tools/campaign-verify` удалён 2026-11-26: те же тесты (CampaignSystemTests) идут в Unity EditMode.
 
 Попытка полного NUnitLite-прогона исходной ревизии на CoreCLR остановилась при
 загрузке Unity типов (`Internal call method with non_NULL RVA`): тесты не запускались.
@@ -293,11 +293,4 @@ MatchLoadout → обычный мир Game. Из тактического ми�
 - `Assets/Scripts/UI/Menus/MainMenuController.cs`
 - `Docs/PlanetaryCampaign_Implementation.md`
 - `ProjectSettings/EditorBuildSettings.asset`
-- `Tools/campaign-verify/Experiments.cs`
-- `Tools/campaign-verify/ExtraStubs.cs`
-- `Tools/campaign-verify/PortableJson.cs`
-- `Tools/campaign-verify/PortableVector.cs`
-- `Tools/campaign-verify/README.md`
-- `Tools/campaign-verify/TestRunner.cs`
-- `Tools/campaign-verify/extract_decks.py`
-- `Tools/campaign-verify/run.py`
+- `Tools/campaign-verify/*` (удалён 2026-11-26; `PortableJson.cs` перенесён в `Tools/collection-verify/`)

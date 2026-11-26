@@ -49,17 +49,6 @@ Full Unity 6000.5.4f1 EditMode, real Game/MainMenu startup and UI, asset-manifes
 sprites/materials/flag frames, fog border, normal new game and stripped-player builds have not
 been executed by these managed tools. See `docs/match-save-load.md` for the remaining editor checks.
 
-Bottom-up audit runners:
-
-```sh
-python Tools/match-save-verify/audit-world/native-run.py
-python Tools/match-save-verify/visual-role-audit/run.py
-```
-
-The first uses full runtime sources and actual
-AntiAirRules to check ability ordering for units/buildings/facilities; its name denotes the
-runtime-reference runner, not execution in Unity. The second runs actual frozen renderer
-role capture/import and the subsequent real CopyAppearanceFrom, with engine-only component
-surfaces. Remaining native checks: `docs/match-save-load.md`.
-
 Removed 2026-11-11: `Tools/save-preparation-verify/integration/`, `presentation-codec/`, `Tools/match-save-verify/world/run.py` and `audit-world/run.py` no longer compiled after package 4 (stale source list). Their behavior is covered by the EditMode fixtures (MatchRestoreIntegrationTests, MatchSaveIntegrationTests, MatchPresentationCodecTests).
+
+Removed 2026-11-26: `audit-world/` (its anti-air ability order check is the EditMode test `MatchWorldCodecTests.JsonRoundTripKeepsAntiAirAbilityOrder`) and `visual-role-audit/` (covered by `MatchPresentationCodecTests`); both no longer compiled against the current runtime.

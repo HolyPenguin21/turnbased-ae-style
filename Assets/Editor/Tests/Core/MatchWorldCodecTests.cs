@@ -100,6 +100,40 @@ namespace Game.EditorTests
             Assert.That(new[] { restored.CombatRecord.BattlesSurvived, restored.CombatRecord.DamageDealt,
                 restored.CombatRecord.DamageTaken, restored.CombatRecord.Kills }, Is.EqualTo(new[] { 3, 11, 6, 2 }));
         }
+        // Anti-air reads the FIRST AA ability (AntiAirRules.TryGetRadius): a save must keep the
+        // ability order of a unit, a building and its facility.
+        [Test] public void JsonRoundTripKeepsAntiAirAbilityOrder()
+        {
+            var unit = new UnitData { Owner = human, AntiAirRadius = 1 };
+            unit.Abilities.Add("AA2"); unit.Abilities.Add("AA");
+            var facility = new FacilityData { AntiAirRadius = 1 };
+            facility.Abilities.Add("AA2"); facility.Abilities.Add("AA");
+            var building = new BuildingData { Owner = human };
+            building.FacilitySlots[0] = facility;
+            building.Abilities.Add("AA2"); building.Abilities.Add("AA");
+            using (MatchRestoreScope.Begin()) BuildingRegistry.Register(building.Hex, building);
+            var markerObject = new GameObject("facility marker");
+            config.facilityMarkerPrefab = markerObject.AddComponent<MapObjectVisual>();
+            MatchWorldGraph graph;
+            Assert.That(Game.Aviation.AntiAirRules.TryGetRadius(unit, out int before) && before == 2, Is.True);
+            try
+            {
+                var capture = new MatchWorldCapture(config, new[] { human, ai }); capture.IncludeUnit(unit);
+                graph = MatchWorldCodec.Decode(Json(capture.Finish()), config, MatchIdentityState.Capture());
+            }
+            finally { UnityEngine.Object.DestroyImmediate(markerObject); }
+            Assert.That(Game.Aviation.AntiAirRules.TryGetRadius(graph.Unit(unit.RuntimeId), out int after), Is.True);
+            Assert.That(after, Is.EqualTo(before), "unit AA radius");
+            var buildings = (Dictionary<HexCoord, BuildingData>)typeof(MatchWorldGraph)
+                .GetField("buildings", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(graph);
+            BuildingData restored = buildings[building.Hex];
+            Assert.That(Game.Aviation.AntiAirRules.TryGetRadius(restored.Abilities, 1, out int buildingRadius), Is.True);
+            Assert.That(buildingRadius, Is.EqualTo(2), "building AA order");
+            FacilityData restoredFacility = restored.FacilitySlots[0];
+            Assert.That(Game.Aviation.AntiAirRules.TryGetRadius(restoredFacility.Abilities, restoredFacility.AntiAirRadius,
+                out int facilityRadius), Is.True);
+            Assert.That(facilityRadius, Is.EqualTo(2), "facility AA order");
+        }
         [Test] public void NegativeUnitCombatRecordIsRejected()
         {
             var army = new ArmyData { Owner = human };
