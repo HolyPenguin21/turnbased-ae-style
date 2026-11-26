@@ -467,7 +467,7 @@ namespace Game.EditorTests
             Assert.That(provision.Success, Is.True);
             allocator.RegisterProvisionSuccess(funded, provision.Provisioned.ClaimedAp, provision.Provisioned.ClaimedPhysical);
             var execution = new ExecutionResult();
-            yield return ActiveDefenceExecutor.RunActiveDefence(_owner, _root, Context(), provision.Provisioned, execution, 5, null);
+            yield return DefenceLeg(_owner, _root, Context(), provision.Provisioned, execution, 5);
             int spent = alreadyActivated ? 0 : army.ActivationApCost;
             Assert.That(execution.StepsMoved, Is.EqualTo(2));
             Assert.That(execution.ReachedGoal, Is.True);
@@ -1008,12 +1008,11 @@ namespace Game.EditorTests
             lost.ReplaceRoster(null);
             _selection.DeleteArmyIfEmptied(lost);
             var result = new ExecutionResult { FinalHex = _first };
-            var control = new ReconAirExecutor.ActorStepControl { MovedAny = true, CanContinue = true };
+            var control = new ReconAirExecutor.ActorStepControl { MovedAny = true };
             typeof(ReconAirExecutor).GetMethod("FinishActorStep", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new object[] { _owner, lost.Id, result, control, ExecutionStopReason.StepCompleted });
             Assert.That(result.StopReason, Is.EqualTo(ExecutionStopReason.MoverLost));
             Assert.That(result.FinalHex, Is.EqualTo(_first));
-            Assert.That(control.CanContinue, Is.False);
             Assert.That(AirSortieRegistry.For(_owner), Has.None.EqualTo(lostSortie));
             Assert.That(AirSortieRegistry.For(_owner), Does.Contain(otherSortie));
             yield return null;
@@ -1045,6 +1044,20 @@ namespace Game.EditorTests
             Assert.That(_root.GetResource(ResourceType.Energy), Is.EqualTo(20 - paidEnergy));
             Assert.That(AiV2Util.ResolveArmy(_owner, army.Id), Is.Null);
             Assert.That(army.PendingAirStrikePolicy, Is.Null);
+        }
+
+        // The leg step by step, as the turn loop admits it: one result accumulates the steps.
+        private static System.Collections.IEnumerator DefenceLeg(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                yield return ActiveDefenceExecutor.RunActiveDefenceStep(player, root, ctx, pm, result, apBefore, null);
+                if (result.StopReason != ExecutionStopReason.StepCompleted || result.ActorMaterialized
+                    || pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.AirSupport
+                        && !GroundCombatAirSupport.SortieLive(player, pm.MoverArmyId, out _))
+                    yield break;
+            }
         }
     }
 }

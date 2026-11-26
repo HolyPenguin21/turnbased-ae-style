@@ -16,34 +16,6 @@ namespace Game.Ai.V2
 {
     internal static class RaidExecutor
     {
-        // Compatibility adapter for the current Full/Aggression batch path. The target is
-        // revalidated before every adjacent move, but the adapter keeps executing steps until the
-        // same terminal conditions as the previous loop.
-        internal static IEnumerator RunRaid(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, int apBefore, WorldSnapshot snapshot)
-        {
-            ArmyData initialArmy = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-            int maxIterations = GroundCombatLegStep.StepBudget(initialArmy, pm) + 1;
-            int iterations = 0;
-            ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
-
-            while (true)
-            {
-                if (++iterations > maxIterations)
-                {
-                    stop = ExecutionStopReason.MoveRejected;
-                    break;
-                }
-
-                yield return RunRaidStepCore(player, root, ctx, pm, result, snapshot);
-                stop = result.StopReason;
-                if (stop != ExecutionStopReason.StepCompleted)
-                    break;
-            }
-
-            FinishRaid(player, root, pm, result, apBefore, stop);
-        }
-
         // One admitted Raid task step. It executes at most one adjacent MoveArmyRoutine command.
         // Objective identity stays fixed, while its last honestly-known hex and route are resolved
         // again immediately before the command.
@@ -52,7 +24,7 @@ namespace Game.Ai.V2
             WorldSnapshot snapshot = null)
         {
             yield return RunRaidStepCore(player, root, ctx, pm, result, snapshot);
-            FinishRaid(player, root, pm, result, apBefore, result.StopReason);
+            FinishRaid(player, root, pm, result, apBefore);
         }
 
         private static IEnumerator RunRaidStepCore(PlayerSetupData player, PlayerRoot root,
@@ -347,11 +319,10 @@ namespace Game.Ai.V2
         }
 
         private static void FinishRaid(PlayerSetupData player, PlayerRoot root,
-            ProvisionedMission pm, ExecutionResult result, int apBefore,
-            ExecutionStopReason stop)
+            ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
+            ExecutionStopReason stop = result.StopReason;
             result.FinalHex = AiV2Util.ResolveArmy(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
-            result.StopReason = stop;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm?.Mission)}] {pm?.Key} - raid "
                 + $"({result.StartHex.Q},{result.StartHex.R})→({result.FinalHex.Q},{result.FinalHex.R}) "

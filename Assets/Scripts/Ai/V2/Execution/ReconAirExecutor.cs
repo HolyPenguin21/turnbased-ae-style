@@ -52,14 +52,12 @@ namespace Game.Ai.V2
     {
         internal sealed class ActorStepControl
         {
-            public bool CanContinue;
             public bool MovedAny;
             public bool CommandAttempted;
             public ExecutionStopReason StopReason = ExecutionStopReason.StepCompleted;
 
             public void ResetStep()
             {
-                CanContinue = false;
                 CommandAttempted = false;
                 StopReason = ExecutionStopReason.StepCompleted;
             }
@@ -274,39 +272,6 @@ namespace Game.Ai.V2
                 actedThisTurn: false);
         }
 
-        // Thin execute loop. Every decision comes from AirReconStepDirector; the executor only
-        // resolves live liveness (lost / battle / landed / out of MP) and then issues the canonical
-        // gameplay call the decision names.
-        //
-        // `missionFocusHex` is forwarded to every PlanStep call so the tactical
-        // planner's live replanning stays anchored at the bound target; `perMissionResult`, when
-        // given, accumulates this actor's StepsMoved/FinalHex/StopReason for its ONE provisioned
-        // mission this pass (a continuing wing with no fresh mission passes null — see Execute).
-        // Compatibility adapter for the current terminal AirRecon pass. Every iteration delegates
-        // to the same one-command core used by the mid-turn loop.
-        private static IEnumerator RunActor(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            WorldSnapshot snapshot, ArmyData initial, AirReconExecutionResult result,
-            HexCoord? missionFocusHex = null,
-            ExecutionResult perMissionResult = null)
-        {
-            int armyId = initial.Id;
-            int guard = Math.Max(4, initial.CurrentMovement + 5);
-            var control = new ActorStepControl();
-
-            ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
-            while (guard-- > 0)
-            {
-                control.ResetStep();
-                yield return RunActorStepCore(player, root, ctx, snapshot, armyId, result,
-                    missionFocusHex, perMissionResult, control);
-                stop = control.StopReason;
-                if (!control.CanContinue)
-                    break;
-            }
-
-            FinishActorStep(player, armyId, perMissionResult, control, stop);
-        }
-
         // One admitted airborne Recon task step. It executes at most one canonical stationary
         // strike OR one adjacent MoveArmyRoutine command. Local Hold/phase bookkeeping may also be
         // resolved, but this method never selects another mission or actor.
@@ -463,7 +428,6 @@ namespace Game.Ai.V2
                 }
                 ReconAirSortieLifecycle.Apply(sortie, d);
                 ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
-                control.CanContinue = true;
                 control.StopReason = ExecutionStopReason.StepCompleted;
                 yield break;
             }
@@ -477,7 +441,6 @@ namespace Game.Ai.V2
                     didAttack => attacked = didAttack);
                 if (attacked)
                     ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
-                control.CanContinue = attacked && AiV2Util.ResolveArmy(player, armyId) != null;
                 control.StopReason = AiV2Util.ResolveArmy(player, armyId) == null
                     ? ExecutionStopReason.MoverLost
                     : attacked
@@ -516,7 +479,6 @@ namespace Game.Ai.V2
                 ArmyData afterReturn = AiV2Util.ResolveArmy(player, armyId);
                 if (afterReturn != null) sortie.RecordStep(afterReturn.Hex);
                 ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
-                control.CanContinue = true;
                 control.StopReason = ExecutionStopReason.StepCompleted;
                 yield break;
             }
@@ -555,7 +517,6 @@ namespace Game.Ai.V2
             if (d.PivotToReturnAfterMove)
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning->Return pivot step taken");
             ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
-            control.CanContinue = true;
             control.StopReason = ExecutionStopReason.StepCompleted;
         }
 
@@ -571,7 +532,6 @@ namespace Game.Ai.V2
                 AirSortieRegistry.Remove(player, armyId);
                 stop = ExecutionStopReason.MoverLost;
                 control.StopReason = stop;
-                control.CanContinue = false;
             }
             if (!control.MovedAny && settled != null
                 && AviationRules.IsOwnedAirfieldAt(settled.Hex, player))

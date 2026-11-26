@@ -238,8 +238,8 @@ namespace Game.EditorTests
             Assert.That(Evaluate().TargetHex, Is.Null);
         }
 
-        [TestCase(false)] [TestCase(true)]
-        public void TrappedScout_StopsWithoutACommandOrLoop_AndCanRetryAfterTheRouteOpens(bool continuousRun)
+        [Test]
+        public void TrappedScout_StopsWithoutACommandOrLoop_AndCanRetryAfterTheRouteOpens()
         {
             SetMap(new Dictionary<HexCoord, TerrainTypeEntry>
             { [default] = new TerrainTypeEntry { moveCost = 1 } });
@@ -253,13 +253,9 @@ namespace Game.EditorTests
                 var result = new ExecutionResult();
                 var control = new ReconGroundExecutor.StepControl();
                 var ctx = new AiTurnContext { Map = map, TurnNumber = 1 };
-                Drain(continuousRun
-                    ? ReconGroundExecutor.Run(player, null, ctx, pm, result, 0, new[] { pm }, 0)
-                    : ReconGroundExecutor.RunStep(player, null, ctx, pm, result, 0,
-                        new[] { pm }, 0, null, control));
+                Drain(ReconGroundExecutor.RunStep(player, null, ctx, pm, result, 0, null, control));
                 Assert.That(result.StopReason, Is.EqualTo(ExecutionStopReason.NoSafeStep));
-                if (!continuousRun) Assert.That(control.StopReason, Is.EqualTo(ExecutionStopReason.NoSafeStep));
-                Assert.That(control.CanContinue, Is.False);
+                Assert.That(control.StopReason, Is.EqualTo(ExecutionStopReason.NoSafeStep));
                 Assert.That(control.CommandAttempted, Is.False);
                 Assert.That(result.StepsMoved, Is.Zero);
                 Assert.That(result.ApSpent, Is.Zero);

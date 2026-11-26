@@ -224,16 +224,6 @@ namespace Game.Ai.V2
         // first flight step) and the formed wing becomes the leg's actor (ActualActorArmyId), so
         // Continuity binds the real wing. A formed wing that never takes off lands back in storage
         // at turn end (AviationTurnLifecycle). Any other mover is returned unchanged.
-        // How many adjacent steps a lane's executor may run for this mover this call: its current
-        // movement, or — a stored launch not yet formed — the movement of the aircraft it launches.
-        internal static int StepBudget(ArmyData mover, ProvisionedMission pm)
-        {
-            if (mover != null && AviationRules.IsAirfield(mover) && pm?.AircraftRuntimeIds != null)
-                return mover.Members.Where(u => u != null && pm.AircraftRuntimeIds.Contains(u.RuntimeId))
-                    .Select(AviationRules.EffectiveMoveCurrent).DefaultIfEmpty(0).Min();
-            return mover?.CurrentMovement ?? 0;
-        }
-
         internal static ArmyData MaterializeSupportWing(PlayerSetupData player, AiTurnContext ctx,
             ProvisionedMission pm, ExecutionResult result, ArmyData mover, WorldSnapshot snapshot)
         {

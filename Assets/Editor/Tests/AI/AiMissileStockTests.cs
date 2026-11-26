@@ -766,8 +766,7 @@ namespace Game.EditorTests
                 float hp = enemyArmy.Members.Sum(u => u.HitPointsCurrent);
                 var execution = new ExecutionResult();
                 AviationCombatPresenter.HeadlessRng = new Random(7);
-                Drain(ActiveDefenceExecutor.RunActiveDefence(owner, world.Root, world.Context,
-                    provision.Provisioned, execution, ap, null));
+                Drain(DefenceLeg(owner, world.Root, world.Context, provision.Provisioned, execution, ap));
                 Assert.That(execution.AirSupportStrikeSucceeded, Is.True);
                 Assert.That(execution.ReachedGoal, Is.True, "a confirmed consumed missile completed its assignment");
                 Assert.That(execution.StopReason, Is.EqualTo(ExecutionStopReason.ReachedGoal));
@@ -950,6 +949,20 @@ namespace Game.EditorTests
                     StrategicReservedResource.ActionPoints), Is.EqualTo(14));
             }
             finally { UnityEngine.Object.DestroyImmediate(catalog); UnityEngine.Object.DestroyImmediate(cards); }
+        }
+
+        // The leg step by step, as the turn loop admits it: one result accumulates the steps.
+        private static System.Collections.IEnumerator DefenceLeg(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                yield return ActiveDefenceExecutor.RunActiveDefenceStep(player, root, ctx, pm, result, apBefore, null);
+                if (result.StopReason != ExecutionStopReason.StepCompleted || result.ActorMaterialized
+                    || pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.AirSupport
+                        && !GroundCombatAirSupport.SortieLive(player, pm.MoverArmyId, out _))
+                    yield break;
+            }
         }
     }
 }

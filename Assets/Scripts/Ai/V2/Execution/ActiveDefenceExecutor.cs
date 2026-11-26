@@ -33,24 +33,6 @@ namespace Game.Ai.V2
             return true;
         }
 
-        internal static IEnumerator RunActiveDefence(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
-            WorldSnapshot snapshot)
-        {
-            ArmyData initial = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-            int limit = GroundCombatLegStep.StepBudget(initial, pm) + 1;
-            for (int i = 0; i < limit; ++i)
-            {
-                yield return RunActiveDefenceStepCore(player, ctx, pm, result, snapshot);
-                // A relief extraction is its own terminal step (one mutation per step).
-                if (result.StopReason != ExecutionStopReason.StepCompleted || result.ActorMaterialized) break;
-                // An air-support series that turned home has handed the wing to aviation recovery.
-                if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.AirSupport
-                    && !GroundCombatAirSupport.SortieLive(player, pm.MoverArmyId, out _)) break;
-            }
-            FinishActiveDefence(player, root, pm, result, apBefore);
-        }
-
         internal static IEnumerator RunActiveDefenceStep(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
             WorldSnapshot snapshot)

@@ -288,7 +288,7 @@ namespace Game.Ai.V2
             if (pm.Kind == MissionKind.Scout)
             {
                 yield return ReconGroundExecutor.RunStep(player, root, ctx, pm, result, apBefore,
-                    new List<ProvisionedMission> { pm }, 0, snapshot, new ReconGroundExecutor.StepControl());
+                    snapshot, new ReconGroundExecutor.StepControl());
                 FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }

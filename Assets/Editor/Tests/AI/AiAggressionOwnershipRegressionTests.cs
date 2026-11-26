@@ -475,21 +475,18 @@ namespace Game.EditorTests
                 if (routine.Current is IEnumerator nested) Drain(nested);
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void ExtractedExecutorsKeepMissingMoverOutcomeInBothExecutionModes(bool batch)
+        [Test]
+        public void ExtractedExecutorsKeepMissingMoverOutcome()
         {
             var mission = new ProvisionedMission { Kind = MissionKind.Raid, MoverArmyId = 12345 };
             var raid = new ExecutionResult();
-            Drain(batch ? RaidExecutor.RunRaid(_us, null, null, mission, raid, 0, null)
-                : RaidExecutor.RunRaidStep(_us, null, null, mission, raid, 0, null));
+            Drain(RaidExecutor.RunRaidStep(_us, null, null, mission, raid, 0, null));
             Assert.That(raid.StopReason, Is.EqualTo(ExecutionStopReason.MoverLost));
             Assert.That(raid.NeedsReplan, Is.True);
             Assert.That(raid.ApSpent, Is.Zero);
             mission.Kind = MissionKind.ActiveDefence;
             var defence = new ExecutionResult();
-            Drain(batch ? ActiveDefenceExecutor.RunActiveDefence(_us, null, null, mission, defence, 0, null)
-                : ActiveDefenceExecutor.RunActiveDefenceStep(_us, null, null, mission, defence, 0, null));
+            Drain(ActiveDefenceExecutor.RunActiveDefenceStep(_us, null, null, mission, defence, 0, null));
             Assert.That(defence.StopReason, Is.EqualTo(ExecutionStopReason.MoverLost));
             Assert.That(defence.NeedsReplan, Is.True);
             Assert.That(defence.ApSpent, Is.Zero);

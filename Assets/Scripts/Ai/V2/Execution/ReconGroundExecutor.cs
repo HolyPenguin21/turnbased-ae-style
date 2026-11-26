@@ -27,21 +27,14 @@ namespace Game.Ai.V2
     {
         internal sealed class StepControl
         {
-            public bool CanContinue;
             public bool CommandAttempted;
             public ExecutionStopReason StopReason;
 
             public void Reset()
             {
-                CanContinue = false;
                 CommandAttempted = false;
                 StopReason = ExecutionStopReason.StepCompleted;
             }
-        }
-
-        private sealed class StepRuntime
-        {
-            public bool OptionalStealthChecked;
         }
 
         private sealed class PreparedStep
@@ -50,76 +43,28 @@ namespace Game.Ai.V2
             public HexCoord StrategicAnchor;
         }
 
-        // Compatibility adapter for the current flag-off pipeline. It preserves the old bounded
-        // multi-step behaviour, but every iteration now goes through the same one-command core the
-        // mid-turn loop will call.
-        public static IEnumerator Run(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, int apBefore,
-            IReadOnlyList<ProvisionedMission> queue, int missionIndex, WorldSnapshot snapshot = null)
-        {
-            if (!TryPrepare(player, root, ctx, pm, result, queue, missionIndex, snapshot,
-                    recordBatchAudit: true, out PreparedStep prepared))
-            {
-                SummarizeIfLast(player, ctx, queue, missionIndex);
-                yield break;
-            }
-
-            ArmyData initialArmy = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-            int iterations = 0;
-            int maxIterations = Math.Max(2, (initialArmy?.CurrentMovement ?? 0) + 4);
-            var runtime = new StepRuntime();
-            var control = new StepControl();
-            ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
-
-            while (true)
-            {
-                if (++iterations > maxIterations)
-                {
-                    stop = ExecutionStopReason.MoveRejected;
-                    break;
-                }
-
-                control.Reset();
-                yield return RunPreparedStep(player, root, ctx, pm, result, queue, missionIndex,
-                    snapshot, prepared, runtime, control);
-                stop = control.StopReason;
-                if (!control.CanContinue)
-                    break;
-            }
-
-            Finish(player, root, ctx, pm, result, apBefore, stop, queue, missionIndex,
-                summarize: true);
-        }
-
         // One admitted ground-recon task step. It executes at most one canonical capture operation
         // OR one adjacent MoveArmyRoutine command. It never selects a different mission.
         public static IEnumerator RunStep(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, int apBefore,
-            IReadOnlyList<ProvisionedMission> queue, int missionIndex, WorldSnapshot snapshot,
+            ProvisionedMission pm, ExecutionResult result, int apBefore, WorldSnapshot snapshot,
             StepControl control)
         {
             control ??= new StepControl();
             control.Reset();
 
-            if (!TryPrepare(player, root, ctx, pm, result, queue, missionIndex, snapshot,
-                    recordBatchAudit: false, out PreparedStep prepared))
+            if (!TryPrepare(player, root, ctx, pm, result, out PreparedStep prepared))
             {
                 control.StopReason = result.StopReason;
-                Finish(player, root, ctx, pm, result, apBefore, result.StopReason,
-                    queue, missionIndex, summarize: false);
+                Finish(player, pm, result, apBefore, root, result.StopReason);
                 yield break;
             }
 
-            yield return RunPreparedStep(player, root, ctx, pm, result, queue, missionIndex,
-                snapshot, prepared, new StepRuntime(), control);
-            Finish(player, root, ctx, pm, result, apBefore, control.StopReason,
-                queue, missionIndex, summarize: false);
+            yield return RunPreparedStep(player, root, ctx, pm, result, snapshot, prepared, control);
+            Finish(player, pm, result, apBefore, root, control.StopReason);
         }
 
         private static bool TryPrepare(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, IReadOnlyList<ProvisionedMission> queue,
-            int missionIndex, WorldSnapshot snapshot, bool recordBatchAudit,
-            out PreparedStep prepared)
+            ProvisionedMission pm, ExecutionResult result, out PreparedStep prepared)
         {
             prepared = null;
             ArmyData army = AiV2Util.ResolveArmy(player, pm?.MoverArmyId ?? -1);
@@ -205,9 +150,8 @@ namespace Game.Ai.V2
         }
 
         private static IEnumerator RunPreparedStep(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
-            IReadOnlyList<ProvisionedMission> queue, int missionIndex, WorldSnapshot snapshot,
-            PreparedStep prepared, StepRuntime runtime, StepControl control)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, WorldSnapshot snapshot,
+            PreparedStep prepared, StepControl control)
         {
             ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (army == null || army.Owner != player)
@@ -432,13 +376,11 @@ namespace Game.Ai.V2
                 }
             }
 
-            if (!runtime.OptionalStealthChecked && !pm.StealthApReserved
-                && !result.EnteredStealth && !forceDecloakForAttack && !sabotage)
+            if (!pm.StealthApReserved && !result.EnteredStealth && !forceDecloakForAttack && !sabotage)
             {
-                runtime.OptionalStealthChecked = true;
-                float mandatoryClaims = MandatoryApClaimsFrom(queue, missionIndex);
+                // The step's own claimed AP stays mandatory: optional stealth may only use the rest.
                 bool entered = MaybeEnterOptionalStealth(player, root, ctx, army, pm,
-                    next.Value, assignment.StrategicAnchor, mandatoryClaims);
+                    next.Value, assignment.StrategicAnchor, Mathf.Max(0f, pm.ClaimedAp));
                 result.EnteredStealth |= entered;
                 WorldDeltaLifecycle.RecordExecutionMutation(result, entered);
             }
@@ -552,17 +494,16 @@ namespace Game.Ai.V2
             }
 
             RefreshObjectiveSatisfied(player, pm, result);
-            control.CanContinue = !ReconScoutKinds.IsCapture(pm.ScoutKind) && army.CurrentMovement > 0
+            bool canContinue = !ReconScoutKinds.IsCapture(pm.ScoutKind) && army.CurrentMovement > 0
                 && !(ReconScoutKinds.IsDisruption(pm.ScoutKind) && army.Hex.Equals(pm.FocusHex));
             control.StopReason = ReconScoutKinds.IsLocalStrike(pm.ScoutKind) && result.ReachedGoal
-                ? ExecutionStopReason.ReachedGoal : control.CanContinue
+                ? ExecutionStopReason.ReachedGoal : canContinue
                 ? ExecutionStopReason.StepCompleted
                 : ExecutionStopReason.OutOfMovement;
         }
 
-        private static void Finish(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, int apBefore, ExecutionStopReason stop,
-            IReadOnlyList<ProvisionedMission> queue, int missionIndex, bool summarize)
+        private static void Finish(PlayerSetupData player, ProvisionedMission pm, ExecutionResult result,
+            int apBefore, PlayerRoot root, ExecutionStopReason stop)
         {
             if (result == null) return;
             result.FinalHex = AiV2Util.ResolveArmy(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
@@ -573,15 +514,6 @@ namespace Game.Ai.V2
                 + $"({result.StartHex.Q},{result.StartHex.R})→({result.FinalHex.Q},{result.FinalHex.R}) "
                 + $"steps={result.StepsMoved} ap−{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} "
                 + $"objective={(result.ReachedGoal ? "met" : "open")} stop={stop}");
-            if (summarize)
-                SummarizeIfLast(player, ctx, queue, missionIndex);
-        }
-
-        private static void SummarizeIfLast(PlayerSetupData player, AiTurnContext ctx,
-            IReadOnlyList<ProvisionedMission> queue, int missionIndex)
-        {
-            if (ctx != null && queue != null && missionIndex >= queue.Count - 1)
-                ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
         }
 
         private static void RefreshObjectiveSatisfied(PlayerSetupData player, ProvisionedMission pm,
@@ -636,17 +568,6 @@ namespace Game.Ai.V2
                 return false;
             entered = true;
             return true;
-        }
-
-        private static float MandatoryApClaimsFrom(IReadOnlyList<ProvisionedMission> provisioned, int startIndex)
-        {
-            if (provisioned == null)
-                return 0f;
-            float total = 0f;
-            for (int i = Mathf.Max(0, startIndex); i < provisioned.Count; i++)
-                if (provisioned[i] != null)
-                    total += Mathf.Max(0f, provisioned[i].ClaimedAp);
-            return total;
         }
 
         private static bool MaybeEnterOptionalStealth(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
