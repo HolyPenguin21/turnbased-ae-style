@@ -207,7 +207,7 @@ namespace Game.Ai.V2
 
         // §6 — before the bounded reaction round runs, a genuinely feasible reaction must STILL
         // exist (the same probe, not a weaker one). If not, its budget + envelope reservation is
-        // released so the resources re-enter arbitration this turn (Housekeeping's tempo re-run).
+        // released so the resources re-enter arbitration this turn (the pipeline's end-of-turn tempo re-run).
         internal static bool ReactionStillActionable(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, WorldSnapshot snap)
             => BuildReactionOpportunity(player, root, ctx, snap).IsActionable;

@@ -391,13 +391,13 @@ namespace Game.Ai.V2
             // Main line means the main phase.
             AiV2Trace.LogState(trace.Id, stateStart, AiV2Trace.Stamp(root));
 
-            // 8. Off-budget housekeeping — NOT an axis, guaranteed minimum, cannot be out-competed.
-            //    This safety/cleanup layer does not buy cards or create new
-            //    capability and remains the authoritative same-hex reorganisation path.
-            var housekeeping = new HousekeepingResult();
+            // 8. A pending strategic reaction, then off-budget Housekeeping (zero-AP same-hex
+            //    packaging; not an axis, cannot be out-competed).
             yield return frame.Checkpoint();
-            yield return HousekeepingManager.RunHousekeeping(
-                frame.Snapshot, player, root, ctx, frame.PostCommitments, housekeeping, phaseB.Reservation);
+            yield return EndOfTurnReaction(frame, player, root, hand, ctx, phaseB.Reservation);
+            var housekeeping = new HousekeepingResult();
+            yield return HousekeepingManager.Run(frame.Snapshot, player, root, ctx, frame.PostCommitments, housekeeping);
+            AiTurnSession.ReleaseCapabilityLeases(player, ctx.TurnNumber);
             ReservationInvariants.CheckBoundary(player, root, ctx, "housekeeping");
             if (housekeeping.StateChanged)
                 frame.AcceptHousekeeping();
@@ -470,6 +470,51 @@ namespace Game.Ai.V2
                 new FramePacer(), new int[1]);
             turnSession.Dispose();
             yield return null;
+        }
+
+        // The pending discovery / hand reaction (Phase B kept its AP while the interrupt was
+        // pending), then the AP its reservation held and released re-enters the tempo arbiter THIS
+        // turn instead of being stranded to EndTurn: the same recipe as a Phase B round (TempoRound),
+        // without re-admission. Strategic pressure and maintenance are tempo candidates in that
+        // arbiter, so Housekeeping after this point owns no AP at all.
+        private static IEnumerator EndOfTurnReaction(DecisionFrame frame, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, MaterializationReservation carried)
+        {
+            carried = carried ?? new MaterializationReservation();
+            // Only the reaction's own AP counts: an Economy completion hold is not a reaction budget.
+            float reactionAp = TurnResourceBook.LedgerClaims(player, ctx.TurnNumber,
+                    StrategicReservedResource.ActionPoints)
+                .Where(c => c.Kind == ResourceClaimKind.Reaction)
+                .Sum(c => System.Math.Max(0f, c.Amount));
+            var reaction = new StrategicReactionResult();
+            yield return StrategicReactionPass.ExecuteIfPending(frame.Snapshot, player, root, ctx, reaction, carried);
+            if (reaction.Ran && hand != null)
+                frame.AcceptReaction();
+            if (hand == null || reactionAp <= 0f)
+                yield break;
+
+            MissionLeaseBook.ReleaseByReason(player, ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass);
+            for (int rerun = 0; rerun < AiConfigV2.maxEndOfTurnTempoReruns; rerun++)
+            {
+                int apBeforeTempo = root.ActionPoints;
+                frame.PrepareTempoOwnership();
+                WorldAnalysis.StepObservationStamp before =
+                    WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
+                StrategicManager.BeforeTempoSpend(player, frame.IntentState, root, hand, ctx);
+                var tempo = new StrategicPhaseResult();
+                yield return StrategicManager.UseSurplus(frame.Snapshot, player, root, hand, ctx,
+                    frame.PostCommitments, carried, tempo, frame.Recon);
+                ReservationInvariants.CheckBoundary(player, root, ctx, "end-of-turn tempo re-run");
+                carried = tempo.Reservation;
+                frame.ObserveSettled(before, null);
+                if (tempo.StateChanged)
+                    frame.RefreshFinalOwnership();
+                AiDebugLog.Write($"[AI][V2] tempo - end-of-turn tempo re-run after reaction reservation "
+                    + $"released (reaction ran={(reaction.Ran ? 1 : 0)}); cardsPlayed {tempo.CardsPlayed}, "
+                    + $"drawn {tempo.CardsDrawn}, ap {apBeforeTempo}->{root.ActionPoints}");
+                if (!tempo.StateChanged || tempo.CardsPlayed + tempo.CardsDrawn == 0)
+                    break;
+            }
         }
 
         // End-of-turn initiative AP telemetry write-back (see the turn-start capture above). A

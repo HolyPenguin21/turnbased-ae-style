@@ -9,114 +9,24 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
+    //  HOUSEKEEPING MANAGER — the day pass: zero-AP, task-neutral same-hex force packaging.
     // ===========================================================================================
-    //  Last ordinary mutating V2 layer. After the pending strategic reaction/tempo handoff it owns
-    //  only task-neutral, same-hex army/garrison force packaging: Analyzer -> pure Planner ->
-    //  Executor. It never chooses an objective or mission, moves an army between hexes, plays a
-    //  card, or spends AP/resources. The invariant below protects that zero-cost boundary.
-    //
-    //  Strategic pressure and maintenance are Phase-B tempo candidates. Air Recon stays
-    //  terminally inside TaskExecutor. Neither is a second Housekeeping lane.
+    //  Analyzer -> pure Planner -> Executor, per own hex. It never chooses an objective or a
+    //  mission, moves an army between hexes, plays a card or spends AP/resources; the AP check
+    //  below guards that boundary. The pending reaction and its tempo re-run run before it
+    //  (AiStrategyV2Pipeline); the night fold after every end-of-turn measurement.
     // ===========================================================================================
     public sealed class HousekeepingResult
     {
         public bool StateChanged;
-        public int MaintenanceActions;
         public int GroupsPlanned;
         public int TransfersApplied;
         public int TransfersFailed;
         public bool ApInvariantViolated;
-        public StrategicReactionResult Reaction;
     }
 
     internal static class HousekeepingManager
     {
-        public static IEnumerator RunHousekeeping(WorldSnapshot snapshot, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, ActorCommitments commitments, HousekeepingResult result,
-            MaterializationReservation carriedReservation = null)
-        {
-            if (result == null)
-                result = new HousekeepingResult();
-            carriedReservation = carriedReservation ?? new MaterializationReservation();
-
-            // Phase B deliberately preserves AP while a discovery/hand interrupt is pending.
-            // Consume it here before maintenance, then refresh through Analysis' knowledge
-            // revision: Reaction may change both own forces and honest map knowledge, but a full
-            // world scan is unnecessary when the authoritative memory revision stayed fixed.
-            // Only the reaction's own AP counts: an Economy completion hold is not a reaction budget.
-            float apReservedForReactionBefore = (player != null && ctx != null)
-                ? TurnResourceBook.LedgerClaims(player, ctx.TurnNumber,
-                        StrategicReservedResource.ActionPoints)
-                    .Where(c => c.Kind == ResourceClaimKind.Reaction)
-                    .Sum(c => System.Math.Max(0f, c.Amount))
-                : 0f;
-            var reaction = new StrategicReactionResult();
-            yield return StrategicReactionPass.ExecuteIfPending(
-                snapshot, player, root, ctx, reaction, carriedReservation);
-            result.Reaction = reaction;
-            AiHandData hand = AiHandRegistry.Peek(player);
-            if (reaction.Ran)
-            {
-                result.StateChanged |= reaction.StateChanged;
-                if (hand != null)
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
-                commitments = ActorCommitments.FromIntents(
-                    snapshot.AllIntents,
-                    snapshot,
-                    null);
-            }
-
-            // If the reaction held back AP and that reservation is now gone (the pass ran and
-            // released it or its EndOfReaction expiry fired), the freed AP MUST re-enter arbitration
-            // THIS turn — never stranded to EndTurn. This is independent of whether the reaction ran.
-            if (hand != null && player != null && root != null && ctx != null
-                && apReservedForReactionBefore > 0f)
-            {
-                MissionLeaseBook.ReleaseByReason(
-                    player, ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass);
-                for (int rerun = 0; rerun < AiConfigV2.maxEndOfTurnTempoReruns; rerun++)
-                {
-                    int apBeforeTempo = root.ActionPoints;
-                    snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
-                    ActorCommitments tempoCommitments = ActorCommitments.FromIntents(
-                        snapshot.AllIntents,
-                        snapshot,
-                        null);
-                    var tempo = new StrategicPhaseResult();
-                    yield return StrategicManager.UseSurplus(
-                        snapshot, player, root, hand, ctx, tempoCommitments, carriedReservation, tempo);
-                    carriedReservation = tempo.Reservation;
-                    if (tempo.StateChanged)
-                    {
-                        result.StateChanged = true;
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                            snapshot, player, root, hand, ctx);
-                        commitments = ActorCommitments.FromIntents(
-                            snapshot.AllIntents,
-                            snapshot,
-                            null);
-                    }
-                    AiDebugLog.Write($"[AI][V2] tempo - end-of-turn tempo re-run after reaction reservation "
-                        + $"released (reaction ran={(reaction.Ran ? 1 : 0)}); cardsPlayed {tempo.CardsPlayed}, "
-                        + $"drawn {tempo.CardsDrawn}, ap {apBeforeTempo}->{root.ActionPoints}");
-                    if (!tempo.StateChanged || tempo.CardsPlayed + tempo.CardsDrawn == 0)
-                        break;
-                }
-            }
-
-            // Decisive structure pressure and strategic maintenance are not post-tempo lanes. They
-            // are `StrategicSpend` candidates inside the one
-            // end-of-turn tempo arbiter (StrategicManager.UseSurplus), so they compete for AP in the
-            // same comparable utility space as Play / Draw / Hold / EndTurn. Housekeeping past this
-            // point is ONLY the zero-AP / zero-resource structural reorganisation pass.
-
-            yield return Run(snapshot, player, root, ctx, commitments, result);
-            AiTurnSession.ReleaseCapabilityLeases(player, ctx?.TurnNumber ?? 0);
-            yield break;
-        }
-
         internal static IEnumerator Run(WorldSnapshot snapshot, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ActorCommitments commitments, HousekeepingResult result)
         {
@@ -173,8 +83,7 @@ namespace Game.Ai.V2
                     + "Structural reorganisation owns no AP; strategic pressure/maintenance is measured before this boundary.");
             }
 
-            AiDebugLog.Write($"[AI][V2] housekeeping - strategicActions {result.MaintenanceActions}, "
-                + $"groups {result.GroupsPlanned}, operations applied {result.TransfersApplied}, "
+            AiDebugLog.Write($"[AI][V2] housekeeping - groups {result.GroupsPlanned}, operations applied {result.TransfersApplied}, "
                 + $"failed {result.TransfersFailed}, stateChanged {(result.StateChanged ? 1 : 0)}, "
                 + $"apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
         }

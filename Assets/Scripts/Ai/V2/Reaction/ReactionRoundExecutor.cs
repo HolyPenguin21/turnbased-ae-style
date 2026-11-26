@@ -38,7 +38,7 @@ namespace Game.Ai.V2
 
             // §6 — immediately before the bounded round, re-run the SAME feasibility probe. If no
             // genuinely feasible reaction remains, release the budget + envelope reservation now so
-            // the resources re-enter arbitration THIS turn (HousekeepingManager's tempo re-run)
+            // the resources re-enter arbitration THIS turn (the pipeline's end-of-turn tempo re-run)
             // instead of being pinned to a dead budget.
             if (round == 0 && hand != null
                 && StrategicResourceReservationLedger.HasAny(player, ctx.TurnNumber)

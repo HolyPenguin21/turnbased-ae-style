@@ -313,6 +313,14 @@ namespace Game.Ai.V2
         internal void RefreshFinalOwnership() =>
             PostCommitments = _services.RefreshPersistentActors(Snapshot, Recon);
 
+        // The end-of-turn reaction ran: Housekeeping and the tempo re-run read the knowledge and
+        // the canonical ownership after it, exactly as when no reaction ran.
+        internal void AcceptReaction()
+        {
+            Snapshot = _services.RefreshKnowledge(Snapshot);
+            PostCommitments = _services.RefreshPersistentActors(Snapshot, Recon);
+        }
+
         internal void AcceptHousekeeping() => Snapshot = _services.RefreshKnowledge(Snapshot);
     }
 }

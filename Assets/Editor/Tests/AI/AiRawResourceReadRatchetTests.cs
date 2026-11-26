@@ -57,13 +57,15 @@ namespace Game.EditorTests
             ["Execution/ActiveDefenceExecutor.cs"] = 2,
             ["Execution/RaidExecutor.cs"] = 1,
             ["Execution/TaskExecutor.cs"] = 10,
-            ["Housekeeping/HousekeepingManager.cs"] = 6,
+            ["Housekeeping/HousekeepingManager.cs"] = 3,
             ["Initiative/PreTurnCapacityAnalysis.cs"] = 1,
             // Physical before/after accounting, including AP spent by the local-refit handoff.
             ["Materialization/MaterializationExecutor.cs"] = 26,
             ["Missions/Raid/RaidRecoveryPlanner.cs"] = 1,
             // Pipeline.cs 6 -> 2: the admission-key reads moved with their owners (see the two files below).
-            ["Orchestration/AiStrategyV2Pipeline.cs"] = 2,
+            // Moved, not new: the end-of-turn tempo re-run's AP before/after log reads (+2) left
+            // HousekeepingManager.cs (6 -> 3) with the reaction step they belong to.
+            ["Orchestration/AiStrategyV2Pipeline.cs"] = 4,
             // Admission-key digest (ece0211c): the snapshot AP is one input of the Development key.
             ["Orchestration/DevelopmentAdmission.cs"] = 1,
             // Moved, not new: the Economy key reads the physical AP (it was inline in RunTurn).

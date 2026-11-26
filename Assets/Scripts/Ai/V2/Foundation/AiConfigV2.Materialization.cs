@@ -209,8 +209,8 @@
         // spec §7 — extra AP beyond a responder's activation cost folded into the reaction estimate
         // for the one repositioning step a bounded replan typically makes.
         public const int reactionResponderMoveApEstimate = 1;
-        // §7 — for HousekeepingManager's same-turn tempo re-run after a released
-        // reservation. UseSurplus is itself the bounded loop; this only caps the re-run repeats.
+        // §7 — for the same-turn tempo re-run after a released reaction reservation
+        // (AiStrategyV2Pipeline.EndOfTurnReaction) and the turn loop's round cap. UseSurplus is itself the bounded loop; this only caps the re-run repeats.
         public const int maxEndOfTurnTempoReruns = 1;
 
         // =======================================================================================
