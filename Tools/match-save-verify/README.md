@@ -60,6 +60,6 @@ The first uses full runtime sources and actual
 AntiAirRules to check ability ordering for units/buildings/facilities; its name denotes the
 runtime-reference runner, not execution in Unity. The second runs actual frozen renderer
 role capture/import and the subsequent real CopyAppearanceFrom, with engine-only component
-surfaces. See `docs/match-save-load-audit.md` for findings and remaining native checks.
+surfaces. Remaining native checks: `docs/match-save-load.md`.
 
 Removed 2026-11-11: `Tools/save-preparation-verify/integration/`, `presentation-codec/`, `Tools/match-save-verify/world/run.py` and `audit-world/run.py` no longer compiled after package 4 (stale source list). Their behavior is covered by the EditMode fixtures (MatchRestoreIntegrationTests, MatchSaveIntegrationTests, MatchPresentationCodecTests).

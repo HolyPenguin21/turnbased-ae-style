@@ -46,8 +46,7 @@ python3 Tools/terrain-assets/preview.py --biome AridSteppe
 ```
 
 The default remains Desert. `preview.py` prefixes generated diagnostic names by biome.
-See `Docs/terrain-complexes/arid-obstacle-fix-report.md` for prompts, ownership, validation
-and the separate Unity acceptance work.
+Terrain-obstacle behaviour and its Unity checks: `Docs/terrain-complexes/implementation.md`.
 
 Boiling mud and giant machine wreck use separate built-in imagegen sources for each biome.
 Exact prompts are in `Sources/MudAndWreck-Prompts.md`. Mud has seven atlas phases and two
@@ -87,7 +86,6 @@ or regenerating cluster art, run normalization before accepting the assets.
 ## Final offline acceptance
 
 The reviewed asset baseline is `3774b1c`; the coverage/integrity update is `2014d7a`.
-See `Docs/terrain-complexes/final-visual-review.md` for the final review and its scope.
 
 The complete audit includes all 68 runtime PNGs, 24 configured ordinary references per biome,
 all seven frames of each animated family, and the last-to-first loop transition.

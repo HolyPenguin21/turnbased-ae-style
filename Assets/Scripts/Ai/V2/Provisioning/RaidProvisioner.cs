@@ -321,7 +321,7 @@ namespace Game.Ai.V2
 
         // Was a duplicate of GroundCombatFeasibility.Clears — with a stale hardcoded win-chance
         // threshold and no `cover` output — now calls that shared, parameterized implementation
-        // directly at the one call site above (see Docs/ai-duplicate-methods-analysis.md, D4).
+        // directly at the one call site above.
 
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }

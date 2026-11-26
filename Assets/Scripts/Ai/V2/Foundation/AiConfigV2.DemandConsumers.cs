@@ -1,6 +1,6 @@
 namespace Game.Ai.V2
 {
-    // Part of AiConfigV2 (file-split Task 2, see Docs/ai-v2-file-split-refactor-tasks.md).
+    // Part of AiConfigV2 (one partial file per topic).
     // Eco/Dev demand consumers (DemandLayer minimal vertical slices) + Materialization garrison saturation modifiers — kept as one block, matching the original single SECTION banner.
     public static partial class AiConfigV2
     {

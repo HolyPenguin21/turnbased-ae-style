@@ -79,7 +79,6 @@ The managed full-file runner keeps the production transport, capture/decode/vali
 
 Final evidence and remaining native checks are recorded in the implementation plan execution ledger. Required final editor checks: complete EditMode suite, actual Game/MainMenu activation and slot dialog availability/cancel/errors, captured/destroyed Last Seen renderers and map-border fog extent, normal new game, Library receipt replay including no eligible card/profile backup failures, campaign operation replacement, and a stripped standalone build. Native/UI completion must not be inferred from managed adapter results.
 
-The subsequent bottom-up audit, confirmed defects, fixes and fresh results are recorded in `docs/match-save-load-audit.md`. That ledger supersedes the initial verification counts.
 
 ## Authored Save/Load UI (2026-10-29)
 

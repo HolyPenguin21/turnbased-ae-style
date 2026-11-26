@@ -1,6 +1,6 @@
 namespace Game.Ai.V2
 {
-    // Part of AiConfigV2 (file-split Task 2, see Docs/ai-v2-file-split-refactor-tasks.md).
+    // Part of AiConfigV2 (one partial file per topic).
     // Development — desire sub-block (rawDev / investment window / DevelopmentOpportunityEvaluator EV model).
     public static partial class AiConfigV2
     {

@@ -16,8 +16,8 @@ using Game.Combat;
 namespace Game.Ai.V2
 {
     // Observation — step stamps, invalidation detection (CaptureStepObservation, PublishStepObservationDelta, the change-detection helpers, and the snapshot diagnostic log).
-    // File-split (mechanical, no behaviour change) from WorldAnalysis.cs — see
-    // Docs/ai-v2-file-split-refactor-tasks.md Task 5. Still exactly the WorldAnalysis
+    // File-split (mechanical, no behaviour change) from WorldAnalysis.cs.
+    // Still exactly the WorldAnalysis
     // class; only this snapshot family's slice moved to its own file.
     public static partial class WorldAnalysis
     {

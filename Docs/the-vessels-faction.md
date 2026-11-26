@@ -28,15 +28,11 @@ catalog UI and seven animated map flag phases.
 | Path | Purpose |
 | --- | --- |
 | `Assets/Cards/TheVessels/CardCatalog_TheVessels.asset` | Card definitions, map prefab links, logo and army names |
-| `Assets/Textures/Units/4_TheVessels/RawArt` | 29 clean 768 × 1120 artworks, without card frames |
-| `Assets/Textures/Units/4_TheVessels/GameCards` | Empty destination for future composed game card images |
-| `Assets/Textures/Units/4_TheVessels/DetailView` | Empty destination for future detail card images |
+| `Assets/Textures/Units/4_TheVessels/GameCards` | Game card images (`TV_*.png`) |
+| `Assets/Textures/Units/4_TheVessels/DetailView` | Detail card images (`TV_*_Full.png`) |
 | `Assets/Textures/Game/General/Factions/Logo_TheVessels.png` | Transparent faction emblem |
-| `Assets/Textures/Game/General/Citadel/Vessels_Flag_Logo_01–07.png` | Emblem synchronized to the seven cloth animation phases |
-| `Assets/Prefabs/MapObject_Citadel_TV.prefab`, `MapObject_Base_TV.prefab` | Faction map buildings |
-
-The catalog's `art` and `detailArt` currently point to the clean `RawArt`
-sprites. No final card compositions or frames are part of this change.
+| `Assets/Textures/Game/General/Flags/Vessels_Flag_Logo_01–07.png` | Emblem synchronized to the seven cloth animation phases |
+| `Assets/Prefabs/MapObjects/MapObject_Citadel_TV.prefab`, `MapObject_Base_TV.prefab` | Faction map buildings |
 
 ## Unity review
 

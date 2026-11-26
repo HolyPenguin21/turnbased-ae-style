@@ -16,7 +16,7 @@ using UnityEngine.UI;
 namespace Game.UI
 {
     // One collection/deck workspace living in the scene canvas; ownership and composition rules stay in
-    // CollectionService/DeckRules. The hierarchy is authored (see Tools/UI/Build Collection Window);
+    // CollectionService/DeckRules. The hierarchy is authored in the MainMenu scene;
     // cells and deck rows are pooled and updated in place instead of rebuilding the screen.
     public sealed class CollectionScreensUI : MonoBehaviour
     {

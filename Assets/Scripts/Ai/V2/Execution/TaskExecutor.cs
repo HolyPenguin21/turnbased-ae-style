@@ -165,8 +165,8 @@ namespace Game.Ai.V2
         // gone"/revalidation line; ExecuteStep does the opposite), so those differences are
         // explicit parameters.
         //
-        // Scout dispatch itself (ReconGroundExecutor.Run vs RunStep) stays UNMERGED on purpose (see
-        // docs/ai-economy-mover-materialization-decision-tree.md): Execute's multi-step lookahead
+        // Scout dispatch itself (ReconGroundExecutor.Run vs RunStep) stays UNMERGED on purpose:
+        // Execute's multi-step lookahead
         // and ExecuteStep's single-atomic-step contract are two different behaviors, not two copies
         // of the same one.
         private static bool TryHandleStalePlan(PlayerSetupData player, PlayerRoot root,

@@ -10,8 +10,8 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // MissionIntentState (per-player durable intent store) + MissionIntentRegistry (per-player lookup).
-    // File-split (mechanical, no behaviour change) from MissionIntent.cs — see
-    // Docs/ai-v2-file-split-refactor-tasks.md Task 3. Independent standalone types,
+    // File-split (mechanical, no behaviour change) from MissionIntent.cs.
+    // Independent standalone types,
     // not a partial class.
     public sealed partial class MissionIntentState : IMissionIntentView
     {

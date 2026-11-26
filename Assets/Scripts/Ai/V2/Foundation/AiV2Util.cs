@@ -10,7 +10,7 @@ namespace Game.Ai.V2
     // Small, decision-relevant helpers that were independently copy-pasted (byte-identical bodies)
     // across several V2 lanes. Consolidated here so a future fix/change lands once instead of N
     // times — the risk this collapses is silent behavioral drift between copies that are supposed
-    // to answer the exact same question (see Docs/ai-duplicate-methods-analysis.md, groups A/D/F).
+    // to answer the exact same question.
     // Deliberately NOT included: the many private N()/F() float-formatting helpers scattered across
     // diagnostics/logging code — those differ in precision on purpose ("0.##" vs "0.00" vs "0.0")
     // and only affect log text, never a decision, so merging them has no risk-reduction value and

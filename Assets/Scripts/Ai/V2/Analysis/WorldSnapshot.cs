@@ -1104,8 +1104,8 @@ namespace Game.Ai.V2
             // DesireEvaluators read it the same way; repurposing it here would silently change
             // those unrelated consumers' behaviour.
             float target = Mathf.Max(opponentMedianIncome, cardCadence);
-            // incomeGap is a turns-to-afford bottleneck (see
-            // docs/ai-economy-mover-materialization-decision-tree.md): solve directly for
+            // incomeGap is a turns-to-afford bottleneck:
+            // solve directly for
             // how many turns until spendableStockpile + ownIncome×turns covers the FULL,
             // undiscounted hand+deck plus witnessed future costs. The resource with the
             // largest turnsToAfford is the true bottleneck — a high-income resource with an even

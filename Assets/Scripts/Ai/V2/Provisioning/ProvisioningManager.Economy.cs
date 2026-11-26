@@ -505,7 +505,7 @@ namespace Game.Ai.V2
         // DIAGNOSTIC (FoundBase only) — a fresh mission's selection loop rejected every ranked
         // candidate (or none was ranked). Prints each candidate's real answer: the eligibility
         // gate, then the same garrison evaluation / completion plan the loop ran
-        // (docs/ai-economy-mover-materialization-decision-tree.md, "Known trap").
+        // (never a re-derived copy of the gates).
         private static void TraceFreshEconomyCandidates(PlayerSetupData player, ProvisioningSession session,
             EconomyMissionTarget target,
             IReadOnlyList<EconomyBuilderSelection.EconomyBuilderChoice> rankedBuilders,

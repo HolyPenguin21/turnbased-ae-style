@@ -38,8 +38,7 @@ namespace Game.Ai.V2
         // TRACE prints this struct's fields verbatim instead of re-deriving its own copy of the
         // eligibility logic (the previous copy drifted out of sync with the real gates: it never
         // accounted for ArmyData.RequiresActivationCharge, an existing hero already in a "host"
-        // candidate, or ProvisioningSession.ClaimedArmyIds — see
-        // Docs/ai-economy-mover-materialization-decision-tree.md).
+        // candidate, or ProvisioningSession.ClaimedArmyIds).
         internal enum GarrisonExtractionTier { None, Shell, Host, Create }
 
         internal readonly struct GarrisonExtractionCandidate
@@ -68,8 +67,9 @@ namespace Game.Ai.V2
                 new GarrisonExtractionCandidate(tier, hero, container, apCost, null);
         }
 
-        // Three tiers, tried in order, matching the decision tree in
-        // Docs/ai-economy-mover-materialization-decision-tree.md (case 1.3 / two 1.4 extensions).
+        // Three tiers, tried in order: Shell (an empty reusable army on the garrison hex), Host (the
+        // smaller unclaimed non-shell army there), Create (a new army). A hero who already leads a
+        // field army needs none of them; no sparable hero at all is an honest NoMoverExists.
         // Pure: never touches game state. A container's AP cost (activation charge on an
         // already-acted shell/host, or CreateArmyApCost for a fresh one) is checked against BOTH
         // the ECO-axis envelope and the raw AP pool before it is accepted, so a candidate this

@@ -7,7 +7,7 @@ using NUnit.Framework;
 
 namespace Game.EditorTests
 {
-    // Baseline fixtures of the decoupling task (docs/ai-v2-decoupling-evidence.md, scenarios S1-S9).
+    // Baseline fixtures of the decoupling task (scenarios S1-S9).
     // Expected values are fixed by the reservation rules (each build releases only its own AP;
     // nothing survives the turn), written before any decoupling change - never copied from a new
     // implementation. Every fixture also records a JSONL trace (AiDecouplingTrace) that the Python

@@ -26,6 +26,5 @@ https://github.com/HolyPenguin21/turnbased-ae-style/raw/712dbcfce7888153f31ff1bf
 - `Tools/army-destruction/generate.py` can recreate the four sheets from the **versioned** original in-game 128px ground/air army sprites. It is an optional authoring tool, **not a runtime dependency**.
 - GitHub CI generates temporary art, runs `--check`, and confirms that no PNG sheet is tracked.
 - Unity tests that require the four locally installed sheets skip those integration checks when art is absent. Tests for viewer safety and visual capture remain independent of the PNGs.
-- Preview GIFs in `Docs/Previews/` are for inspection only, not runtime assets.
 
 **Release note:** Since the PNGs are ignored, clean clones and builds must receive all four locally; without them, the destruction flipbook cannot display correctly.

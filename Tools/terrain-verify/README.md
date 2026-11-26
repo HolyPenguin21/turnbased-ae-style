@@ -58,8 +58,8 @@ python Tools/terrain-verify/sample_authored.py --actual-starts --ordinary --play
 `--ordinary` uses the shared ordinary budget without regional inputs. Sampling
 ordinary Small four-player starts can FAIL the full-budget assertion for a proven
 geometric reason: in the recorded Arid seed-2 witness only three nonadjacent far
-hexes exist for a target of five, even before near placement. See
-`Docs/CampaignRegionConditions_Audit.md`; the planner's legal partial fallback is
+hexes exist for a target of five, even before near placement.
+The planner's legal partial fallback is
 covered separately. A full target for every allowed start cannot be asserted under
 the unchanged start and far-distance rules. The sampler never labels that shortfall
 a complete plan. Its generated binary runs from a private temporary directory.

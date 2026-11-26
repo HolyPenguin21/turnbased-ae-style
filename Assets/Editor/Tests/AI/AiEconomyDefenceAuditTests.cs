@@ -9,7 +9,7 @@ using NUnit.Framework;
 
 namespace Game.EditorTests
 {
-    // 2026-11-19 audit of the Economy and Defence blocks (Docs/ai-economy-defence-audit-2026-11-19.md):
+    // 2026-11-19 audit of the Economy and Defence blocks:
     // the behaviour changes that unify a rule across its readers.
     public class AiEconomyDefenceAuditTests
     {

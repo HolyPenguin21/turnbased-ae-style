@@ -10,8 +10,8 @@ namespace Game.Ai.V2
     // AiConfig.aiStrategyV2Enabled is set.
     //
     // File-split (mechanical, no behaviour change): per-layer tunables live in the sibling
-    // AiConfigV2.*.cs partial files, one per topic — see Docs/ai-v2-file-split-refactor-tasks.md
-    // Task 2. This file keeps the pipeline-wide ones: diagnostics (frameLogEnabled, the one
+    // AiConfigV2.*.cs partial files, one per topic.
+    // This file keeps the pipeline-wide ones: diagnostics (frameLogEnabled, the one
     // non-const field), mid-turn loop bounds, the allocator and cross-axis desire smoothing.
     public static partial class AiConfigV2
     {

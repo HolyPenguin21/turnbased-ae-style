@@ -287,16 +287,13 @@ work keeps its own observation/settle order. `Pipeline.RunTurn` assembles them: 
 loop, recall, final ownership, `SettleAfterTurn`, Housekeeping, audit and cleanup.
 `RecallUnsafeStrikes`, Housekeeping and Reaction stay outside the loop (the loop, not `RunTurn`: Reaction
 runs inside `RunTurn`, from Housekeeping, followed by one bounded Phase B rerun).
-`TurnLoop` is the single owner of the *transitions*; it is not yet the single *writer* of every field of
-`TurnLoopState` (the work bodies write `SettledSteps`, `ReturnsDeferred`, and share `NoProgressCycles`
-and `ResidualWindow` with the loop). Removing that shared write, and moving domain rules to their
-owners, is the decoupling task: `Docs/ai-v2-decoupling-plan.md`, evidence and tools in
-`Docs/ai-v2-decoupling-evidence.md` and `Tools/ai-v2-decoupling-verify/`.
+`TurnLoop` is the single owner of the *transitions* and the single *writer* of `TurnLoopState`: the work
+bodies return an outcome (`SettledStepDelta`, `NoProgressAfter`, `ResidualVerdict`, `ReturnsDeferred`) and
+`TurnLoop` applies it. Level boundaries are checked by `Tools/ai-v2-decoupling-verify/`.
 
 **Responsibility map after the decoupling (stages E1-E6).** What changes where. The control flow
 stays with `TurnLoop`; every domain rule lives with its owner; the orchestrator only reports its own
-moments and assembles components. Evidence: `Docs/ai-v2-decoupling-evidence.md`, final report:
-`Docs/ai-v2-decoupling-final-report.md`.
+moments and assembles components.
 
 | Rule / state | Owner | The orchestrator's contract |
 |---|---|---|
@@ -556,7 +553,7 @@ Final FoundBase admission reuses `EconomyBuilderSelection.SelectEconomyBuilder` 
 
 ## Lifecycle ownership migration (706b1bbd baseline)
 
-Source ownership migration is delivered. Full native Unity acceptance is performed by the project owner using Docs/ai-v2-lifecycle-unity-acceptance.md; managed parity is not a substitute for that acceptance.
+Source ownership migration is delivered. Managed parity is not a substitute for native acceptance: the full Unity EditMode suite.
 
 * `AiTurnSession` owns one player/turn scope. Pipeline creates it before card refill and closes it explicitly after the final summary; `using` is an exception/disposal fallback. Starting the next turn also closes a scope abandoned by native coroutine cancellation. Persistent stores are never cleared by turn disposal.
 * Session delegates reservation storage to `StrategicResourceReservationLedger` and pending-fact storage to `StrategicInterruptRegistry`. It begins telemetry/exhaustion/reservations, and ends reservations, invalidations, exhaustion, temporary capability protection, tempo, aviation stall and the continuation window. Pass-scoped assignment/admission/budget objects stay with their existing owners. Provisioning tentative actors use a pass lease book created by the turn session; disposing the pass closes it, and turn disposal also closes abandoned pass handles. A new pass cannot see another pass's tentative claims. The unused DurableClaimedArmyIds copy was removed; real durable exclusions still use the existing normalized commitments and pinned-leg constraints. Diagnostic summaries are emitted before cleanup.

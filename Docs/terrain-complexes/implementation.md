@@ -30,8 +30,10 @@ Ground Recon's direct neighbor/lookahead choices, frontier flood and reaction ch
 obstacles. Snapshot pricing uses actual route costs for scouts, vantage cells, assault and
 reinforcement; unreachable routes are not substituted with straight distance. Vision/risk distances
 remain geometric. `SafeStepPathing` air costs bypass its ground-only caches. Map snapshot reuse
-checks both map identity and `PathingVersion`. Call `SetTerrainAt` after runtime terrain edits,
-including edits to a shared terrain entry, to advance the revision.
+checks both map identity and `PathingVersion`. Terrain is fixed after generation: `HexMapGenerator`
+calls `HexMap.PublishTerrainLayout`, after which `SetTerrainAt` returns `false` and changes neither
+data nor `PathingVersion` (it edits terrain only while the layout is being prepared). Editing a
+`TerrainTypeEntry` during play is not supported. `SetData` replaces the whole map and its revision.
 
 The combined hex mesh and `HexBlend.shader` keep their original six-edge alpha band. Per-complex
 part materials carry separate square textures; UV rotation follows the rotated footprint.
@@ -89,6 +91,6 @@ were compiled but not run here.
    during selection settling and confirm no activation/AP/MP/Energy charge.
 5. Air overflight and stopping: verify existing fuel/contact/MP behavior remains intact.
 6. Block every ground retreat neighbor and verify the existing no-retreat outcome. Exercise AI
-   scouts/builders/assault around a canyon and refresh terrain mid-turn through SetTerrainAt.
+   scouts/builders/assault around a canyon.
 7. Verify FOW, coordinates, markers and highlight order while frames advance, and verify animation
    continues after HexMapGenerator is destroyed.

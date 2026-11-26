@@ -330,8 +330,8 @@ namespace Game.Ai.V2
         }
 
         // Shared skeleton for the three Create*Intent methods below — was three independent,
-        // hand-written copies of the same 12-field MissionIntent construction (see
-        // Docs/ai-duplicate-methods-analysis.md, group M). Collapsing them here means a future
+        // hand-written copies of the same 12-field MissionIntent construction.
+        // Collapsing them here means a future
         // field added to MissionIntent only has to be wired up once, instead of risking a silently
         // half-initialized intent from a copy nobody remembered to update.
         internal static MissionIntent NewIntent(MissionStepResult o, int turn, MissionKind kind,

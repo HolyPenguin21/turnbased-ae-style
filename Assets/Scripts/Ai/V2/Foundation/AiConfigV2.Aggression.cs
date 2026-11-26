@@ -1,6 +1,6 @@
 namespace Game.Ai.V2
 {
-    // Part of AiConfigV2 (file-split Task 2, see Docs/ai-v2-file-split-refactor-tasks.md).
+    // Part of AiConfigV2 (one partial file per topic).
     // Aggression axis readiness and shared Aggression/Raid objective and mission configuration.
     public static partial class AiConfigV2
     {

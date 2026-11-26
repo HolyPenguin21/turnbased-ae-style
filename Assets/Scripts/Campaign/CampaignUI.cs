@@ -15,7 +15,7 @@ using UnityEngine.UI;
 namespace Game.Campaign
 {
     // Runtime controller for the Campaign scene. Every panel, plaque, button and modal window is an
-    // ordinary scene object (authored once by Tools/UI/Build Campaign Screen) and is edited in the
+    // ordinary scene object, authored and edited in the
     // editor; this class only binds listeners, fills text/sprites and toggles which parts are visible.
     // Only the region meshes (CampaignMapView) and the per-row prefabs are created at run time.
     public sealed class CampaignUI : MonoBehaviour

@@ -17,7 +17,7 @@ namespace Game.UI
         [SerializeField] private Game.Core.GameConfig gameConfig;
         [SerializeField] private CollectionScreensUI collectionScreens;
         [SerializeField] private Sprite campaignIronConcordLogo, campaignAshenLogo, campaignVesselsLogo;
-        // New-campaign popups are authored in the MainMenu scene (Tools/UI/Build Campaign Setup Popups).
+        // New-campaign popups are authored in the MainMenu scene and edited there.
         [Header("New campaign popups")]
         [SerializeField] private GameObject campaignRoot;
         [SerializeField] private GameObject campaignFactionWindow;
@@ -47,7 +47,7 @@ namespace Game.UI
             }
             if (gameConfig == null) return;
             if (collectionScreens != null) collectionScreens.Configure(gameConfig);
-            else Debug.LogError("MainMenuController: CollectionWindow is not assigned. Run Tools/UI/Build Collection Window.", this);
+            else Debug.LogError("MainMenuController: CollectionWindow is not assigned in the MainMenu scene.", this);
             if (Game.Core.GameSession.SetupError != null)
             {
                 OnNewGameClicked();

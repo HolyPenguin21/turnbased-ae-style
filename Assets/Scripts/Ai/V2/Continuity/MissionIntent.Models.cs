@@ -10,8 +10,8 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // MissionIntent model types: CommitmentTier / IntentStatus / SuspendReason, MissionIntentKey, ScoutIntent, RaidIntent, EconomyIntent, MissionIntent.
-    // File-split (mechanical, no behaviour change) from MissionIntent.cs — see
-    // Docs/ai-v2-file-split-refactor-tasks.md Task 3. Independent standalone types,
+    // File-split (mechanical, no behaviour change) from MissionIntent.cs.
+    // Independent standalone types,
     // not a partial class.
     public enum CommitmentTier { None, Soft, Hard }
     public enum IntentStatus { Active, Suspended }

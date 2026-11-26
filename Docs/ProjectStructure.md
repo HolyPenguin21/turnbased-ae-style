@@ -8,11 +8,11 @@
 | `Assets/Textures/UI/Buttons` | Кнопки, включая действия панели хекса |
 | `Assets/Textures/UI/Panels` | Панели, включая панели армии и хекса |
 | `Assets/Textures/UI/Icons` | UI-иконки и иконки действий |
-| `Assets/Textures/UI/Indicators` | Индикаторы состояния |
-| `Assets/Textures/UI/Backgrounds` | Фоны интерфейса |
-| `Assets/Textures/UI/Cards`, `Tokens`, `Decorations` | Элементы карточек, кубики и декор |
-| `Assets/Textures/Game/General/Armies`, `Bases`, `Citadel`, `Events` | Изображения объектов карты |
-| `Assets/Textures/Game/General/Flags`, `Factions`, `Icons`, `MapMarkers` | Флаги, логотипы, иконки карты и маркеры |
+| `Assets/Textures/UI/Controls`, `Decorations`, `Effects` | Элементы управления, декор и атлас эффектов боя |
+| `Assets/Textures/Game/General/Armies`, `Citadel`, `Events` | Изображения объектов карты |
+| `Assets/Textures/Game/General/Flags`, `Factions`, `Icons` | Флаги, логотипы и иконки карты |
+| `Assets/Textures/Campaign` | Фоны, эффекты и элементы экрана кампании |
+| `Assets/Shaders` | Шейдеры |
 | `Assets/Audio/Music`, `Effects`, `Mixers` | Музыка, звуки и микшеры |
 | `Assets/Prefabs/UI/Buttons`, `Panels`, `Cards`, `Tokens`, `Rows` | Переиспользуемые UI-префабы по типу |
 | `Assets/Prefabs/UI/ArmyRadio`, `BattleScreen`, `Campaign`, `Collection` | Связанные элементы конкретного экрана или функции |
@@ -23,13 +23,14 @@
 
 ## Resources
 
-Ассеты, загружаемые через `Resources.Load`, остаются внутри `Assets/Resources`.
-UI-ресурсы лежат в `UI/Buttons`, `UI/Panels`, `UI/Controls`, `UI/Backgrounds` и
-`UI/Decorations`, затем разделяются по экрану (`Campaign`, `Collection`, `Rewards`).
-Фоны планеты лежат в `Campaign/Backgrounds`, облака — в `Campaign/Effects`,
-шейдер поверхности — в `Shaders/CampaignSurface.shader`.
+Код загружает ассеты по строковому ключу через `GameAssetCatalog.Load`
+(`Assets/Resources/GameAssetCatalog.asset`). Ключи повторяют прежние пути `Resources`
+без расширения; соответствие «папка → префикс ключа» задаёт `GameAssetCatalogBuilder`
+(например, `Assets/Textures/Campaign` → `Campaign`, `Assets/Shaders` → `Shaders`).
+Через `Resources.Load` напрямую загружаются только сам каталог, `MatchSaveAssetManifest`
+и локальные атласы `ArmyDestruction`.
 
-При новом переносе нужно обновить строковые пути `Resources.Load` и
+При новом переносе нужно обновить корни в `GameAssetCatalogBuilder`, строковые пути
 `AssetDatabase.LoadAssetAtPath`, пути в инструментах проверки и документации.
 Поиск UI-скриптов и редакторских тестов должен учитывать вложенные папки.
 UI-скрипты остаются вне `Editor`, редакторские инструменты и тесты — внутри неё.

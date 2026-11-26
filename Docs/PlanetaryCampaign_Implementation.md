@@ -3,8 +3,7 @@
 ## Статус приёмки
 
 Это отчёт первой публикации. PR #161 впоследствии слит владельцем в master
-(`659de1c2`). Результаты дополнительной проверки и исправления приведены в
-[PlanetaryCampaign_BottomUpReview.md](PlanetaryCampaign_BottomUpReview.md).
+(`659de1c2`).
 
 Код режима реализован в отдельной ветке `feature/planetary-campaign`.
 Исходный `master`: `5fce798dbf802c4bc1c619d81f5fa2ef1bc0682e`.

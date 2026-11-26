@@ -17,8 +17,8 @@ using Game.Combat;
 namespace Game.Ai.V2
 {
     // Self — BuildSelf, army/ability projection (ToArmySnapshot + its helpers, BuildApActionEconomy), and ArmyVisionRadius (also used by BuildTrueWorld in WorldAnalysis.Knowledge.cs).
-    // File-split (mechanical, no behaviour change) from WorldAnalysis.cs — see
-    // Docs/ai-v2-file-split-refactor-tasks.md Task 5. Still exactly the WorldAnalysis
+    // File-split (mechanical, no behaviour change) from WorldAnalysis.cs.
+    // Still exactly the WorldAnalysis
     // class; only this snapshot family's slice moved to its own file.
     public static partial class WorldAnalysis
     {

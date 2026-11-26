@@ -10,8 +10,8 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // File-split (mechanical, no behaviour change, Docs/ai-v2-file-split-refactor-tasks.md
-    // Task 4): this file keeps only Generate, the single assembly point that calls the
+    // File-split (mechanical, no behaviour change):
+    // this file keeps only Generate, the single assembly point that calls the
     // per-axis methods below — the ONLY place that calls them. Each axis's demand-building
     // logic lives in the sibling DemandLayer.<Axis>.cs partial file.
     public static partial class DemandLayer

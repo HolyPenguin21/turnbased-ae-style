@@ -11,8 +11,8 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ReconDemands and its Recon-only private helper (ReconKey).
-    // File-split (mechanical, no behaviour change) from DemandLayer.cs — see
-    // Docs/ai-v2-file-split-refactor-tasks.md Task 4. Still exactly the DemandLayer
+    // File-split (mechanical, no behaviour change) from DemandLayer.cs.
+    // Still exactly the DemandLayer
     // class; only this axis's slice moved to its own file.
     public static partial class DemandLayer
     {
