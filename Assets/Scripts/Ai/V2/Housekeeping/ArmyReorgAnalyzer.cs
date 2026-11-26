@@ -88,8 +88,10 @@ namespace Game.Ai.V2
 
     public static class ArmyReorgAnalyzer
     {
+        // `includeEveryGroup` — every own hex, not only the ones worth a day pass (the night fold
+        // reads hexes the day planner has nothing to change on).
         public static ArmyReorgAnalysis Analyze(PlayerSetupData player, ActorCommitments commitments,
-            WorldSnapshot snapshot, AiTurnContext ctx)
+            WorldSnapshot snapshot, AiTurnContext ctx, bool includeEveryGroup = false)
         {
             var unitByKey = new Dictionary<int, UnitData>();
             var armyById = new Dictionary<int, ArmyData>();
@@ -140,7 +142,7 @@ namespace Game.Ai.V2
                     Containers = containers,
                     ThreatBenchmarks = BuildThreatBenchmarks(snapshot, groupHex, containers, unitByKey),
                 };
-                if (lfg.WorthPlanning())
+                if (includeEveryGroup || lfg.WorthPlanning())
                     groups.Add(lfg);
             }
 
@@ -217,6 +219,7 @@ namespace Game.Ai.V2
                     ?? ArmyMutationContract.FullyProtected;
                 container.MissionLabel = contract.Label;
                 container.IsMissionReceiver = contract.MayReceive;
+                container.NeedsUnits = contract.NeedsUnits;
                 container.CanReceive = contract.MayReceive;
                 container.CanReorderCommander = contract.MayReorderCommander;
                 container.MayReleaseExcessHeroes = contract.MayReleaseExcessHeroes;
@@ -252,6 +255,11 @@ namespace Game.Ai.V2
                 // legal, so it is never a deficit Housekeeping refills).
                 container.GarrisonNonHeroFloor = 1;
                 container.GarrisonPowerFloor = AiArmyRoles.GarrisonDefenceFloor(player, army.Hex, isCitadel);
+                container.GarrisonBaseFloor = AiArmyRoles.GarrisonFloorBeforeResidents(player, army.Hex, isCitadel);
+            }
+            else
+            {
+                container.IsHexResident = AiArmyRoles.IsHexResidentArmy(player, army);
             }
 
             return container;

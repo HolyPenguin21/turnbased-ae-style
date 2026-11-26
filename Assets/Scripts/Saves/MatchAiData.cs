@@ -31,6 +31,7 @@ namespace Game.Saves
         public MatchAiMap138 DevelopmentHistory;
         public MatchAiMap141 ApPressure;
         public MatchAiMap144 LifecycleWaits;
+        public MatchAiMap198 NightFold;
         public List<int> HistoricalArmyIds = new List<int>();
         public List<int> HistoricalUnitIds = new List<int>();
         public List<int> HistoricalCardIds = new List<int>();
@@ -1446,5 +1447,26 @@ namespace Game.Saves
         public MatchAiOptional117 LandingHex;
         public int BoundTurn;
         public bool SortieSeen;
+    }
+    // global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>>
+    [Serializable] internal sealed class MatchAiMap198
+    {
+        public bool HasData;
+        [Serializable] public sealed class Entry { public string Key; public MatchAiMap199 Value; }
+        public List<Entry> Entries = new List<Entry>();
+    }
+    // global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>
+    [Serializable] internal sealed class MatchAiMap199
+    {
+        public bool HasData;
+        [Serializable] public sealed class Entry { public int Key; public MatchAiTuple200 Value; }
+        public List<Entry> Entries = new List<Entry>();
+    }
+    // (int ArmyId, int Index)
+    [Serializable] internal sealed class MatchAiTuple200
+    {
+        public bool HasData;
+        public int ArmyId;
+        public int Index;
     }
 }

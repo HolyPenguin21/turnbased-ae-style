@@ -157,6 +157,11 @@ namespace Game.Ai
             // whole loop below, not just some of it, sees the same freshly-expired memory.
             AiMapMemory.OnTurnStarted(player, ctx.TurnNumber);
 
+            // 2026-11-25 (owner) — the night fold of the previous turn end is undone before anything
+            // reads the world: the task armies and the garrison stand as they did by day
+            // (HousekeepingNightFold.Restore; survivors only, after BeginPlayer reset activation).
+            Game.Ai.V2.HousekeepingNightFold.Restore(player, ctx);
+
             // Pass the shared hand cap (spec §10) straight into GetOrCreate — it applies it on
             // creation AND re-applies it (SetCapacity) on every later turn, so the cap is a real
             // invariant from the hand's first card, never a window between construction and a

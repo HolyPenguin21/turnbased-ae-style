@@ -62,6 +62,10 @@ namespace Game.Ai.V2
     //    · KeepsMovement        — the operation moves on a route: an inbound member must not
     //                             lower the army's remaining or maximum movement (ETA, return
     //                             leg, interception timing);
+    //    · NeedsUnits           — 2026-11-25 (owner: "the garrison gives everything above its
+    //                             floor to the tasks that need units"): the operation still has to
+    //                             fight for its objective, so the garrison's surplus joins it. A
+    //                             return leg may receive free members but needs none;
     //    · MayReleaseExcessHeroes — ATK-F03, the Attack preparation host only: a hero that is not
     //                             its best commander (HeroRoleEvaluator) and no Research/Production
     //                             operator only takes a fighter slot, so it may leave, zero-AP, to
@@ -77,6 +81,7 @@ namespace Game.Ai.V2
         public readonly bool MayReorderCommander;
         public readonly bool KeepsMovement;
         public readonly bool MayReleaseExcessHeroes;
+        public readonly bool NeedsUnits;
         internal readonly bool ProtectsSoloRole;
         private readonly Func<ArmyData, IReadOnlyList<string>> _targetKeys;
         private readonly Func<ArmyData, IReadOnlyList<string>> _deploymentKeys;
@@ -86,10 +91,11 @@ namespace Game.Ai.V2
             bool keepsMovement, bool mayReleaseExcessHeroes = false, bool protectsSoloRole = false,
             Func<ArmyData, IReadOnlyList<string>> targetKeys = null,
             Func<ArmyData, IReadOnlyList<string>> deploymentKeys = null,
-            Func<ArmyData, UnitData, bool> releaseBody = null)
+            Func<ArmyData, UnitData, bool> releaseBody = null, bool? needsUnits = null)
         {
             Label = label;
             MayReceive = mayReceive;
+            NeedsUnits = mayReceive && (needsUnits ?? true);
             MayReorderCommander = mayReorderCommander;
             KeepsMovement = keepsMovement;
             MayReleaseExcessHeroes = mayReleaseExcessHeroes;
@@ -109,9 +115,10 @@ namespace Game.Ai.V2
             new ArmyMutationContract("protected", false, false, true);
 
         // Leased operational capability (StrategicCapabilityLeaseRegistry): fresh materialized
-        // force with no route yet — it may be reinforced, never taken apart.
+        // force with no route yet — it may be reinforced, never taken apart. No task yet, so it
+        // needs no garrison surplus (NeedsUnits) until one claims it.
         public static readonly ArmyMutationContract Leased =
-            new ArmyMutationContract("lease", true, true, false);
+            new ArmyMutationContract("lease", true, true, false, needsUnits: false);
 
         // An Attack mobilization host is being BUILT on its own base: any legal free body helps,
         // and its march speed is decided by the composition it ends up with.
@@ -127,9 +134,10 @@ namespace Game.Ai.V2
                 mayReleaseExcessHeroes: true, targetKeys: targetKeys,
                 deploymentKeys: deploymentKeys, releaseBody: releaseBody);
 
-        // Raid / Attack / ActiveDefence primaries, including their return legs.
-        public static ArmyMutationContract MovingOperation(string label) =>
-            new ArmyMutationContract(label, true, true, true);
+        // Raid / Attack / ActiveDefence primaries, including their return legs (`returnLeg`:
+        // it may take free members but needs none — NeedsUnits).
+        public static ArmyMutationContract MovingOperation(string label, bool returnLeg = false) =>
+            new ArmyMutationContract(label, true, true, true, needsUnits: !returnLeg);
 
         public ArmyMutationContract Intersect(ArmyMutationContract other) =>
             other == null ? this : new ArmyMutationContract(Label + "+" + other.Label,
@@ -139,6 +147,7 @@ namespace Game.Ai.V2
                 MayReleaseExcessHeroes && other.MayReleaseExcessHeroes,
                 ProtectsSoloRole || other.ProtectsSoloRole,
                 _targetKeys ?? other._targetKeys, _deploymentKeys ?? other._deploymentKeys,
-                (host, unit) => MayReleaseBody(host, unit) && other.MayReleaseBody(host, unit));
+                (host, unit) => MayReleaseBody(host, unit) && other.MayReleaseBody(host, unit),
+                NeedsUnits && other.NeedsUnits);
     }
 }

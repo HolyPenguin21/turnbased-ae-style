@@ -103,6 +103,15 @@ namespace Game.Ai.V2
         // (AiArmyRoles.GarrisonDefenceFloor / SpareableBodies — the same rule every donor reads).
         public int GarrisonNonHeroFloor;
         public float GarrisonPowerFloor;
+        // The garrison's floor before the resident field armies' credit (AiArmyRoles.
+        // GarrisonFloorBeforeResidents) and, on a field army, whether it is such a resident
+        // (AiArmyRoles.IsHexResidentArmy): the planner re-reads the credit on its virtual roster
+        // (ReorgViability.GarrisonFloor), exactly as the live release rule will at execution.
+        public float GarrisonBaseFloor;
+        public bool IsHexResident;
+        // A claimed army whose task needs units (ArmyMutationContract.NeedsUnits): the garrison's
+        // surplus above its floor joins it (planner step 0.9).
+        public bool NeedsUnits;
 
         // T05 — a claimed operation container whose ActorCommitments contract lets it take free
         // same-hex members (ArmyMutationContract.MayReceive). It never donates, is never folded,
@@ -208,12 +217,11 @@ namespace Game.Ai.V2
                     && !ReorgViability.IsHexBench(c, c.Units)
                     && c.Units.Any(u => u != null && (u.IsDevelopmentOperator || u.IsGarrisonHero))))
                 return true;
-            // 2026-11-18 (owner) — passive defence: under a deployed enemy a garrison and a free
-            // field formation on the same hex are repacked for the fight (the threat-first
-            // readiness profile decides), even when only one field formation stands there.
-            if (localGarrison != null && ThreatBenchmarks.Count > 0
-                && Containers.Any(c => !c.IsGarrison && c.IsMutableGround && c.CanDonate
-                    && c.Units.Any(u => u != null && u.IsGroundCombatant)))
+            // 2026-11-25 (owner) — a garrison holding more than its one body beside an army whose
+            // task needs units: its surplus above the floor may join the task (planner step 0.9).
+            if (localGarrison != null && localGarrison.CanDonate
+                && localGarrison.Units.Count(u => u != null && u.IsGroundBattleBody) > 1
+                && Containers.Any(c => !c.IsGarrison && c.NeedsUnits && c.CanReceive))
                 return true;
 
             // §9 — a heroless OR support-led viable field formation plus a benched combat hero
@@ -321,6 +329,22 @@ namespace Game.Ai.V2
         // that blocks a slot lowers the second; taking a non-roster body back in raises it again,
         // so the planner never ping-pongs. A held card stays pending until Phase A plays it (a
         // constant for Housekeeping). Zero for every container without a target roster.
+        // The live release floor (AiArmyRoles.GarrisonDefenceFloor) on a virtual roster of the hex:
+        // the garrison's base floor less the power of the resident field armies as they stand in
+        // `rosters`. 2026-11-25 (housekeeping stand E21): a frozen analysis-time floor let a plan
+        // move a free army's body into a departing host and then release a garrison body the live
+        // rule, re-reading the shrunken resident credit, refused.
+        public static float GarrisonFloor(ReorgContainer garrison,
+            IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> rosters)
+        {
+            float resident = 0f;
+            foreach (KeyValuePair<ReorgContainer, List<ReorgUnit>> kv in rosters
+                         ?? Enumerable.Empty<KeyValuePair<ReorgContainer, List<ReorgUnit>>>())
+                if (kv.Key != null && !kv.Key.IsGarrison && kv.Key.IsHexResident && kv.Value != null)
+                    resident += EffectivePower(kv.Value.Where(u => u != null && u.IsGroundBattleBody).ToList());
+            return Math.Max(0f, garrison.GarrisonBaseFloor - resident);
+        }
+
         public static int PreparationRosterWaste(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
             IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others)
         {
@@ -358,6 +382,7 @@ namespace Game.Ai.V2
             stranded = 0;
             if (host?.PreparationTargetKeys == null || hostUnits == null)
                 return;
+            others = (others ?? Enumerable.Empty<KeyValuePair<ReorgContainer, List<ReorgUnit>>>()).ToList();
             var need = new Dictionary<string, int>();
             foreach (string k in host.PreparationTargetKeys)
                 if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
@@ -398,7 +423,7 @@ namespace Game.Ai.V2
                     ? o.Value.Where(x => x != null && x.IsGroundCombatant).ToList() : null;
                 HashSet<int> spare = garrisonBodies == null ? null
                     : AiArmyRoles.SpareableBodies(garrisonBodies,
-                        set => EffectivePower(set.ToList()), o.Key.GarrisonPowerFloor);
+                        set => EffectivePower(set.ToList()), GarrisonFloor(o.Key, others));
                 foreach (ReorgUnit u in o.Value)
                     if (u != null && !u.IsHero && !u.IsAviation && !u.IsCommitted
                         && (spare == null || spare.Contains(garrisonBodies.IndexOf(u))))
@@ -423,8 +448,9 @@ namespace Game.Ai.V2
                     || o.Value == null)
                     continue;
                 List<ReorgUnit> garrisonBodies = o.Value.Where(x => x != null && x.IsGroundCombatant).ToList();
+                float floor = GarrisonFloor(o.Key, others);
                 HashSet<int> spare = AiArmyRoles.SpareableBodies(garrisonBodies,
-                    set => EffectivePower(set.ToList()), o.Key.GarrisonPowerFloor);
+                    set => EffectivePower(set.ToList()), floor);
                 foreach (ReorgUnit u in garrisonBodies.OrderByDescending(x => x.Power).ThenBy(x => x.Key))
                 {
                     if (exchangeable.Count == 0)
@@ -434,7 +460,7 @@ namespace Game.Ai.V2
                         || !need.TryGetValue(u.StrikeKey, out int n) || n <= 0)
                         continue;
                     ReorgUnit swapIn = exchangeable.FirstOrDefault(b => AiArmyRoles.KeepsFloorAfterExchange(
-                        garrisonBodies, index, b, set => EffectivePower(set.ToList()), o.Key.GarrisonPowerFloor));
+                        garrisonBodies, index, b, set => EffectivePower(set.ToList()), floor));
                     if (swapIn == null)
                         continue;
                     exchangeable.Remove(swapIn);

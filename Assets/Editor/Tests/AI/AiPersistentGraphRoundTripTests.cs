@@ -47,6 +47,7 @@ namespace Game.EditorTests
             DevelopmentDiversity.ClearAll();
             ApTurnPressure.ClearAll();
             LifecycleReturnPolicy.ClearAll();
+            HousekeepingNightFold.ClearAll();
             VisionSystem.Clear();
         }
 
@@ -229,6 +230,9 @@ namespace Game.EditorTests
             DevelopmentDiversity.RestorePersistentState(new Dictionary<string, IReadOnlyList<(int, string)>>
                 { [owner.PlayerId] = new List<(int, string)> { (8, "upgrade-A"), (9, "upgrade-B"), (10, "upgrade-A") } }, _ => owner);
             LifecycleReturnPolicy.RecordWait(owner, MissionIntentKey.ForScout(ScoutTargetKind.Explore, Focus), 10);
+            // A night fold standing: the hero spent the night outside its day army (index 0).
+            HousekeepingNightFold.RestorePersistentState(new Dictionary<string, IReadOnlyDictionary<int, (int ArmyId, int Index)>>
+                { [owner.PlayerId] = new Dictionary<int, (int ArmyId, int Index)> { [hero.RuntimeId] = (army.Id, 0) } }, _ => owner);
         }
 
         private static StableMissionKey CooldownKey(int armyId) => new StableMissionKey(MissionKind.Scout, 0, armyId, 5, 6);
@@ -251,6 +255,7 @@ namespace Game.EditorTests
             result.Add(OperationContinuationWindow.IsMobilizationHeld(owner, 12));
             result.Add(OperationContinuationWindow.IsMobilizationHeld(owner, 13));
             result.Add(LifecycleReturnPolicy.MayWait(owner, MissionIntentKey.ForScout(ScoutTargetKind.Explore, Focus), 11));
+            result.Add(HousekeepingNightFold.HasRecord(owner));
             result.Add(missions.Economy.IsExtractionDeliverySuppressed(11, ResourceType.Tech, Focus));
             result.Add(missions.Economy.TakeEndedOutboundBuilders().Single().BuilderArmyId);
             result.Add(ApTurnPressure.WitnessedDemand(owner, 11));
@@ -274,7 +279,7 @@ namespace Game.EditorTests
 
         private static void AssertAllOwnersPopulated(AiPersistentState<ObjectiveState> state)
         {
-            Assert.AreEqual(22, Fields(state).Count, "Keep the integration checklist in sync with aggregate additions.");
+            Assert.AreEqual(23, Fields(state).Count, "Keep the integration checklist in sync with aggregate additions.");
             foreach (var field in state.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
             {
                 object value = field.GetValue(state);

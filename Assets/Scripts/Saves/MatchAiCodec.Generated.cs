@@ -11,13 +11,13 @@ namespace Game.Saves
         private static MatchAiData Write0(global::Game.Ai.AiPersistentState<MatchAiObjectiveData> value, Context c)
         {
             if (value == null) return new MatchAiData();
-            return new MatchAiData { HasData = true, Map = Write1(value.Map, c), Missions = Write41(value.Missions, c), Sorties = Write73(value.Sorties, c), Radar = Write79(value.Radar, c), ForceBaseline = Write83(value.ForceBaseline, c), PreparationDelivery = Write84(value.PreparationDelivery, c), Recon = Write87(value.Recon, c), Intel = Write92(value.Intel, c), Patrols = Write94(value.Patrols, c), ReconSorties = Write102(value.ReconSorties, c), ReconCoverage = Write107(value.ReconCoverage, c), ReconDeficits = Write110(value.ReconDeficits, c), ScoutTrails = Write114(value.ScoutTrails, c), Starvation = Write118(value.Starvation, c), DevelopmentGate = Write129(value.DevelopmentGate, c), Allocator = Write131(value.Allocator, c), Initiative = Write134(value.Initiative, c), PublicInitiative = Write137(value.PublicInitiative, c), MobilizationHold = Write91(value.MobilizationHold, c), DevelopmentHistory = Write138(value.DevelopmentHistory, c), ApPressure = Write141(value.ApPressure, c), LifecycleWaits = Write144(value.LifecycleWaits, c) };
+            return new MatchAiData { HasData = true, Map = Write1(value.Map, c), Missions = Write41(value.Missions, c), Sorties = Write73(value.Sorties, c), Radar = Write79(value.Radar, c), ForceBaseline = Write83(value.ForceBaseline, c), PreparationDelivery = Write84(value.PreparationDelivery, c), Recon = Write87(value.Recon, c), Intel = Write92(value.Intel, c), Patrols = Write94(value.Patrols, c), ReconSorties = Write102(value.ReconSorties, c), ReconCoverage = Write107(value.ReconCoverage, c), ReconDeficits = Write110(value.ReconDeficits, c), ScoutTrails = Write114(value.ScoutTrails, c), Starvation = Write118(value.Starvation, c), DevelopmentGate = Write129(value.DevelopmentGate, c), Allocator = Write131(value.Allocator, c), Initiative = Write134(value.Initiative, c), PublicInitiative = Write137(value.PublicInitiative, c), MobilizationHold = Write91(value.MobilizationHold, c), DevelopmentHistory = Write138(value.DevelopmentHistory, c), ApPressure = Write141(value.ApPressure, c), LifecycleWaits = Write144(value.LifecycleWaits, c), NightFold = Write198(value.NightFold, c) };
         }
         private static global::Game.Ai.AiPersistentState<MatchAiObjectiveData> Read0(MatchAiData data, Context c)
         {
             Required(data);
             if (!data.HasData) return null;
-            return new global::Game.Ai.AiPersistentState<MatchAiObjectiveData>(true, Read1(data.Map, c), Read41(data.Missions, c), Read73(data.Sorties, c), Read79(data.Radar, c), Read83(data.ForceBaseline, c), Read84(data.PreparationDelivery, c), Read87(data.Recon, c), Read92(data.Intel, c), Read94(data.Patrols, c), Read102(data.ReconSorties, c), Read107(data.ReconCoverage, c), Read110(data.ReconDeficits, c), Read114(data.ScoutTrails, c), Read118(data.Starvation, c), Read129(data.DevelopmentGate, c), Read131(data.Allocator, c), Read134(data.Initiative, c), Read137(data.PublicInitiative, c), Read91(data.MobilizationHold, c), Read138(data.DevelopmentHistory, c), Read141(data.ApPressure, c), Read144(data.LifecycleWaits, c));
+            return new global::Game.Ai.AiPersistentState<MatchAiObjectiveData>(true, Read1(data.Map, c), Read41(data.Missions, c), Read73(data.Sorties, c), Read79(data.Radar, c), Read83(data.ForceBaseline, c), Read84(data.PreparationDelivery, c), Read87(data.Recon, c), Read92(data.Intel, c), Read94(data.Patrols, c), Read102(data.ReconSorties, c), Read107(data.ReconCoverage, c), Read110(data.ReconDeficits, c), Read114(data.ScoutTrails, c), Read118(data.Starvation, c), Read129(data.DevelopmentGate, c), Read131(data.Allocator, c), Read134(data.Initiative, c), Read137(data.PublicInitiative, c), Read91(data.MobilizationHold, c), Read138(data.DevelopmentHistory, c), Read141(data.ApPressure, c), Read144(data.LifecycleWaits, c), Read198(data.NightFold, c));
         }
         private static MatchAiPersistentState1 Write1(global::Game.Ai.AiMapMemory.PersistentState value, Context c)
         {
@@ -2053,6 +2053,41 @@ namespace Game.Saves
             Required(data);
             if (!data.HasData) return null;
             return new global::Game.Ai.V2.AttackAirWing { ArmyId = Read2(data.ArmyId, c), LandingHex = Read117(data.LandingHex, c), BoundTurn = Read2(data.BoundTurn, c), SortieSeen = Read18(data.SortieSeen, c) };
+        }
+        private static MatchAiMap198 Write198(global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>> value, Context c)
+        {
+            return new MatchAiMap198 { HasData = value != null, Entries = value == null ? new List<MatchAiMap198.Entry>() : value.Select(x => new MatchAiMap198.Entry { Key = Write4(x.Key, c), Value = Write199(x.Value, c) }).ToList() };
+        }
+        private static global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>> Read198(MatchAiMap198 data, Context c)
+        {
+            Required(data);
+            Required(data.Entries); if (!data.HasData) { if (data.Entries.Count != 0) throw Invalid("Absent dictionary has entries"); return null; }
+            var result = new Dictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>>();
+            foreach (var entry in data.Entries) { Required(entry); result.Add(Read4(entry.Key, c), Read199(entry.Value, c)); }
+            return result;
+        }
+        private static MatchAiMap199 Write199(global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)> value, Context c)
+        {
+            return new MatchAiMap199 { HasData = value != null, Entries = value == null ? new List<MatchAiMap199.Entry>() : value.Select(x => new MatchAiMap199.Entry { Key = Write2(x.Key, c), Value = Write200(x.Value, c) }).ToList() };
+        }
+        private static global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)> Read199(MatchAiMap199 data, Context c)
+        {
+            Required(data);
+            Required(data.Entries); if (!data.HasData) { if (data.Entries.Count != 0) throw Invalid("Absent dictionary has entries"); return null; }
+            var result = new Dictionary<int, (int ArmyId, int Index)>();
+            foreach (var entry in data.Entries) { Required(entry); result.Add(Read2(entry.Key, c), Read200(entry.Value, c)); }
+            return result;
+        }
+        private static MatchAiTuple200 Write200((int ArmyId, int Index) value, Context c)
+        {
+            c.RecordArmy(value.ArmyId);
+            return new MatchAiTuple200 { HasData = true, ArmyId = Write2(value.ArmyId, c), Index = Write2(value.Index, c) };
+        }
+        private static (int ArmyId, int Index) Read200(MatchAiTuple200 data, Context c)
+        {
+            Required(data);
+            if (!data.HasData) throw Invalid("Missing tuple");
+            return (Read2(data.ArmyId, c), Read2(data.Index, c));
         }
     }
 }

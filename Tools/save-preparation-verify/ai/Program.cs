@@ -37,7 +37,7 @@ static class Program
         try
         {
             aggregate.ProductionCodecRoundtrip(data => Game.Saves.MatchSaveJson.Deserialize<Game.Saves.MatchAiData>(Game.Saves.MatchSaveJson.Serialize(data)), false);
-            Console.WriteLine("PASS ProductionCodecRoundtrip (22 owners; actual MatchSaveJson transport)");
+            Console.WriteLine("PASS ProductionCodecRoundtrip (23 owners; actual MatchSaveJson transport)");
             var codecTests = new MatchAiJsonCodecTests();
             codecTests.AllSixObjectivesSurviveProductionJsonWithFreshObjectsAndExactRaidClock();
             Console.WriteLine("PASS AllSixObjectivesRoundtrip (actual MatchSaveJson transport)");

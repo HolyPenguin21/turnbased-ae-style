@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Map;
 using Game.Units;
@@ -102,18 +103,38 @@ namespace Game.EditorTests
                 s.ExpectIn(strong, field);
             });
 
-            Case("A05_BiggerCommandLeads_WhenTheFightDoesNotSeparate",
-                "a field army led by the smaller-command hero with the bigger one behind -> the bigger commands", s =>
+            // 2026-11-25 (owner, stand A23: "if the army does not gather 7 fighters, the hero with the
+            // active skill is the better commander") — a free army seats only the bodies it has: a
+            // bigger Command seats nobody more, the commander's Fate and initiative decide.
+            Case("A05_FewBodies_TheBetterFighterCommands",
+                "a free field army of two heroes and one body -> the hero with the better Fate/initiative commands", s =>
             {
                 UnitData small = s.Hero(HeroPick.SmallCommand);
                 UnitData big = s.Hero(HeroPick.BigCommand);
                 if (big.CommandRating <= small.CommandRating)
                     Assert.Ignore("no command difference between the deck's heroes");
+                if (small.Fate == big.Fate && small.Initiative == big.Initiative)
+                    Assert.Ignore("the deck's heroes fight alike");
                 UnitData mid = s.Body(BodyPick.Mid);
                 s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 s.Field(small, big, mid);
                 s.EndTurn();
-                s.ExpectCommands(big, mid);
+                bool smallBetter = small.Fate > big.Fate || small.Fate == big.Fate && small.Initiative > big.Initiative;
+                s.ExpectCommands(smallBetter ? small : big, mid, "capacity beyond the seated bodies decides nothing");
+            });
+
+            Case("A05b_BodiesNeedTheCommand_BiggerCommandLeads",
+                "the same army with more bodies than the smaller command seats -> the bigger commands", s =>
+            {
+                UnitData small = s.Hero(HeroPick.SmallCommand);
+                UnitData big = s.Hero(HeroPick.BigCommand);
+                if (big.CommandRating <= small.CommandRating)
+                    Assert.Ignore("no command difference between the deck's heroes");
+                UnitData[] bodies = s.Bodies(BodyPick.Mid, Math.Min(big.CommandRating - 2, small.CommandRating - 1));
+                s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
+                s.Field(new[] { small, big }.Concat(bodies).ToArray());
+                s.EndTurn();
+                s.ExpectCommands(big, bodies[0], "the smaller command cannot seat them all");
             });
 
             Case("A06_SingletonBody_FoldsIntoGarrison",
@@ -753,6 +774,29 @@ namespace Game.EditorTests
                 s.ExpectCommands(big, mid);
             });
 
+            // 2026-11-25 (owner: "the garrison secures the hex adequately and gives everything else
+            // to the tasks") — a raid about to leave takes the garrison's strongest surplus.
+            Case("C18_GarrisonSurplus_JoinsTheRaid",
+                "a raid army in its assault on the hex, a garrison above its floor -> the strongest spare body joins "
+                + "the raid, the garrison keeps its floor", s =>
+            {
+                UnitData strong = s.Body(BodyPick.Strong);
+                ArmyData garrison = s.Garrison(strong, s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
+                ArmyData raid = s.Field(s.Hero(HeroPick.BigCommand), s.Body(BodyPick.Mid));
+                s.Raid(raid, RaidMissionPhase.Assault);
+                int raidMove = raid.CurrentMovement;
+                s.EndTurn();
+                // A spare body exists when the garrison keeps its floor (and a body) without the
+                // strongest one; the raid's route speed (KeepsMovement) may refuse a slow one.
+                StandArmy g = s.Last.Before[garrison.Id];
+                List<UnitData> rest = g.Members.Where(u => u != strong && AiArmyRoles.IsGroundBattleBody(u)).ToList();
+                bool spare = rest.Count > 0 && AiPower.EffectiveArmyPower(rest) >= s.Last.GarrisonFloor;
+                if (spare && strong.MoveMax >= raidMove)
+                    s.ExpectIn(strong, raid, "the strongest spare body goes first");
+                else
+                    s.Notes.Add($"T1: no spare fast-enough strong body (floor {s.Last.GarrisonFloor:0.#}, raid mp {raidMove})");
+            });
+
             Case("C16_FullyProtected_KeepsItsCommander",
                 "an Attack army in its assault led by the smaller-command hero -> no reorder", s =>
             {
@@ -862,16 +906,20 @@ namespace Game.EditorTests
 
             // 2026-11-25 (owner, stand D09) - a known enemy within the shelter horizon frees the
             // preparation host for Housekeeping: the hex is defended as one (MissionActorPolicy).
-            Case("D07_Host_UnderSiege_IsFreedForTheHex",
-                "a host with a weak non-roster body, a one-body garrison, a company 2 turns away -> the host is free", s =>
+            // 2026-11-25 (owner) — the defence of the hex is the night fold's: by day the host keeps
+            // its task, at night the hex fights as one formation, in the morning the host is back.
+            Case("D07_Host_UnderSiege_KeepsItsTask_NightJoinsTheHex",
+                "a host with a weak non-roster body, a one-body garrison, a company 2 turns away -> the host keeps "
+                + "its task, the night joins the hex", s =>
             {
                 s.Garrison(s.Body(BodyPick.Strong));
                 ArmyData host = s.Field(s.Hero(HeroPick.BigCommand), s.Body(BodyPick.Weak));
                 s.Preparation(host, s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 s.EnemyAtEta(2, EnemyForce.Company);
                 s.EndTurn();
-                if (s.Last.Before[host.Id].Contract != null)
-                    s.Failures.Add($"T1: expected the besieged host free, got [{s.Last.Before[host.Id].Contract.Label}]");
+                if (s.Last.Before[host.Id].Contract == null)
+                    s.Failures.Add("T1: expected the host to keep its task by day");
+                s.ExpectNightFormations(1, "one hex, one fight");
             });
 
             Case("D08_Host_KeepsTheBody_WithoutASource",
@@ -888,16 +936,17 @@ namespace Game.EditorTests
             // 2026-11-25 (owner) - "all armies are merged as usual; even without a chance the game
             // must stay interesting for the human": a lost hex still packs (AttackerCost).
             Case("D09_Host_UnderSiege_HexDefendedAsOne",
-                "a host of strong bodies, a Support-led garrison with room, a strong enemy next door -> one formation", s =>
+                "a host of strong bodies, a Support-led garrison with room, a strong enemy next door -> one formation "
+                + "at night", s =>
             {
                 s.Garrison(s.Hero(HeroPick.Support), s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
                 ArmyData host = s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 s.Preparation(host, s.Body(BodyPick.Strong), s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 s.EnemyAtEta(1, EnemyForce.Host);
                 s.EndTurn();
-                if (s.Last.Before[host.Id].Contract != null)
-                    s.Failures.Add($"T1: expected the besieged host free, got [{s.Last.Before[host.Id].Contract.Label}]");
-                s.ExpectFightingFormations(1, "one hex, one fight");
+                if (s.Last.Before[host.Id].Contract == null)
+                    s.Failures.Add("T1: expected the host to keep its task by day");
+                s.ExpectNightFormations(1, "one hex, one fight");
             });
 
             Case("D10_Host_TakesTheWalkInPair",
@@ -1077,15 +1126,21 @@ namespace Game.EditorTests
                 s.EndTurn();
             });
 
-            Case("E13_Threat_OnlyClaimedArmiesBesideTheGarrison",
-                "a weak garrison, a raid army, a strong enemy next door -> the raid is untouched", s =>
+            // 2026-11-25 (owner) — "the human must get the most interesting fight: the garrison and
+            // the army are joined, in the garrison or in the army, it does not matter".
+            Case("E13_Threat_RaidArmyJoinsTheGarrisonAtNight",
+                "a weak garrison, a raid army, a strong enemy next door -> one fight at night, the raid leaves "
+                + "with its own army in the morning", s =>
             {
-                s.Garrison(s.Hero(HeroPick.Support), s.Body(BodyPick.Weak));
-                ArmyData raid = s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
+                UnitData weak = s.Body(BodyPick.Weak);
+                s.Garrison(s.Hero(HeroPick.Support), weak);
+                UnitData strong = s.Body(BodyPick.Strong);
+                ArmyData raid = s.Field(s.Hero(HeroPick.Combat), strong, s.Body(BodyPick.Strong));
                 s.Raid(raid, RaidMissionPhase.Assault);
                 s.EnemyAtEta(1, EnemyForce.Host);
                 s.EndTurn();
-                s.ExpectUnchanged(raid);
+                s.ExpectNightTogether(weak, strong, "one fight");
+                s.ExpectInGarrison(weak, "the morning restores the garrison");
             });
 
             Case("E14_Threat_AirWingUntouched",
@@ -1106,7 +1161,7 @@ namespace Game.EditorTests
                 s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
                 s.EnemyAtEta(1, EnemyForce.Host);
                 s.EndTurn();
-                s.ExpectFightingFormations(1, "a lost hex is still defended as one hard fight");
+                s.ExpectNightFormations(1, "a lost hex is still defended as one hard fight");
             });
 
             Case("E16_Threat_IdleScoutShelters",
@@ -1256,8 +1311,11 @@ namespace Game.EditorTests
                 s.ExpectUnchanged(prison);
             });
 
-            Case("F06_WoundedHost_NeverWeakened",
-                "a preparation host of wounded bodies, healthy spares in the garrison -> the host is not weaker", s =>
+            // 2026-11-25 (owner) — "the attack army takes the healthy and the stronger units the garrison
+            // holds above its floor; for the night the host and the garrison are one".
+            Case("F06_WoundedHost_TakesTheGarrisonSurplus",
+                "a preparation host of wounded bodies, healthy spares in the garrison -> the host takes the "
+                + "surplus by day, one formation at night", s =>
             {
                 UnitData a = s.Body(BodyPick.Strong), b = s.Body(BodyPick.Mid);
                 HousekeepingStand.Wound(a);
@@ -1266,6 +1324,8 @@ namespace Game.EditorTests
                 ArmyData host = s.Field(s.Hero(HeroPick.BigCommand), a, b);
                 s.Preparation(host, s.Body(BodyPick.Strong), s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
                 s.EndTurn();
+                s.ExpectStrengthened(host, "the garrison's surplus joins the task");
+                s.ExpectNightFormations(1, "one hex, one fight");
             });
 
             Case("F07_FullEverywhere_StandingRules",
@@ -1347,6 +1407,29 @@ namespace Game.EditorTests
                 s.EnemyAtEta(1, EnemyForce.Host);
                 s.EndTurn("strong enemy next door");
                 s.EndTurn("aftermath");
+            });
+
+            // 2026-11-25 (owner: "first sort for the defence, then release for the tasks next turn")
+            // — three turns of a garrison, a raid about to leave and a free army: every night the hex
+            // is one fight, every morning the raid has its own army back, nothing churns by day.
+            Case("S05_ThreeNights_TasksLeaveWithTheirArmies",
+                "garrison, a raid in its assault, a free led army; three turns, a company next door from T2 -> one "
+                + "fight each night, the day layout each morning", s =>
+            {
+                UnitData raidLead = s.Hero(HeroPick.Combat);
+                UnitData raidBody = s.Body(BodyPick.Mid);
+                ArmyData garrison = s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Mid), s.Body(BodyPick.Weak));
+                ArmyData raid = s.Field(raidLead, raidBody, s.Body(BodyPick.Mid));
+                s.Raid(raid, RaidMissionPhase.Assault);
+                ArmyData free = s.Field(s.Hero(HeroPick.Combat2), s.Body(BodyPick.Mid));
+                s.EndTurn("peace");
+                s.ExpectCommands(raidLead, raidBody, "the raid leaves with its commander");
+                s.EnemyAtEta(1, EnemyForce.Company);
+                s.EndTurn("company next door");
+                s.ExpectCommands(raidLead, raidBody, "the raid leaves with its commander");
+                s.EndTurn("still there");
+                s.ExpectNoOperations("the day layout holds once formed");
+                s.ExpectCommands(raidLead, raidBody, "the raid leaves with its commander");
             });
         }
     }

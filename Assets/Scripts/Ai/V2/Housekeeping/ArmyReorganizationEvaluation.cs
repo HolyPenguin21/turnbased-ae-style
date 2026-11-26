@@ -7,6 +7,7 @@ namespace Game.Ai.V2
 {
     public static partial class ArmyReorganizationPlanner
     {
+        // The whole hex against one known attacker (HousekeepingNightFold's layouts).
         private readonly struct ThreatContactRow
         {
             public readonly int ThreatArmyId;
@@ -16,38 +17,17 @@ namespace Game.Ai.V2
             // Below this HexReadiness difference two rosters hold the hex equally (Monte Carlo
             // noise, AiConfigV2.housekeepingHexHoldMargin in this threat's ETA weighting).
             public readonly float HexTolerance;
-            public readonly float FirstReadiness;
-            public readonly float SecondReadiness;
-            // 2026-11-25 (owner, housekeeping stand D09/E15: "even without a chance the game must
-            // stay interesting for the human") — what taking the hex costs this attacker: 1 - the
-            // HP share it keeps over the trials it wins (1 when it never wins). Read after the
-            // first/second rows, so it decides only where the hold and the contact rows tie - a
-            // hex lost whatever the layout is still defended as one hard fight.
-            public readonly float AttackerCost;
-            // The hex falls to this attacker whatever the layout (it wins every trial): then the
-            // hex is fought as ONE formation (owner 2026-11-25: "all armies merged as usual, the
-            // game must stay interesting") - fewer contactable formations rank first.
-            public readonly bool Lost;
-            public readonly int Formations;
 
-            public ThreatContactRow(int threatArmyId, float hexReadiness, float hexTolerance,
-                float firstReadiness, float secondReadiness, float attackerCost, bool lost, int formations)
+            public ThreatContactRow(int threatArmyId, float hexReadiness, float hexTolerance)
             {
-                Lost = lost;
-                Formations = formations;
                 ThreatArmyId = threatArmyId;
                 HexReadiness = hexReadiness;
                 HexTolerance = hexTolerance;
-                FirstReadiness = firstReadiness;
-                SecondReadiness = secondReadiness;
-                AttackerCost = attackerCost;
             }
         }
 
         private static Outcome Evaluate(VState s)
         {
-            bool hasThreatBenchmarks = s.ThreatBenchmarks.Count > 0;
-
             int garrisonDeficit = 0;
             int legality = 0;
             int operatorExposure = 0;
@@ -99,7 +79,7 @@ namespace Game.Ai.V2
                 }
 
                 if (meta.CanReorderCommander)
-                    commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);
+                    commandWaste += CommanderMismatch(units, meta, commandContext);
                 if (meta.MayReleaseExcessHeroes)
                     preparationSlotWaste += PreparationSlotWaste(units);
                 else if (meta.IsMutableGround && meta.CanDonate)
@@ -130,10 +110,8 @@ namespace Game.Ai.V2
                         // strongest army is already formed?") — the garrison's own strength and
                         // composition are no reason to move bodies: a sound free field army was
                         // folded whole into a garrison with room, burying its commander. Its floor
-                        // (GarrisonDeficit, the release rule) stays; under a deployed enemy the
-                        // whole-hex hold reads every formation, the garrison included.
-                        if (nonHero > 0 && hasThreatBenchmarks)
-                            composition += ReorgViability.CompositionQuality(units);
+                        // (GarrisonDeficit, the release rule) stays; the defence of the hex is the
+                        // night fold's (HousekeepingNightFold).
                     }
                     continue;
                 }
@@ -182,73 +160,19 @@ namespace Game.Ai.V2
                 : 0;
 
             formationStrengths.Sort((a, b) => b.CompareTo(a));
-            if (hasThreatBenchmarks)
-            {
-                // 2026-11-25 (housekeeping stand, E12/E18/S04) — when the readiness against every
-                // threat ties (a hex held with certainty, or a hopeless one), the same strongest-
-                // first AiPower profile as on a quiet hex decides before composition: a fist was
-                // split across formations for composition alone (hold 1.00 -> 1.00) and the next
-                // pass merged it back.
-                // Already ordered by the worst enemy contact first. Keep enemy identity and the
-                // hex/first/second layers adjacent; never collapse them back per container.
-                // Built only when the discrete keys above tie (Outcome.CompareTo): the whole-hex
-                // simulation is the expensive term, and a candidate already worse on a discrete
-                // key never needs it. Candidates are fresh VState clones, never mutated after.
-                return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
-                    singles, nonViable, commandWaste, formationDefect,
-                    new LazyProfile(() => BuildThreatContactReadiness(s)), -composition,
-                    s.Transfers.Count, formationStrengths);
-            }
-
-            // No deployed enemy benchmark: retain the canonical AiPower fallback.
+            // 2026-11-25 (owner) — the day layout is the task layout: the strongest-first AiPower
+            // profile of the field formations, with or without an enemy in sight. A known or a
+            // sudden attack is met by the night fold (HousekeepingNightFold: every formation of the
+            // hex in one fight until the owner's next turn), so the threat-first whole-hex profile,
+            // the passive garrison packing and the lost-hex fold no longer move bodies by day.
             return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
                 singles, nonViable, commandWaste, formationDefect, new LazyProfile(formationStrengths),
                 -composition, s.Transfers.Count);
         }
 
-        // Threat-first defensive profile. For each concrete enemy attacker, reproduce
-        // BattleInitiator's observer-specific contact ordering with its canonical comparator.
-        // The plan then compares the worst threat's whole-hex hold (HexReadiness), its first
-        // defender, its second line, and only then the next threat. No position coefficient or
-        // per-container max is used.
-        private static LazyProfile.Data BuildThreatContactReadiness(VState state)
-        {
-            var rows = new List<ThreatContactRow>(ThreatRowsOf(state));
-
-            // Lowest readiness is the most dangerous enemy contact. Stable army id is ordering
-            // only; it never becomes strategic utility.
-            rows.Sort((a, b) =>
-            {
-                if (a.HexReadiness < b.HexReadiness - FloatEps) return -1;
-                if (a.HexReadiness > b.HexReadiness + FloatEps) return 1;
-                if (a.FirstReadiness < b.FirstReadiness - FloatEps) return -1;
-                if (a.FirstReadiness > b.FirstReadiness + FloatEps) return 1;
-                if (a.SecondReadiness < b.SecondReadiness - FloatEps) return -1;
-                if (a.SecondReadiness > b.SecondReadiness + FloatEps) return 1;
-                return a.ThreatArmyId.CompareTo(b.ThreatArmyId);
-            });
-
-            var profile = new List<float>(rows.Count * 5);
-            var tolerances = new List<float>(rows.Count * 5);
-            foreach (ThreatContactRow row in rows)
-            {
-                profile.Add(row.HexReadiness);
-                profile.Add(row.FirstReadiness);
-                profile.Add(row.SecondReadiness);
-                profile.Add(row.Lost ? -row.Formations : 0f);
-                profile.Add(row.AttackerCost);
-                tolerances.Add(row.HexTolerance);
-                tolerances.Add(0f);
-                tolerances.Add(0f);
-                tolerances.Add(0f);
-                tolerances.Add(AiConfigV2.housekeepingHexHoldMargin);
-            }
-            return new LazyProfile.Data(profile, tolerances);
-        }
-
         // The per-threat contact rows of one roster (whole-hex hold, first and second defender),
-        // built once per VState: the profile and the 0.1 packing gate (RaisesHexHold) read the
-        // same simulation. Candidate states are fresh clones never mutated after enumeration.
+        // built once per VState: the night fold (HousekeepingNightFold) compares its layouts on
+        // them. Candidate states are fresh clones never mutated after enumeration.
         private static List<ThreatContactRow> ThreatRowsOf(VState state)
         {
             if (state.ThreatRows != null)
@@ -297,50 +221,11 @@ namespace Game.Ai.V2
                 ranked.Sort((a, b) => BattleInitiator.CompareDefenderHardness(
                     a.selection, a.containerId, b.selection, b.containerId));
 
-                float first = ContactReadiness(state, threat, ranked[0].defenders, ranked[0].commander);
-                // If the first army falls and no second contactable formation remains, the second
-                // defensive layer is empty: model certain passage at the same distance weighting.
-                float second = ranked.Count > 1
-                    ? ContactReadiness(state, threat, ranked[1].defenders, ranked[1].commander)
-                    : NoDefenderReadiness(threat.EtaToGroup);
-                float hex = HexReadiness(state, threat, ranked, out float attackerCost, out bool lost);
-                rows.Add(new ThreatContactRow(threat.ArmyId, hex,
-                    AiConfigV2.housekeepingHexHoldMargin / (1f + Math.Max(0, threat.EtaToGroup)),
-                    first, second, attackerCost, lost, ranked.Count));
+                rows.Add(new ThreatContactRow(threat.ArmyId, HexReadiness(state, threat, ranked),
+                    AiConfigV2.housekeepingHexHoldMargin / (1f + Math.Max(0, threat.EtaToGroup))));
             }
             state.ThreatRows = rows;
             return rows;
-        }
-
-        // 2026-11-20 (owner, match Halden vs Orlan T22-T24) — passive defence packing (candidate
-        // 0.1) moves field bodies into the garrison only when that raises the whole-hex hold
-        // against some threat beyond its Monte Carlo tolerance. The first/second-defender rows
-        // stay tie-breakers between plans of equal hold but never by themselves pull a body out
-        // of a field formation into the immobile container: Halden (-6,2) T24 hold 1.0 already,
-        // second line 0.83 -> 0.92 took Duelist/Mantis/Atlas out of the fist; (-1,-3) T22 moved
-        // three bodies for 0.75 -> 0.77. A threat the roster before could not contact at all is
-        // a raise (the hex had no contactable defender against it).
-        private static bool RaisesHexHold(VState before, VState after)
-        {
-            var held = new Dictionary<int, ThreatContactRow>();
-            foreach (ThreatContactRow r in ThreatRowsOf(before))
-                held[r.ThreatArmyId] = r;
-            foreach (ThreatContactRow r in ThreatRowsOf(after))
-            {
-                if (!held.TryGetValue(r.ThreatArmyId, out ThreatContactRow b))
-                    return true;
-                float eps = Math.Max(FloatEps, Math.Max(r.HexTolerance, b.HexTolerance));
-                if (r.HexReadiness > b.HexReadiness + eps)
-                    return true;
-                // A lost hex (the hold cannot move): packing still counts when the hex is then
-                // fought as fewer formations, or the attacker pays clearly more for it.
-                if (r.Lost && b.Lost && r.Formations < b.Formations)
-                    return true;
-                if (Math.Abs(r.HexReadiness - b.HexReadiness) <= eps
-                    && r.AttackerCost > b.AttackerCost + AiConfigV2.housekeepingHexHoldMargin)
-                    return true;
-            }
-            return false;
         }
 
         // 2026-11-18 (owner, match Kryll vs Tessek T31) — the hex is held or lost as a whole: the
@@ -351,7 +236,7 @@ namespace Game.Ai.V2
         // there and was refused (Kryll (0,4): hold 0.32 as it stood, 0.92 folded; lost all six).
         private static float HexReadiness(VState state, ReorgThreatBenchmark threat,
             List<(int containerId, WorthIt.BattleEstimate selection, List<WorthIt.DefenderProfile> defenders,
-                WorthIt.SideCommander commander)> ranked, out float attackerCost, out bool lost)
+                WorthIt.SideCommander commander)> ranked)
         {
             var armies = new List<WorthIt.DefendingArmy>(ranked.Count);
             foreach (var r in ranked)
@@ -359,52 +244,26 @@ namespace Game.Ai.V2
                 // attacker carrying Disruption (DefendingArmy.DefenseBonus), as in the real battle.
                 armies.Add(new WorthIt.DefendingArmy(r.defenders, r.commander, armyId: r.containerId,
                     buildingDefenseBonus: state.BuildingDefenseBonus));
-            WorthIt.BattleEstimate control = WorthIt.EstimateHexControl(threat.Members, threat.Commander, armies,
+            float attackerWins = WorthIt.EstimateHexControl(threat.Members, threat.Commander, armies,
                 state.HexDefenseBonus, environment: state.Environment,
-                monteCarloTrials: AiConfigV2.housekeepingHexHoldTrials);
-            float attackerWins = control.WinChance;
-            lost = attackerWins >= 1f - FloatEps;
-            attackerCost = attackerWins > 0f ? 1f - Math.Max(0f, Math.Min(1f, control.ExpectedSurvivingHpRatioOnWin)) : 1f;
+                monteCarloTrials: AiConfigV2.housekeepingHexHoldTrials).WinChance;
             return 1f - attackerWins / (1f + Math.Max(0, threat.EtaToGroup));
         }
-
-        private static float ContactReadiness(VState state, ReorgThreatBenchmark threat,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander)
-        {
-            float bonus = DefenceBonusAgainst(state, threat);
-            WorthIt.BattleEstimate estimate = WorthIt.Estimate(threat.Members, defenders,
-                bonus, threat.Commander, commander, environment: state.Environment);
-            float success = WorthIt.CanDamageAll(
-                    threat.Members, defenders, bonus)
-                ? estimate.WinChance
-                : 0f;
-            return 1f - success / (1f + Math.Max(0, threat.EtaToGroup));
-        }
-
-        // The hex bonus this attacker really meets: its Disruption carrier (or a support hero
-        // carrying it) removes the building part - DefendingArmy.DefenseBonus's own rule, for the
-        // single-formation rows that take a flat bonus.
-        private static float DefenceBonusAgainst(VState state, ReorgThreatBenchmark threat) =>
-            state.HexDefenseBonus - (DisruptionRules.HasCarrier(threat.Members)
-                || DisruptionRules.HasCarrier(threat.Commander.SupportHeroes)
-                ? Math.Max(0f, state.BuildingDefenseBonus) : 0f);
-
-        private static float NoDefenderReadiness(int eta) =>
-            1f - 1f / (1f + Math.Max(0, eta));
 
         // 1 when a container with two or more heroes is not led by the one commander evaluation's
         // best hero (HeroRoleEvaluator — fight against the group's strongest threat, then capacity,
         // then role/leadership). The commander reorder candidate is the zero-AP fix.
-        private static int CommanderMismatch(List<ReorgUnit> units, bool isGarrison,
+        private static int CommanderMismatch(List<ReorgUnit> units, ReorgContainer meta,
             IReadOnlyList<WorthIt.DefendingArmy> context)
         {
+            bool isGarrison = meta.IsGarrison;
             // A garrison is judged on its whole hero order, not on the identity of its first hero.
             if (isGarrison)
                 return ReorgViability.IsCanonicalGarrisonOrder(units) ? 0 : 1;
             if (units.Count(u => u != null && u.IsHero) < 2)
                 return 0;
             ReorgUnit current = units.First(u => u != null && u.IsHero);
-            return ReferenceEquals(BestCommander(units, isGarrison, context), current) ? 0 : 1;
+            return ReferenceEquals(BestCommander(units, meta, context), current) ? 0 : 1;
         }
     }
 }

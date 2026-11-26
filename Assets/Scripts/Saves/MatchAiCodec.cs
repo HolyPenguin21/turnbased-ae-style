@@ -205,7 +205,8 @@ namespace Game.Saves
             Required(s.ReconSorties); Owners(s.ReconSorties.Players, c); Owners(s.ReconCoverage, c); Owners(s.ReconDeficits, c);
             Owners(s.ScoutTrails, c); Owners(s.Starvation, c); Owners(s.DevelopmentGate, c); Owners(s.Allocator, c);
             Owners(s.Initiative, c); Owners(s.PublicInitiative, c); Owners(s.MobilizationHold, c); Owners(s.DevelopmentHistory, c);
-            Owners(s.ApPressure, c); Owners(s.LifecycleWaits, c);
+            Owners(s.ApPressure, c); Owners(s.LifecycleWaits, c); Owners(s.NightFold, c);
+            foreach (var row in s.NightFold.Values) Required(row);
             foreach (var radar in s.Radar.Values) { Required(radar); Required(radar.Smoothed); }
             foreach (var row in s.Intel.Observations.Values) Required(row);
             foreach (var row in s.Patrols.Values) Required(row);
@@ -270,6 +271,7 @@ namespace Game.Saves
             Write0(s, c);
             foreach (var p in s.Allocator.Values) foreach (var key in p.Keys) RecordKey(key, c);
             foreach (var p in s.LifecycleWaits.Values) foreach (var key in p.Keys) RecordKey(key, c);
+            foreach (var p in s.NightFold.Values) foreach (int id in p.Keys) c.RecordUnit(id);
             foreach (var p in s.PreparationDelivery.Values) foreach (int id in p.Keys) c.RecordArmy(id);
             foreach (var p in s.Patrols.Values) foreach (int id in p.Keys) c.RecordArmy(id);
             foreach (var p in s.ReconSorties.Players.Values) foreach (int id in p.Keys) c.RecordArmy(id);

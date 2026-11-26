@@ -366,9 +366,24 @@ namespace Game.Ai
         // Match 2026-11-13: Brynn's Base (1,-6) asked 87.7 from hand with Fester 52.4 on the hex.
         public static float GarrisonDefenceFloor(PlayerSetupData player, float groundAvailablePower,
             HexCoord garrisonHex, bool isCitadel) =>
-            Math.Max(0f, Math.Max(GarrisonDefenceFloor(groundAvailablePower, isCitadel),
-                    GarrisonThreatFloor(player, garrisonHex, isCitadel))
+            Math.Max(0f, GarrisonFloorBeforeResidents(player, groundAvailablePower, garrisonHex, isCitadel)
                 - ResidentFieldPower(player, garrisonHex));
+
+        // The same floor before the resident field armies' credit (ResidentFieldPower): a planner
+        // that moves bodies between resident and departing armies of the hex re-reads the credit
+        // on its own virtual roster (Housekeeping, ReorgViability.GarrisonFloor).
+        public static float GarrisonFloorBeforeResidents(PlayerSetupData player, HexCoord garrisonHex, bool isCitadel)
+        {
+            AiHandData hand = AiHandRegistry.Peek(player);
+            PlayerForceAnalysis.AdditivePower(player, ArmyRegistry.AllForOwner(player), hand?.Hand,
+                hand?.RemainingDeck, out _, out float available);
+            return GarrisonFloorBeforeResidents(player, available, garrisonHex, isCitadel);
+        }
+
+        private static float GarrisonFloorBeforeResidents(PlayerSetupData player, float groundAvailablePower,
+            HexCoord garrisonHex, bool isCitadel) =>
+            Math.Max(GarrisonDefenceFloor(groundAvailablePower, isCitadel),
+                GarrisonThreatFloor(player, garrisonHex, isCitadel));
 
         // 2026-11-19 (owner, match Tessek vs Draven) — the NEED side of the same floor: how much the
         // garrison must still be GIVEN (the hand demand, GarrisonRelief's recipient shortfall, the
@@ -475,6 +490,13 @@ namespace Game.Ai
             }
             return power;
         }
+
+        // Does `army` (a field army) stand as its hex's resident defence — the ResidentFieldPower
+        // rule for one army, membership aside (no departing operation owns it).
+        public static bool IsHexResidentArmy(PlayerSetupData player, ArmyData army) =>
+            player != null && army != null && !army.IsGarrison && !army.IsAirfield
+            && !AviationRules.IsAirArmy(army) && !army.IsPrison
+            && !LeavesOnOperation(MissionIntentRegistry.Peek(player)?.All, army.Id, army.Hex);
 
         // THE "who holds this hex" rule (HoldChanceAtAsset, ResidentFieldPower): a non-air,
         // non-prison army with members; a field army only while no departing operation owns it.

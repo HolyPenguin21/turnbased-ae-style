@@ -112,6 +112,11 @@
         "name": "LifecycleWaits",
         "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.MissionIntentKey, int>>",
         "readOnly": true
+      },
+      {
+        "name": "NightFold",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>>",
+        "readOnly": true
       }
     ],
     "file": "Assets/Scripts/Ai/AiPersistencePreparation.cs",
@@ -205,6 +210,10 @@
       {
         "name": "LifecycleWaits",
         "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.MissionIntentKey, int>>"
+      },
+      {
+        "name": "NightFold",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>>"
       }
     ]
   },
@@ -6022,6 +6031,33 @@
       {
         "name": "SortieSeen",
         "type": "bool"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<int, (int ArmyId, int Index)>": {
+    "kind": "dict",
+    "args": [
+      "int",
+      "(int ArmyId, int Index)"
+    ]
+  },
+  "(int ArmyId, int Index)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "ArmyId",
+        "type": "int"
+      },
+      {
+        "name": "Index",
+        "type": "int"
       }
     ]
   }

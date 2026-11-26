@@ -2,7 +2,7 @@
 
 The production transport is `MatchSaveJson`. It serializes known detached public-field DTOs;
 it has no dependency on JsonUtility, System.Text.Json or a JSON package. Explicit world,
-historical and all-six-objective/22-owner AI codecs convert runtime models to these DTOs.
+historical and all-six-objective/23-owner AI codecs convert runtime models to these DTOs.
 
 Set external environment inputs (not project dependencies):
 

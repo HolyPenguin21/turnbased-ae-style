@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 
 namespace Game.Ai.V2
@@ -39,25 +39,17 @@ namespace Game.Ai.V2
             // could take over. Ranked as a formation-quality term, below the commander mismatch
             // and above generic strength/composition.
             public readonly int FormationDefect;
-            // Defensive-readiness profile. With deployed enemies it is threat-first:
-            // worst threat's whole-hex hold (every formation in fight order, wounds carried —
-            // WorthIt.EstimateHexControl), its first real contact defender, its second line, then the next
-            // threat, each using group-local ETA. Without a benchmark it falls back to the
-            // strongest-first canonical AiPower formation profile. Higher is always better.
+            // The strongest-first canonical AiPower profile of the field formations (the day
+            // layout is the task layout; the hex's defence is the night fold's). Higher is better.
             private readonly LazyProfile _formationStrengths;
             public IReadOnlyList<float> FormationStrengths => _formationStrengths.Value;
-            // Under a deployed enemy only: the strongest-first AiPower profile, read when the
-            // threat-first profile ties. Null on a quiet hex (there it IS the profile).
-            private readonly IReadOnlyList<float> _quietStrengths;
             public readonly float NegComposition;
             public readonly int Operations;
 
             public Outcome(int gd, int legal, int operatorExposure, int preparationSlotWaste,
                 int singles, int nonViable, int commandWaste, int formationDefect,
-                LazyProfile formationStrengths, float negComp, int operations,
-                IReadOnlyList<float> quietStrengths = null)
+                LazyProfile formationStrengths, float negComp, int operations)
             {
-                _quietStrengths = quietStrengths;
                 GarrisonDeficit = gd;
                 Legality = legal;
                 OperatorExposure = operatorExposure;
@@ -85,11 +77,6 @@ namespace Game.Ai.V2
                 c = CompareFormationProfiles(FormationStrengths, o.FormationStrengths,
                     _formationStrengths.Tolerances, o._formationStrengths.Tolerances);
                 if (c != 0) return c;
-                if (_quietStrengths != null && o._quietStrengths != null)
-                {
-                    c = CompareFormationProfiles(_quietStrengths, o._quietStrengths, null, null);
-                    if (c != 0) return c;
-                }
 
                 if (NegComposition < o.NegComposition - FloatEps) return -1;
                 if (NegComposition > o.NegComposition + FloatEps) return 1;
@@ -111,10 +98,8 @@ namespace Game.Ai.V2
                     if (av < bv - eps) return 1;
                 }
 
-                // Threat-backed profiles have a fixed five entries per contactable threat;
-                // the variable-length case is the no-threat AiPower fallback. There, a trailing
-                // weaker formation remains neutral so an empty reusable shell never creates
-                // pressure to seed itself.
+                // A trailing weaker formation remains neutral so an empty reusable shell never
+                // creates pressure to seed itself.
                 return 0;
             }
         }
@@ -252,11 +237,6 @@ namespace Game.Ai.V2
                 state.Transfers.AddRange(best.Transfers);
                 state.MovedUnitKeys.Clear();
                 state.MovedUnitKeys.UnionWith(best.MovedUnitKeys);
-                // The rows belong to the roster: the accepted candidate's are exact (it IS this
-                // roster now). 2026-11-25 (housekeeping stand E12): they were kept from the first
-                // roster, so every later iteration — its baseline and RaisesHexHold's — read the
-                // hold of the layout before the first step, and the next pass saw another hex.
-                state.ThreatRows = best.ThreatRows;
             }
 
             Outcome final = Evaluate(state);

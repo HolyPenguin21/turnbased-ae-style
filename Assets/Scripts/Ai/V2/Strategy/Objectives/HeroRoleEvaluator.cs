@@ -328,5 +328,28 @@ namespace Game.Ai.V2
             if (c != 0) return c;
             return a.StableKey.CompareTo(b.StableKey);
         }
+
+        // 2026-11-25 (owner, housekeeping stand A23: "if the army does not gather 7 fighters, the
+        // hero with the active skill is the better commander") — the same order, but command
+        // capacity counts only up to the bodies the formation actually has to seat
+        // (`neededBodySlots`): beyond that a bigger Command seats nobody, and the commander's own
+        // battle stats — Fate, then initiative — decide before leadership and raw CommandRating.
+        public static int CompareCandidates(CommandCandidate a, CommandCandidate b, int neededBodySlots)
+        {
+            float dw = b.Projection.WinChance - a.Projection.WinChance;
+            if (Math.Abs(dw) >= CommandWinEpsilon) return dw > 0f ? 1 : -1;
+            int need = Math.Max(0, neededBodySlots);
+            int c = Math.Min(b.Projection.BodySlots, need).CompareTo(Math.Min(a.Projection.BodySlots, need));
+            if (c != 0) return c;
+            c = b.RapidPreference.CompareTo(a.RapidPreference);
+            if (c != 0) return c;
+            c = b.RolePreference.CompareTo(a.RolePreference);
+            if (c != 0) return c;
+            c = b.Fate.CompareTo(a.Fate);
+            if (c != 0) return c;
+            c = b.Projection.Commander.Initiative.CompareTo(a.Projection.Commander.Initiative);
+            if (c != 0) return c;
+            return CompareCandidates(a, b);
+        }
     }
 }

@@ -128,6 +128,8 @@ namespace Game.Setup
             Memory("Game.Ai.V2.DevelopmentDiversity", DevelopmentDiversity.ClearAll),
             Memory("Game.Ai.V2.ApTurnPressure", ApTurnPressure.ClearAll),
             Memory("Game.Ai.V2.LifecycleReturnPolicy", LifecycleReturnPolicy.ClearAll),
+            // The night fold record spans the other players' turns (restored at the owner's next turn).
+            Memory("Game.Ai.V2.HousekeepingNightFold", HousekeepingNightFold.ClearAll),
 
             // --- inside one turn -----------------------------------------------------------------
             Turn("Game.Ai.V2.StrategicCapabilityLeaseRegistry", StrategicCapabilityLeaseRegistry.ClearAll),

@@ -819,12 +819,13 @@ namespace Game.EditorTests
 
         // 2026-11-18 (owner, match Tessek vs Halden T20) — passive defence: the garrison (8 slots
         // under Iri Vane's command, 3 of them Support heroes) and a free field army on the same hex
-        // fought the enemy one after the other. Under a near threat the garrison takes the field
-        // bodies and the Support heroes that are not its commander step into a hero-only bench on
-        // the hex (they keep serving it). In peace nothing moves.
+        // fought the enemy one after the other. 2026-11-25 (owner) — the day layout is the task
+        // layout, threat or not: nothing moves by day; the night fold packs the garrison with the
+        // field bodies and the Support heroes that are not its commander step into a hero-only
+        // bench on the hex (they keep serving it).
         [TestCase(false)]
         [TestCase(true)]
-        public void NearThreat_PacksTheGarrison_SupportHeroesStepToAHexBench(bool threatened)
+        public void NightFold_PacksTheGarrison_SupportHeroesStepToAHexBench(bool threatened)
         {
             ReorgUnit iri = RHero(8, support: true), rusty = RHero(4, support: true), nova = RHero(4, support: true);
             ReorgUnit hank = RHero(6, support: false);
@@ -845,22 +846,20 @@ namespace Game.EditorTests
                 });
 
             ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
-            List<int> garrisonAfter = plan.ExpectedMembership[1];
-            int bodiesInGarrison = garrisonAfter.Count(k => garrisonBodies.Concat(fieldBodies).Any(b => b.Key == k));
+            int dayBodies = plan.ExpectedMembership[1].Count(k => garrisonBodies.Concat(fieldBodies).Any(b => b.Key == k));
+            Assert.That(dayBodies, Is.EqualTo(3), "by day nothing moves: " + plan.DebugSummary());
+            Assert.That(plan.ExpectedMembership[1], Has.Member(rusty.Key).And.Member(nova.Key), plan.DebugSummary());
 
-            if (!threatened)
-            {
-                Assert.That(bodiesInGarrison, Is.EqualTo(3), plan.DebugSummary());
-                Assert.That(garrisonAfter, Has.Member(rusty.Key).And.Member(nova.Key), plan.DebugSummary());
-                return;
-            }
-            Assert.That(bodiesInGarrison, Is.EqualTo(7), "one defending formation: " + plan.DebugSummary());
-            Assert.That(garrisonAfter, Has.Member(iri.Key), "the commander keeps the 8 slots");
-            Assert.That(garrisonAfter, Has.No.Member(rusty.Key).And.No.Member(nova.Key));
-            Assert.That(plan.ExpectedMembership[2].Concat(plan.ExpectedMembership[3]).ToList(),
+            NightFoldPlan night = ArmyReorganizationPlanner.PlanNightFold(group);
+            List<int> garrisonNight = night.ExpectedMembership[1];
+            Assert.That(garrisonNight.Count(k => garrisonBodies.Concat(fieldBodies).Any(b => b.Key == k)), Is.EqualTo(7),
+                $"one defending formation at night: {night.Before} -> {night.After}");
+            Assert.That(garrisonNight, Has.Member(iri.Key), "the commander keeps the 8 slots");
+            Assert.That(garrisonNight, Has.No.Member(rusty.Key).And.No.Member(nova.Key));
+            Assert.That(night.ExpectedMembership[2].Concat(night.ExpectedMembership[3]).ToList(),
                 Has.Member(rusty.Key).And.Member(nova.Key), "the Support heroes stay on the hex");
             foreach (int id in new[] { 2, 3 })
-                Assert.That(plan.ExpectedMembership[id].All(k => k == hank.Key || k == rusty.Key || k == nova.Key),
+                Assert.That(night.ExpectedMembership[id].All(k => k == hank.Key || k == rusty.Key || k == nova.Key),
                     Is.True, "no Support hero rides in a fighting formation");
         }
 
@@ -890,8 +889,8 @@ namespace Game.EditorTests
                         2f, false, attack: 5f, hitPoints: 5f, abilities: abilities)).ToArray(),
                     TargetableUnitKeys = new HashSet<int>(bodies.Select(u => u.Key)),
                 });
-                ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
-                return plan.BeforeFormationStrengths[0];
+                // The night fold reads the whole-hex hold (the defence of the hex is its business).
+                return ArmyReorganizationPlanner.PlanNightFold(group).HoldBefore;
             }
 
             float plain = Hold(carrier: false, building: 2f);

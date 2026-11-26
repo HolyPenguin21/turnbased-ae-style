@@ -463,6 +463,10 @@ namespace Game.Ai.V2
             ApTurnPressure.Record(player, ctx.TurnNumber, apMeasure);
             ApBudgetTelemetry.End(player, ctx,
                 StrategicTempoBudget.For(player, ctx.TurnNumber).DrawActionsUsed, apMeasure);
+            // 2026-11-25 (owner) — the turn's last act: every held hex joins its fighting formations
+            // for the night (HousekeepingNightFold), after every end-of-turn measurement read the
+            // day layout; AiTurnController.RunTurn restores it before the owner's next turn.
+            HousekeepingNightFold.Fold(player, ctx, apCommitments, apSnapshot);
             turnSession.Dispose();
             yield return null;
         }

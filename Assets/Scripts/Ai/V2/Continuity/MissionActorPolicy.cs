@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
@@ -97,7 +96,8 @@ namespace Game.Ai.V2
                             && a.ArmyId == actorId && !a.IsPrison && !a.IsAir && a.MemberCount > 0);
                         if (returningPrimary != null)
                         {
-                            c.Claim(i.IntentKey, actorId, ArmyMutationContract.MovingOperation($"Raid:{raid.Phase}"));
+                            c.Claim(i.IntentKey, actorId, ArmyMutationContract.MovingOperation($"Raid:{raid.Phase}",
+                                returnLeg: true));
                             AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
                                 $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
                                 + $"reason={raid.Phase}_actor_still_matches_ground_container_gate");
@@ -144,7 +144,8 @@ namespace Game.Ai.V2
                         c.Claim(i.IntentKey, actorId, preparing
                             ? AttackContinuity.AttackPreparationMutationContract(snap.TurnNumber)
                             : attack.AssaultStarted ? ArmyMutationContract.FullyProtected
-                            : ArmyMutationContract.MovingOperation($"Attack:{attack.Phase}"),
+                            : ArmyMutationContract.MovingOperation($"Attack:{attack.Phase}",
+                                returnLeg: attack.Phase == AttackMissionPhase.RecoveryReturn),
                             preparationHost: preparing);
                     }
                     continue;
@@ -163,7 +164,8 @@ namespace Game.Ai.V2
                     if (valid)
                         c.Claim(i.IntentKey, actorId, i.ActiveDefence?.Sortie != null
                             ? ArmyMutationContract.FullyProtected
-                            : ArmyMutationContract.MovingOperation($"ActiveDefence:{i.ActiveDefence?.Phase}"));
+                            : ArmyMutationContract.MovingOperation($"ActiveDefence:{i.ActiveDefence?.Phase}",
+                                returnLeg: i.ActiveDefence?.Phase == ActiveDefencePhase.Return));
                     continue;
                 }
 
@@ -340,45 +342,26 @@ namespace Game.Ai.V2
             return claimed == null ? lease : claimed.Intersect(lease);
         }
 
-        // 2026-11-25 (owner, housekeeping stand B02 / D09) — two claims Housekeeping, the turn-final
-        // packaging of the hex, no longer honours (every other lane still sees the claim):
-        //  * a return leg already standing on its destination (MissionIntent.ReturnLegArrived): the
-        //    walk is over, the army is home and is packaged with the hex like any other;
-        //  * an Attack preparation host while a known enemy reaches its hex within the shelter
-        //    horizon (activeDefenceWithdrawMaxEnemyEta, the garrison threat floor's own ETA): the
-        //    hex is defended as one, the host may give its bodies; an emptied host stays a valid
-        //    host (PreparationHostStillValid) and re-gathers its roster once the threat is gone.
-        // Every owner of the claim must agree; an unknown owner keeps it.
+        // 2026-11-25 (owner, housekeeping stand B02) — a claim Housekeeping, the turn-final
+        // packaging of the hex, no longer honours (every other lane still sees the claim): a return
+        // leg already standing on its destination (MissionIntent.ReturnLegArrived): the walk is
+        // over, the army is home and is packaged with the hex like any other. Every owner of the
+        // claim must agree; an unknown owner keeps it. (The defence of a hex under threat is the
+        // night fold's, HousekeepingNightFold — it no longer takes a claim apart by day.)
         private static bool HousekeepingReleases(PlayerSetupData player, ArmyData army, ActorCommitments commitments)
         {
             IReadOnlyCollection<MissionIntentKey> owners = commitments.OwnersOf(army.Id);
             IReadOnlyCollection<MissionIntent> intents = MissionIntentRegistry.Peek(player)?.All;
             if (owners == null || owners.Count == 0 || intents == null)
                 return false;
-            bool? besieged = null;
             foreach (MissionIntentKey key in owners)
             {
                 MissionIntent intent = intents.FirstOrDefault(i => i != null && i.IntentKey.Equals(key));
-                if (intent == null || intent.Status != IntentStatus.Active)
-                    return false;
-                if (intent.ReturnLegArrived(army.Id, army.Hex))
-                    continue;
-                bool preparationHost = intent.Attack != null && intent.Attack.Preparation
-                    && intent.Attack.Phase == AttackMissionPhase.Gather && intent.Attack.PrimaryArmyId == army.Id;
-                if (!preparationHost)
-                    return false;
-                besieged ??= PreparationHexBesieged(player, army.Hex);
-                if (!besieged.Value)
+                if (intent == null || intent.Status != IntentStatus.Active
+                    || !intent.ReturnLegArrived(army.Id, army.Hex))
                     return false;
             }
             return true;
-        }
-
-        private static bool PreparationHexBesieged(PlayerSetupData player, HexCoord hex)
-        {
-            bool isCitadel = hex.Equals(AiTurnController.GarrisonHexFor(player));
-            AiArmyRoles.GarrisonThreatFloor(player, hex, isCitadel, out int enemyEta);
-            return enemyEta <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta;
         }
 
     }

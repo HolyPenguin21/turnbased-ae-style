@@ -110,7 +110,7 @@ namespace Game.Ai.V2
                 || (u.IsDevelopmentOperator && !allowDevelopmentOperator && !toHexBench) || u.IsAviation)
                 return null;
 
-            if (srcMeta.IsGarrison && !GarrisonMayRelease(from, u, srcMeta, toHexBench))
+            if (srcMeta.IsGarrison && !GarrisonMayRelease(from, u, srcMeta, GarrisonFloorIn(c, srcMeta), toHexBench))
                 return null;
             if (!ReorgViability.CanLeaveWithoutOvercrowding(from, u, srcMeta.IsGarrison))
                 return null;
@@ -124,44 +124,6 @@ namespace Game.Ai.V2
             c.Transfers.Add(new PlannedTransfer(u.Key, srcId, dstId, reason));
             c.MovedUnitKeys.Add(u.Key);
             return c;
-        }
-
-        // 2026-11-18 (owner) — passive defence packing: the field source's ground bodies enter the
-        // garrison strongest first; when the garrison has no slot, an operator / Support hero
-        // (never a combat hero) steps into `benchId` (a hero-only bench on the hex) to make one.
-        // Every step is an ordinary TryMoveOne, so capacity, floors, AP and movement rules hold.
-        // Null when nothing moved.
-        private static VState PackGarrisonFromField(VState state, int srcId, int garrisonId, int? benchId)
-        {
-            VState s = state;
-            bool moved = false;
-            List<ReorgUnit> bodies = state.Roster[srcId]
-                .Where(x => x != null && x.IsGroundCombatant && !x.IsCommitted)
-                .OrderByDescending(x => x.Power).ThenBy(x => x.Key).ToList();
-            foreach (ReorgUnit body in bodies)
-            {
-                VState next = TryMoveOne(s, srcId, garrisonId, body,
-                    "pack the garrison for the defence of the hex");
-                if (next == null && benchId.HasValue)
-                {
-                    // The lowest command first: the garrison's capacity is its first hero's
-                    // CommandRating (ReorgViability.Capacity), so the commander stays; a departure
-                    // that would overcrowd the garrison is refused by TryMoveOne itself.
-                    ReorgUnit hero = s.Roster[garrisonId]
-                        .Where(x => x != null && x.IsHero && (x.IsDevelopmentOperator || x.IsGarrisonHero)
-                            && !s.MovedUnitKeys.Contains(x.Key))
-                        .OrderBy(x => x.CommandRating).ThenBy(x => x.Key).FirstOrDefault();
-                    VState freed = hero == null ? null : TryMoveOne(s, garrisonId, benchId.Value, hero,
-                        "free a garrison slot: operator / Support hero to a hero-only bench on the hex");
-                    next = freed == null ? null : TryMoveOne(freed, srcId, garrisonId, body,
-                        "pack the garrison for the defence of the hex");
-                }
-                if (next == null)
-                    break;
-                s = next;
-                moved = true;
-            }
-            return moved ? s : null;
         }
 
         private static VState TrySeed(VState state, int donorId, int weakId)
@@ -184,7 +146,7 @@ namespace Game.Ai.V2
                 ReorgUnit u = donor.FirstOrDefault(x => x.Key == original.Key);
                 if (u == null)
                     continue;
-                if (donorMeta.IsGarrison && !GarrisonMayRelease(donor, u, donorMeta))
+                if (donorMeta.IsGarrison && !GarrisonMayRelease(donor, u, donorMeta, GarrisonFloorIn(c, donorMeta)))
                     break;
                 if (!ReorgViability.CanLeaveWithoutOvercrowding(donor, u, donorMeta.IsGarrison))
                     break;
@@ -261,9 +223,9 @@ namespace Game.Ai.V2
 
             // §P1 — a garrison side of the swap must keep its defensive power reserve (same
             // "only if currently above it" semantics as GarrisonMayRelease).
-            if (aMeta.IsGarrison && !GarrisonRosterKeepsFloor(a, ua, ub, aMeta))
+            if (aMeta.IsGarrison && !GarrisonRosterKeepsFloor(a, ua, ub, GarrisonFloorIn(c, aMeta)))
                 return null;
-            if (bMeta.IsGarrison && !GarrisonRosterKeepsFloor(b, ub, ua, bMeta))
+            if (bMeta.IsGarrison && !GarrisonRosterKeepsFloor(b, ub, ua, GarrisonFloorIn(c, bMeta)))
                 return null;
 
             a.Clear(); a.AddRange(afterA);
@@ -320,8 +282,15 @@ namespace Game.Ai.V2
 
         // `toHexBench` — the hero only steps into a hero-only bench on the same hex
         // (ReorgViability.IsHexBench): an operator / Support hero may, the garrison keeping a member.
+        // The live release floor on this virtual state (ReorgViability.GarrisonFloor).
+        private static float GarrisonFloorIn(VState state, ReorgContainer garrison) =>
+            ReorgViability.GarrisonFloor(garrison, state.Meta.Select(kv =>
+                new KeyValuePair<ReorgContainer, List<ReorgUnit>>(kv.Value, state.Roster[kv.Key])));
+
+        // `floor` — the garrison's power floor on the roster the move is judged on
+        // (GarrisonFloorIn); a hero's release never reads it.
         private static bool GarrisonMayRelease(List<ReorgUnit> garrison, ReorgUnit u,
-            ReorgContainer meta, bool toHexBench = false)
+            ReorgContainer meta, float floor = 0f, bool toHexBench = false)
         {
             if (u.IsDevelopmentOperator || u.IsGarrisonHero)
                 return toHexBench && garrison.Count > 1;
@@ -333,14 +302,14 @@ namespace Game.Ai.V2
             List<ReorgUnit> bodies = garrison.Where(x => x != null && x.IsGroundCombatant).ToList();
             int index = bodies.IndexOf(u);
             return index >= 0 && AiArmyRoles.MayReleaseBodies(bodies, new[] { index },
-                set => ReorgViability.EffectivePower(set.ToList()), meta.GarrisonPowerFloor);
+                set => ReorgViability.EffectivePower(set.ToList()), floor);
         }
 
         // A swap changes a garrison's roster without emptying it: it may not end below both its
         // floor and what it held before (AiArmyRoles.KeepsFloorAfterExchange, the one rule).
         private static bool GarrisonRosterKeepsFloor(List<ReorgUnit> before, ReorgUnit leaving,
-            ReorgUnit entering, ReorgContainer meta) =>
+            ReorgUnit entering, float floor) =>
             AiArmyRoles.KeepsFloorAfterExchange(before, before.IndexOf(leaving), entering,
-                set => ReorgViability.EffectivePower(set.ToList()), meta.GarrisonPowerFloor);
+                set => ReorgViability.EffectivePower(set.ToList()), floor);
     }
 }

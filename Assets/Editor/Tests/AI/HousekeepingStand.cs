@@ -39,6 +39,12 @@ namespace Game.EditorTests
     //      host is never weakened;
     //    * every operation succeeds, no AP is spent, the live result is the plan;
     //    * the next pass on the result plans nothing (no ping-pong).
+    //  Then the night and the morning of the same turn (owner 2026-11-25): the night fold
+    //  (HousekeepingNightFold.Fold) joins the hex into the fewest fighting formations — the hold
+    //  never drops against the day, no AP, no unit lost, operators / Support heroes stay — and the
+    //  owner's next turn starts with Restore: every army stands exactly as it did by day (members
+    //  and commander), so the tasks leave with what the day gave them. Case expectations read
+    //  the live world, i.e. the morning; ExpectNight* read the night.
     //  Units are materialized from the decks' cards (UnitData.FromDefinition); roles (combat /
     //  support hero, strong / weak body, ...) are picked with the game's own classifiers, so one
     //  case runs on every deck. A deck without the role a case needs ignores that case.
@@ -168,6 +174,7 @@ namespace Game.EditorTests
 
         private static void ClearWorld()
         {
+            HousekeepingNightFold.ClearAll();
             ArmyRegistry.Clear();
             BuildingRegistry.Clear();
             VisionSystem.Clear();
@@ -643,10 +650,92 @@ namespace Game.EditorTests
                     Notes.Add($"T{turn.Number}: converges over turns, the next pass plans {p.DebugSummary()}");
             }
 
-            Turns.Add(turn);
+            // The night: the turn's last act joins the hex for whoever attacks before the owner's
+            // next turn.
+            WorldSnapshot night = Snapshot();
+            ActorCommitments nightCommitments = ActorCommitments.FromIntents(night.AllIntents, night, null);
+            int apNight = _root.ActionPoints;
+            HousekeepingTime.Start();
+            turn.NightMoved = HousekeepingNightFold.Fold(Me, Ctx, nightCommitments, night);
+            HousekeepingTime.Stop();
+            turn.NightApSpent = apNight - _root.ActionPoints;
+            turn.Night = Capture(nightCommitments);
+            turn.HoldNight = Holds();
+            CheckNight(turn);
+
+            // The owner's next turn: BeginPlayer (movement, activation), then the restore.
             Ctx.TurnNumber++;
+            foreach (ArmyData a in OwnArmies)
+            {
+                foreach (UnitData u in a.Members)
+                    u.ReplenishMoveForNewTurn();
+                a.ResetActivationForNewTurn();
+            }
+            turn.MorningMoved = HousekeepingNightFold.Restore(Me, Ctx);
+            turn.Morning = Capture(commitments);
+            CheckMorning(turn);
+
+            Turns.Add(turn);
             return turn;
         }
+
+        private void CheckNight(StandTurn t)
+        {
+            if (t.NightApSpent != 0)
+                Fail(t, $"night: AP spent {t.NightApSpent}");
+            List<UnitData> day = t.After.Values.SelectMany(a => a.Members).ToList();
+            List<UnitData> night = t.Night.Values.SelectMany(a => a.Members).ToList();
+            foreach (UnitData u in day.Where(u => !night.Contains(u)))
+                Fail(t, $"night: {Label(u)} lost");
+            foreach (UnitData u in night.GroupBy(u => u).Where(g => g.Count() > 1).Select(g => g.Key))
+                Fail(t, $"night: {Label(u)} is in two armies");
+            foreach (StandArmy a in t.Night.Values.Where(a => a.Members.Count > 0 && !a.Hex.Equals(Home)))
+                Fail(t, $"night: army #{a.Id} left the hex");
+            foreach (StandArmy a in t.Night.Values.Where(a => a.Members.Count > a.Capacity))
+                Fail(t, $"night: army #{a.Id} over capacity {a.Members.Count}/{a.Capacity}");
+            foreach (StandArmy d in t.After.Values)
+            {
+                StandArmy n = t.Night.TryGetValue(d.Id, out StandArmy x) ? x : null;
+                List<UnitData> now = n?.Members ?? new List<UnitData>();
+                if ((d.IsAir || d.IsPrison) && !new HashSet<UnitData>(d.Members).SetEquals(now))
+                    Fail(t, $"night: #{d.Id} (aviation/prison) changed");
+                // A Support hero leaves only for a hero-only bench on the hex (owner 2026-11-18).
+                foreach (UnitData u in d.Members.Where(u => AiArmyRoles.IsGarrisonHero(u) && !now.Contains(u)))
+                {
+                    StandArmy at = t.Night.Values.FirstOrDefault(a => a.Members.Contains(u));
+                    if (at == null || at.Members.Any(m => m.IsGroundCombatant))
+                        Fail(t, $"night: Support hero {Label(u)} left #{d.Id} for a fighting army");
+                }
+            }
+            int dayFormations = Formations(t.After), nightFormations = Formations(t.Night);
+            if (nightFormations > dayFormations)
+                Fail(t, $"night: {nightFormations} fighting formations, {dayFormations} by day");
+            else if (nightFormations > 1)
+                Notes.Add($"T{t.Number}: night keeps {nightFormations} fighting formations (commands full)");
+            foreach (KeyValuePair<int, float> h in t.HoldAfter)
+                if (t.HoldNight.TryGetValue(h.Key, out float now) && now < h.Value - HoldTolerance)
+                    Fail(t, $"night: hex hold vs enemy#{h.Key} dropped {h.Value:0.00} -> {now:0.00}");
+        }
+
+        private void CheckMorning(StandTurn t)
+        {
+            foreach (StandArmy d in t.After.Values)
+            {
+                StandArmy m = t.Morning.TryGetValue(d.Id, out StandArmy x) ? x : null;
+                List<UnitData> now = m?.Members ?? new List<UnitData>();
+                if (!new HashSet<UnitData>(d.Members).SetEquals(now))
+                    Fail(t, $"morning: #{d.Id} is not its day roster: day [{string.Join(", ", d.Members.Select(Label))}] "
+                        + $"morning [{string.Join(", ", now.Select(Label))}]");
+                else if (m != null && d.Commander != m.Commander)
+                    Fail(t, $"morning: #{d.Id} commander {Label(d.Commander)} by day, {Label(m.Commander)} in the morning");
+            }
+            if (HousekeepingNightFold.HasRecord(Me))
+                Fail(t, "morning: the night record is still open");
+        }
+
+        private static int Formations(Dictionary<int, StandArmy> armies) =>
+            armies.Values.Count(a => !a.IsAir && !a.IsPrison && a.Hex.Equals(Home)
+                && a.Members.Any(u => u.IsGroundCombatant));
 
         // ---- standing checks ----------------------------------------------------------------
         private const float HoldTolerance = 0.12f;
@@ -849,6 +938,15 @@ namespace Game.EditorTests
             Expect(ArmyOf(u) != null && !ArmyOf(u).IsGarrison && ArmyOf(u).Members.Count == 1,
                 $"{Label(u)} alone{Why(why)}");
 
+        // `army` stands stronger after the day than before it.
+        public void ExpectStrengthened(ArmyData army, string why = null)
+        {
+            StandTurn t = RequireTurn();
+            float before = t.Before.TryGetValue(army.Id, out StandArmy b) ? b.Power : 0f;
+            float after = t.After.TryGetValue(army.Id, out StandArmy a) ? a.Power : 0f;
+            Expect(after > before + 0.01f, $"#{army.Id} strengthened ({before:0.#} -> {after:0.#}){Why(why)}");
+        }
+
         public void ExpectHeroes(ArmyData army, int count, string why = null) =>
             Expect(army.Members.Count(u => u.IsHero) == count, $"#{army.Id} with {count} hero(es){Why(why)}");
 
@@ -879,6 +977,23 @@ namespace Game.EditorTests
                         $"{Label(u)} not in the fighting field army #{a.Id}{Why(why)}");
         }
 
+        // ---- the night (the fold of the last turn) ------------------------------------------
+        private StandArmy NightArmyOf(UnitData u) =>
+            RequireTurn().Night.Values.FirstOrDefault(a => a.Members.Contains(u));
+
+        public void ExpectNightTogether(UnitData a, UnitData b, string why = null) =>
+            Expect(NightArmyOf(a) != null && NightArmyOf(a) == NightArmyOf(b),
+                $"at night {Label(a)} with {Label(b)}{Why(why)}");
+
+        public void ExpectNightFormations(int count, string why = null)
+        {
+            int n = Formations(RequireTurn().Night);
+            Expect(n == count, $"{count} fighting formation(s) at night, got {n}{Why(why)}");
+        }
+
+        public void ExpectNightCommands(UnitData hero, UnitData body, string why = null) =>
+            Expect(NightArmyOf(body)?.Commander == hero, $"at night {Label(hero)} commands {Label(body)}{Why(why)}");
+
         private static string Why(string why) => string.IsNullOrEmpty(why) ? "" : " - " + why;
 
         // ---- report -------------------------------------------------------------------------
@@ -903,7 +1018,15 @@ namespace Game.EditorTests
                     sb.AppendLine($"   after  {Format(a)}");
                 foreach (KeyValuePair<int, float> h in t.HoldBefore)
                     sb.AppendLine($"   hold vs enemy#{h.Key}: {h.Value:0.00} -> "
-                        + $"{(t.HoldAfter.TryGetValue(h.Key, out float v) ? v.ToString("0.00", CultureInfo.InvariantCulture) : "?")}");
+                        + $"{(t.HoldAfter.TryGetValue(h.Key, out float v) ? v.ToString("0.00", CultureInfo.InvariantCulture) : "?")}"
+                        + $" (night {(t.HoldNight != null && t.HoldNight.TryGetValue(h.Key, out float nv) ? nv.ToString("0.00", CultureInfo.InvariantCulture) : "?")})");
+                if (t.Night != null)
+                {
+                    sb.AppendLine($"   night  moved {t.NightMoved}");
+                    foreach (StandArmy a in t.Night.Values.Where(a => a.Members.Count > 0))
+                        sb.AppendLine($"   night  {Format(a)}");
+                    sb.AppendLine($"   morning moved back {t.MorningMoved}");
+                }
             }
             foreach (string n in Notes)
                 sb.AppendLine("NOTE " + n);
@@ -943,6 +1066,9 @@ namespace Game.EditorTests
         public List<string> Threats;
         public HousekeepingResult Result;
         public int ApSpent;
+        public Dictionary<int, StandArmy> Night, Morning;
+        public Dictionary<int, float> HoldNight;
+        public int NightMoved, MorningMoved, NightApSpent;
     }
 }
 #endif
