@@ -66,7 +66,7 @@ namespace Game.EditorTests
         // let one owner's completion decide another owner's protection. A provisioned completion
         // envelope is now the stronger stage of the SAME build and survives a repeated deferred
         // request; it is released by its own owner through the existing Execution/retirement
-        // release path (TaskExecutor.ReleaseEconomyReservation / ReleaseByOwner), not as a side
+        // release path (EconomyExecutor.ReleaseReservation / ReleaseByOwner), not as a side
         // effect of another pass re-stating the deferred obligation.
         [Test]
         public void TessekT9_ProvisionedCompletionSurvivesARepeatedDeferredRequest()

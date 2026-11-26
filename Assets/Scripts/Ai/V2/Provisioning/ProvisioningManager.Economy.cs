@@ -228,7 +228,7 @@ namespace Game.Ai.V2
             // for a garrison candidate, a viable GarrisonExtractionCandidate PLAN plus its pinned
             // preparation — never both. The plan's real materialization
             // (ArmyActions.CreateArmy/TransferMember) happens later, in
-            // TaskExecutor.ApplyEconomyPreparation, inside that step's own
+            // EconomyExecutor.ApplyPreparation, inside that step's own
             // beforeStep/afterStep window — see the synthetic-MoverArmyId return further down.
             EconomyBuilderSelection.EconomyBuilderChoice builderChoice = null;
             ArmyData hero = null;
@@ -313,7 +313,7 @@ namespace Game.Ai.V2
         }
 
         // The builder is still a hero inside a garrison: the plan (container + pinned preparation)
-        // is funded now and materialized by Execution (TaskExecutor.ApplyEconomyPreparation).
+        // is funded now and materialized by Execution (EconomyExecutor.ApplyPreparation).
         private static ProvisioningResult GarrisonExtractionResult(PlayerSetupData player,
             AiTurnContext ctx, FundedEntry funded, StableMissionKey key, EconomyMissionTarget target,
             MissionIntentKey currentIntentKey, ArmyData deferredGarrison,
@@ -333,14 +333,14 @@ namespace Game.Ai.V2
             // Economy mission provisioned later in the same batch pass sees the pool as still
             // free and claims the same resources StrategicSpendability.FitsSpendableResources
             // already approved for this one. A later stale/failure in Execution releases them
-            // through ReleaseEconomyReservation via ReservationOwner.
+            // through EconomyExecutor.ReleaseReservation via ReservationOwner.
             if (deferredPreparation.CompletionThisTurn)
                 EconomyReservationLifecycle.ReserveEconomyCost(player, ctx.TurnNumber,
                     deferredPreparation.OwnerKey, target.BuildResourceCost, target.BuildApCost);
 
             // Nothing mutated — transferredMemberCount 0 is honest (ProvisioningResult.Ok's own
             // "changed = transferredMemberCount > 0" rule). MoverArmyId is a synthetic negative
-            // id for an actor that does not exist yet; TaskExecutor.RunEconomyStep detects EconomyExtractionGarrisonArmyId
+            // id for an actor that does not exist yet; EconomyExecutor.TryApplyPendingPreparation detects EconomyExtractionGarrisonArmyId
             // >= 0 and materializes for real before doing anything else.
             return ProvisioningResult.Ok(new ProvisionedMission
             {
@@ -401,7 +401,7 @@ namespace Game.Ai.V2
             // The direct-army path (hero already a real, live field army) applies no composition
             // change inside Provisioning either: PlanEconomyCompletion (pure) decides, and the SAME
             // Execution apply path the garrison-extraction candidate uses
-            // (TaskExecutor.ApplyEconomyPreparation) commits it — no live-army mutation happens
+            // (EconomyExecutor.ApplyPreparation) commits it — no live-army mutation happens
             // inside Provisioning for ANY Economy actor. `identityArmyId = hero.Id` since the hero
             // is already real.
             EconomyCompletionPlan directPrep = PlanEconomyCompletion(player, root, ctx,

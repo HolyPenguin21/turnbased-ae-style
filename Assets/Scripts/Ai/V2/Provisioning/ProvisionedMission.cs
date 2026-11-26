@@ -68,7 +68,7 @@ namespace Game.Ai.V2
         //
         // >= 0 marks this ProvisionedMission as NOT YET a real mover: MoverArmyId is a synthetic
         // negative id (SyntheticGarrisonExtractionActorId), and this field names the garrison
-        // TaskExecutor.RunEconomyStep must extract a hero from. -1 (default) means MoverArmyId is
+        // EconomyExecutor.RunStep must extract a hero from. -1 (default) means MoverArmyId is
         // already a real, resolvable army. Recon aviation always uses a real existing army.
         public int EconomyExtractionGarrisonArmyId = -1;
         // The EXACT resolved plan (tier/hero/container/AP) Provisioning chose, pinned so Execution

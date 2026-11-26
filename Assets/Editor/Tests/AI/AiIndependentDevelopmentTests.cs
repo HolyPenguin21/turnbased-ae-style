@@ -740,10 +740,8 @@ namespace Game.EditorTests
                 int ap = _root.ActionPoints, armies = ArmyRegistry.AllForOwner(_player).Count();
                 int version = WorldDeltaLifecycle.Current;
                 var result = new ExecutionResult();
-                var execute = typeof(TaskExecutor).GetMethod("TryHandleDeferredEconomyMaterialization",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-                Assert.That(execute.Invoke(null, new object[] { _player, _root, _ctx, pm, result,
-                    ap, _snapshot }), Is.EqualTo(true));
+                Assert.That(DevelopmentExecutor.TryApplyPendingExtraction(_player, _root, _ctx, pm, result, ap),
+                    Is.True);
                 Assert.That(result.StopReason, Is.EqualTo(contested
                     ? ExecutionStopReason.NoSafeStep : ExecutionStopReason.TargetInvalidated));
                 Assert.That(result.ActorMaterialized, Is.False);
@@ -1149,7 +1147,7 @@ namespace Game.EditorTests
                 int apBefore = _root.ActionPoints;
                 int armiesBefore = ArmyRegistry.AllForOwner(_player).Count();
                 int versionBefore = WorldDeltaLifecycle.Current;
-                var apply = typeof(TaskExecutor).GetMethod("ApplyEconomyPreparation",
+                var apply = typeof(EconomyExecutor).GetMethod("ApplyPreparation",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
                 Assert.That(apply.Invoke(null, new object[] { _player, _root, _ctx, pm, result,
                     apBefore, _snapshot }), Is.EqualTo(false));
