@@ -121,8 +121,7 @@ namespace Game.EditorTests
             Assert.That(runStep, Is.Not.Null);
             var routine = (IEnumerator)runStep.Invoke(null, new object[]
             {
-                _player, _root, context, mission, result, 10,
-                new[] { mission }, 0, null, null,
+                _player, _root, context, mission, result, 10, null, null,
             });
             Assert.That(routine.MoveNext(), Is.False,
                 "Rejected admission must terminate before scheduling the first movement coroutine.");
