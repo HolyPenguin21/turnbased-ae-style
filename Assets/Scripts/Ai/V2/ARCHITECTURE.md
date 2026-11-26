@@ -31,7 +31,7 @@ Everything stays in namespace `Game.Ai.V2` (flat). Folders express ownership onl
 | `Execution/` | Plan → canonical gameplay calls → structured result. Never re-plans or re-scores. |
 | `Continuity/` | Mission intent lifecycle: `ResolveActive` (before planning) and `Reconcile` (after execution). |
 | `Housekeeping/` | Zero-AP, task-neutral same-hex force packaging: the day pass (`HousekeepingManager` → `ArmyReorgAnalyzer` → `ArmyReorganizationPlanner` → `HousekeepingExecutor`), the night fold and morning restore (`HousekeepingNightFold`) and the operator stay-home release (`LocalOperatorRelease`). Never selects objectives, creates missions, moves armies between hexes, plays cards or spends resources. |
-| `Recon/` | Recon-mission machinery (route/step planning, scout pricing, air/ground policy). |
+| `Recon/` | Recon-mission machinery (route/step planning, live scout step reactions, scout pricing, air/ground policy). |
 | `Diagnostics/` | Logging, telemetry, audit. No influence on ordering, score, eligibility or state. |
 
 ## Mission axes (`MissionKind`)
