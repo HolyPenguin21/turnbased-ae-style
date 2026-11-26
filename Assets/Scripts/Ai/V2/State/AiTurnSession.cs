@@ -250,4 +250,54 @@ namespace Game.Ai.V2
             Active.Remove(Player);
         }
     }
+
+    // Same-turn lease on an army StrategicManager materialized for a live strategic shortage: the
+    // turn's later passes (Housekeeping, another axis' card delivery) may reinforce it but never take
+    // it apart. Turn-local; cleared after the final Housekeeping pass and by Dispose.
+    internal static class StrategicCapabilityLeaseRegistry
+    {
+        private sealed class LeaseState
+        {
+            // The axis whose demand materialized each leased army; another axis may not take it over
+            // as a card recipient in the same turn (MaterializationDeliveryPolicy).
+            public readonly Dictionary<int, DesireAxis> ArmyIds = new Dictionary<int, DesireAxis>();
+        }
+
+        private static readonly TurnScopedByPlayer<LeaseState> ByPlayer =
+            new TurnScopedByPlayer<LeaseState>(() => new LeaseState());
+
+        public static void Mark(PlayerSetupData player, int turn, DesireAxis axis, CapabilityKind capability,
+            IEnumerable<int> armyIds)
+        {
+            if (player == null || armyIds == null)
+                return;
+            LeaseState state = ByPlayer.GetOrReset(player, turn);
+
+            var added = new List<int>();
+            foreach (int id in armyIds.Where(id => id >= 0).Distinct())
+                if (!state.ArmyIds.ContainsKey(id))
+                {
+                    state.ArmyIds[id] = axis;
+                    added.Add(id);
+                }
+
+            if (added.Count > 0)
+                AiDebugLog.Write($"[AI][V2][Lease] protect operational {capability} army(s) "
+                    + $"[{string.Join(",", added)}] through housekeeping (turn {turn})");
+        }
+
+        // Every read is gated by the turn: Phase A reads at the start of a turn, before its first
+        // Mark, and must never see last turn's leases.
+        public static bool IsLeased(PlayerSetupData player, int turn, int armyId) =>
+            ByPlayer.Peek(player, turn) is LeaseState state && state.ArmyIds.ContainsKey(armyId);
+
+        // The axis this army is leased to this turn, or null.
+        public static DesireAxis? LeasedAxis(PlayerSetupData player, int turn, int armyId) =>
+            ByPlayer.Peek(player, turn) is LeaseState state
+            && state.ArmyIds.TryGetValue(armyId, out DesireAxis axis) ? axis : (DesireAxis?)null;
+
+        public static void Clear(PlayerSetupData player, int turn) => ByPlayer.Remove(player, turn);
+
+        public static void ClearAll() => ByPlayer.Clear();
+    }
 }

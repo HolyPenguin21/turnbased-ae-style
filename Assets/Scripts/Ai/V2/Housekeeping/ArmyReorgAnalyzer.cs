@@ -11,63 +11,6 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // Same-turn ownership for operational capability created by StrategicManager. A force that was
-    // materialized to satisfy a still-live strategic shortage must not be folded into garrison by
-    // the later zero-AP housekeeping pass before that capability can be used. The lease is deliberately
-    // turn-local: HousekeepingManager clears it after the final structural pass.
-    internal static class StrategicCapabilityLeaseRegistry
-    {
-        private sealed class LeaseState
-        {
-            // The axis whose demand materialized each leased army (2026-10-15: another axis may not
-            // take it over as a card recipient in the same turn, MaterializationDeliveryPolicy).
-            public readonly Dictionary<int, DesireAxis> ArmyIds = new Dictionary<int, DesireAxis>();
-        }
-
-        private static readonly TurnScopedByPlayer<LeaseState> ByPlayer =
-            new TurnScopedByPlayer<LeaseState>(() => new LeaseState());
-
-        public static void Mark(PlayerSetupData player, int turn, DesireAxis axis, CapabilityKind capability,
-            IEnumerable<int> armyIds)
-        {
-            if (player == null || armyIds == null)
-                return;
-            LeaseState state = ByPlayer.GetOrReset(player, turn);
-
-            var added = new List<int>();
-            foreach (int id in armyIds.Where(id => id >= 0).Distinct())
-                if (!state.ArmyIds.ContainsKey(id))
-                {
-                    state.ArmyIds[id] = axis;
-                    added.Add(id);
-                }
-
-            if (added.Count > 0)
-                AiDebugLog.Write($"[AI][V2][Lease] protect operational {capability} army(s) "
-                    + $"[{string.Join(",", added)}] through housekeeping (turn {turn})");
-        }
-
-        // The turn gate is part of the contract, not a convenience: Mark() rebuilds the state when
-        // the turn moves and Clear() only removes a state stamped with the turn being cleared, so a
-        // reader without the same gate can observe LAST turn's lease set. That matters because the
-        // readers are Phase A (MaterializationCandidateBuilder, at the START of a turn, before this
-        // turn's first Mark) and Housekeeping — a stale lease would silently protect an army that
-        // owns no operational role any more. Today HousekeepingManager.Clear happens to run at the
-        // end of every turn; this makes the invariant structural instead of a consequence of that
-        // call order.
-        public static bool IsLeased(PlayerSetupData player, int turn, int armyId) =>
-            ByPlayer.Peek(player, turn) is LeaseState state && state.ArmyIds.ContainsKey(armyId);
-
-        // The axis this army is leased to this turn, or null. Same turn gate as IsLeased.
-        public static DesireAxis? LeasedAxis(PlayerSetupData player, int turn, int armyId) =>
-            ByPlayer.Peek(player, turn) is LeaseState state
-            && state.ArmyIds.TryGetValue(armyId, out DesireAxis axis) ? axis : (DesireAxis?)null;
-
-        public static void Clear(PlayerSetupData player, int turn) => ByPlayer.Remove(player, turn);
-
-        public static void ClearAll() => ByPlayer.Clear();
-    }
-
     // ===========================================================================================
     //  ARMY REORG ANALYZER  (Strategy V2 — HousekeepingManager, step 8C)
     // ===========================================================================================
