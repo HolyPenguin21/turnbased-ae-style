@@ -26,8 +26,8 @@ namespace Game.EditorTests
     //  is executed: what runs is every decision and every card play of the turn, the Phase B rounds
     //  and the end of the turn.
     //  Every turn is checked against the turn's boundaries: no exception, AP never below zero, no
-    //  reservation or claim invariant violation, no reservation left after the turn, no unit lost,
-    //  the turn session closed. The state after the turn and the turn's control lines go to a
+    //  reservation or claim invariant violation and no [ERROR] check line, no reservation left after
+    //  the turn, no unit lost, the turn session closed. The state after the turn and the turn's control lines go to a
     //  digest (REACTION_STAND_OUT, default Logs/ReactionStand) compared between revisions.
     // ===========================================================================================
     public enum ReactionScenario
@@ -171,7 +171,7 @@ namespace Game.EditorTests
             if (failure != null) problems.Add("exception: " + failure);
             if (root.ActionPoints < 0) problems.Add($"AP below zero: {root.ActionPoints}");
             problems.AddRange(_lines.Where(l => l.Contains("[AI][V2][INVARIANT]")
-                || l.Contains("[Invariant] ERROR") || l.StartsWith("EXCEPTION")));
+                || l.Contains("[Invariant] ERROR") || l.Contains("][ERROR]") || l.StartsWith("EXCEPTION")));
             if (StrategicResourceReservationLedger.HasAny(me, TurnNumber))
                 problems.Add("a reservation survived the turn");
             if (AiTurnSession.PeekActive(me) != null)
@@ -265,6 +265,7 @@ namespace Game.EditorTests
                 "strat.B - reaction feasible", "pending invalidation but no FEASIBLE", "reaction - BEGIN",
                 "reaction - END", "end-of-turn tempo re-run", "[AI][V2][INVARIANT]", "[Invariant] ERROR",
                 "strat.B/tempo - END", "[AI][V2][Loop] step=", "admission pass opened",
+                "][ERROR]", "end-of-turn facts",
             };
             foreach (string m in markers)
                 sb.AppendLine($"lines '{m}' {_lines.Count(l => l.Contains(m))}");
