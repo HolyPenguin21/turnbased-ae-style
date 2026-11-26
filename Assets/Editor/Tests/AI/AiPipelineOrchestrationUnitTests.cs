@@ -26,6 +26,18 @@ namespace Game.EditorTests
             Assert.AreEqual(0, s.DirtyAxes.Count);
         }
 
+        // A stale plan publishes External (TaskExecutor): the operational families take it, so it
+        // is consumed and re-admits the missions instead of staying pending for the whole turn.
+        [Test]
+        public void AStalePlanIsOperationalAndConsumed()
+        {
+            TypedTriggerSplit s = TypedTriggerFanOut.Split(StrategicInvalidationReason.External, () => false);
+            Assert.AreEqual(StrategicInvalidationReason.External, s.Operational);
+            Assert.AreEqual(StrategicInvalidationReason.None, s.Strategic);
+            Assert.AreEqual(0, s.DirtyAxes.Count);
+            Assert.AreEqual(StrategicInvalidationReason.External, s.Consumed);
+        }
+
         [Test]
         public void ActorAloneReadmitsEconomyOnlyWhenTheBuilderArrived()
         {

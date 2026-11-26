@@ -17,9 +17,12 @@ namespace Game.Ai.V2
             }
         }
 
+        // Every mission axis, plus External: a task whose plan went stale before its command
+        // (TaskExecutor) asks for an operational replan, never for a strategic one.
         internal static StrategicInvalidationReason OperationalInvalidationMask =>
             DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
             | DesireAxes.InvalidationMaskFor(DesireAxis.Aggression)
-            | DesireAxes.InvalidationMaskFor(DesireAxis.Development);
+            | DesireAxes.InvalidationMaskFor(DesireAxis.Development)
+            | StrategicInvalidationReason.External;
     }
 }

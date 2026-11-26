@@ -321,7 +321,7 @@ namespace Game.Ai.V2
                 // Facts published after the loop's last trigger take (the closing re-admission, the
                 // recalls) go through the same works once more: their re-admission, an admission pass
                 // when they are operational and one more Phase B round. Only the facts a consumer
-                // family takes count (External is nobody's). The recalls repeat after it; what they
+                // family takes count. The recalls repeat after it; what they
                 // publish then is left to the next turn's scan.
                 if (TypedTriggerFanOut.Split(turnSession.PendingInvalidations.Reasons, frame.Intents,
                         frame.Snapshot).Consumed != StrategicInvalidationReason.None)
