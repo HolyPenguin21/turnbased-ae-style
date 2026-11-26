@@ -909,8 +909,6 @@ namespace Game.EditorTests
                     s.Failures.Add($"T1: expected both missing positions filled from the garrison spares, got {wanted}");
             });
 
-            // 2026-11-25 (owner, stand D09) - a known enemy within the shelter horizon frees the
-            // preparation host for Housekeeping: the hex is defended as one (MissionActorPolicy).
             // 2026-11-25 (owner) — the defence of the hex is the night fold's: by day the host keeps
             // its task, at night the hex fights as one formation, in the morning the host is back.
             Case("D07_Host_UnderSiege_KeepsItsTask_NightJoinsTheHex",
@@ -939,7 +937,7 @@ namespace Game.EditorTests
             });
 
             // 2026-11-25 (owner) - "all armies are merged as usual; even without a chance the game
-            // must stay interesting for the human": a lost hex still packs (AttackerCost).
+            // must stay interesting for the human": the night fold joins the hex into one fight.
             Case("D09_Host_UnderSiege_HexDefendedAsOne",
                 "a host of strong bodies, a Support-led garrison with room, a strong enemy next door -> one formation "
                 + "at night", s =>

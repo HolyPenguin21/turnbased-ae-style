@@ -25,7 +25,8 @@ namespace Game.Ai.V2
         // at most one accepted structural move; the loop stops early the moment no move improves
         // the lexicographic outcome.
         public const int housekeepingMaxPlanIterationsPerHex = 24;
-        // Whole-hex readiness under a deployed enemy (ArmyReorganizationEvaluation.HexReadiness):
+        // Whole-hex readiness under a deployed enemy (ArmyReorganizationEvaluation.HexReadiness, read
+        // by the night fold since 2026-11-25 — HousekeepingNightFold):
         // sequential trials of WorthIt.EstimateHexControl, and the attacker-win difference below
         // which two rosters count as equal. Measured 2026-11-18 on Kryll's (0,4) T31 rosters
         // (7 armies vs Dust Dogs, 30 unit orders of the SAME roster): 25 trials sd 0.10 (0.16-0.56)

@@ -466,7 +466,8 @@ namespace Game.Ai.V2
             // 2026-11-25 (owner) — the turn's last act: every held hex joins its fighting formations
             // for the night (HousekeepingNightFold), after every end-of-turn measurement read the
             // day layout; AiTurnController.RunTurn restores it before the owner's next turn.
-            HousekeepingNightFold.Fold(player, ctx, apCommitments, apSnapshot);
+            yield return HousekeepingNightFold.FoldRoutine(player, ctx, apCommitments, apSnapshot,
+                new FramePacer(), new int[1]);
             turnSession.Dispose();
             yield return null;
         }

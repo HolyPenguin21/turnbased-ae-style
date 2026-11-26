@@ -141,9 +141,22 @@ namespace Game.Ai.V2
 
         internal static NightFoldPlan PlanNightFold(LocalForceGroup group)
         {
-            var plan = new NightFoldPlan { Q = group?.Q ?? 0, R = group?.R ?? 0 };
+            var plan = new NightFoldPlan();
+            // No pacer: the routine never yields, so one MoveNext loop runs it to the end.
+            System.Collections.IEnumerator steps = PlanNightFoldRoutine(group, null, plan);
+            while (steps.MoveNext()) { }
+            return plan;
+        }
+
+        // The same plan, giving frames back between layouts (FramePacer): under a known enemy
+        // every layout runs the whole-hex simulation (the day planner's Kryll case, ~1.7 s a plan).
+        internal static System.Collections.IEnumerator PlanNightFoldRoutine(LocalForceGroup group,
+            FramePacer pacer, NightFoldPlan plan)
+        {
+            plan.Q = group?.Q ?? 0;
+            plan.R = group?.R ?? 0;
             if (group?.Containers == null || group.Garrison == null)
-                return plan;
+                yield break;
             var state = new VState { HexDefenseBonus = group.HexDefenseBonus,
                 BuildingDefenseBonus = group.BuildingDefenseBonus, Environment = group.Environment };
             state.ThreatBenchmarks.AddRange(group.ThreatBenchmarks);
@@ -159,7 +172,7 @@ namespace Game.Ai.V2
             plan.HoldAfter = plan.HoldBefore;
             plan.Before = FormatNight(state, parts);
             if (parts.Count(id => state.Roster[id].Any(u => u != null && u.IsGroundCombatant)) < 2)
-                return plan;
+                yield break;
 
             var baseline = new NightScore(state, 0);
             NightScore bestScore = baseline;
@@ -187,11 +200,13 @@ namespace Game.Ai.V2
                         bestLead = reordered || lead != null && moves.Any(m => m.Item1 == lead.Key) ? lead.Key : -1;
                         bestMoves = moves;
                     }
+                    if (pacer != null && pacer.Expired)
+                        yield return pacer.Checkpoint();
                 }
             }
 
             if (best == null)
-                return plan;
+                yield break;
             plan.DestinationArmyId = bestDst;
             plan.CommanderKey = state.Meta[bestDst].IsGarrison ? -1 : bestLead;
             plan.Moves.AddRange(bestMoves);
@@ -199,7 +214,6 @@ namespace Game.Ai.V2
                 plan.ExpectedMembership[kv.Key] = kv.Value.Select(u => u.Key).ToList();
             plan.HoldAfter = WorstHold(best);
             plan.After = FormatNight(best, parts);
-            return plan;
         }
 
         private static float WorstHold(VState state) =>
@@ -359,13 +373,30 @@ namespace Game.Ai.V2
         internal static int Fold(PlayerSetupData player, AiTurnContext ctx, ActorCommitments commitments,
             WorldSnapshot snapshot)
         {
+            var moved = new int[1];
+            // FoldRoutine yields the nested plan routine: drain the whole iterator tree.
+            var stack = new Stack<System.Collections.IEnumerator>();
+            stack.Push(FoldRoutine(player, ctx, commitments, snapshot, null, moved));
+            while (stack.Count > 0)
+            {
+                System.Collections.IEnumerator top = stack.Peek();
+                if (!top.MoveNext()) { stack.Pop(); continue; }
+                if (top.Current is System.Collections.IEnumerator nested) stack.Push(nested);
+            }
+            return moved[0];
+        }
+
+        // The paced form the AI turn runs (`moved[0]` = units moved). Nothing mutates the world
+        // between AI frames, and each hex is planned before it is executed.
+        internal static System.Collections.IEnumerator FoldRoutine(PlayerSetupData player, AiTurnContext ctx,
+            ActorCommitments commitments, WorldSnapshot snapshot, FramePacer pacer, int[] moved)
+        {
             if (player == null || ctx == null)
-                return 0;
+                yield break;
             if (HasRecord(player))
                 Restore(player, ctx, "a night record still open at the next fold");
             ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments, snapshot, ctx,
                 includeEveryGroup: true);
-            int moved = 0;
             foreach (LocalForceGroup group in analysis.Groups)
             {
                 var hex = new HexCoord(group.Q, group.R);
@@ -374,13 +405,13 @@ namespace Game.Ai.V2
                 if (group.Containers.Any(c => analysis.ArmyById.TryGetValue(c.ArmyId, out ArmyData a)
                         && (a.IsMovementBusy || a.Controller != null && a.Controller.IsMoving)))
                     continue;
-                NightFoldPlan plan = ArmyReorganizationPlanner.PlanNightFold(group);
+                var plan = new NightFoldPlan();
+                yield return ArmyReorganizationPlanner.PlanNightFoldRoutine(group, pacer, plan);
                 if (plan.IsEmpty)
                     continue;
-                moved += Execute(plan, analysis, player, ctx, new HashSet<int>(group.Containers
+                moved[0] += Execute(plan, analysis, player, ctx, new HashSet<int>(group.Containers
                     .Where(c => c.Role == ReorgPhysicalRole.ProtectedMissionArmy || c.IsFist).Select(c => c.ArmyId)));
             }
-            return moved;
         }
 
         // `taskArmyIds` — the armies of the hex a task claims (ReorgPhysicalRole.ProtectedMissionArmy)

@@ -50,9 +50,8 @@ namespace Game.Ai.V2
             // enemy can reach this hex within activeDefenceWithdrawMaxEnemyEta turns: then it
             // shelters in the local garrison (exposed like an operator outside it), which its
             // command rating also serves. Economy still reaches it there by garrison extraction.
-            // 2026-11-18 — only while the garrison has a slot to take it: a garrison packed with
-            // fighters for the same threat (passive defence) cannot shelter it, and the hero then
-            // stands as a bench on the hex instead of blocking that packing.
+            // 2026-11-18 — only while the garrison has a slot to take it; otherwise the hero stands
+            // as a bench on the hex.
             // 2026-11-26 (owner, stand E04) — only while no army of the hex can take the blow: the
             // hardest combat-capable army fights first (BattleInitiator.CompareDefenderHardness) and
             // a hero-only army meets the enemy only after them, so beside any fighter it is safe.
