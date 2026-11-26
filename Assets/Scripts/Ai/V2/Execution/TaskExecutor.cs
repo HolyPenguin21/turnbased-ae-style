@@ -191,7 +191,7 @@ namespace Game.Ai.V2
         // `army` (caller proceeds). On failure fully populates+adds `result` and returns null.
         private static bool TryResolveMoverOrHandleGone(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
-            List<ExecutionResult> results, int apBefore, out ArmyData army)
+            List<ExecutionResult> results, out ArmyData army)
         {
             army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (army != null)
@@ -215,7 +215,7 @@ namespace Game.Ai.V2
 
         private static bool TryHandleStaleValidity(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ArmyData army, ExecutionResult result,
-            List<ExecutionResult> results, int apBefore)
+            List<ExecutionResult> results)
         {
             MissionValidity validity = MissionRevalidator.Validate(player, root, ctx, pm);
             if (!MissionRevalidator.IsStale(validity))
@@ -277,14 +277,13 @@ namespace Game.Ai.V2
                 FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
-            if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, apBefore,
-                    out ArmyData army))
+            if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, out ArmyData army))
                 yield break;
 
             // ARCH-02 §35 — the executor does NOT synthesise a replacement mission for a
             // stale-goal Scout. It records the stale outcome; MissionContinuityLayer.Reconcile
             // + the mission planner re-target the durable ReconPatrolState on the next pass.
-            if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results, apBefore))
+            if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results))
                 yield break;
 
             if (pm.Kind == MissionKind.Scout)
@@ -300,12 +299,13 @@ namespace Game.Ai.V2
             if (pm.Kind == MissionKind.Raid || pm.Kind == MissionKind.ActiveDefence
                 || pm.Kind == MissionKind.Attack)
             {
-                if (LocalOperatorRelease.ReleaseBeforeDeparture(player, ctx, army,
-                        snapshot == null ? null : ActorCommitments.FromIntents(
-                            WorldSnapshot.IntentsOf(snapshot), snapshot, null),
-                        DevelopmentOpportunityEvaluator.LivePreparationSite(
-                            player, AiHandRegistry.Peek(player), ctx, snapshot?.Intents)) > 0)
-                    result.StateVersionAfter = WorldDeltaLifecycle.Current;
+                // The release commits its own revision; it leaves no receipt on this step's result,
+                // so the lane's own mutation still stamps the step (StampVersion).
+                LocalOperatorRelease.ReleaseBeforeDeparture(player, ctx, army,
+                    snapshot == null ? null : ActorCommitments.FromIntents(
+                        WorldSnapshot.IntentsOf(snapshot), snapshot, null),
+                    DevelopmentOpportunityEvaluator.LivePreparationSite(
+                        player, AiHandRegistry.Peek(player), ctx, snapshot?.Intents));
             }
 
             if (pm.Kind == MissionKind.Raid)

@@ -154,8 +154,9 @@ namespace Game.Ai.V2
             }
             int rateBeforeFunding = root.TradeRate;
             bool funded = TradeFunding.Fund(player, root, ctx, prep.StageCost, new SpendAuthority(prep.OwnerKey, true));
+            // A conversion commits its own revision; the step is stamped after its last mutation.
             if (root.TradeRate != rateBeforeFunding)
-            { result.ResourceConverted = true; result.StateVersionAfter = WorldDeltaLifecycle.Current; }
+                result.ResourceConverted = true;
             if (!funded)
             {
                 AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: resources "
@@ -170,13 +171,11 @@ namespace Game.Ai.V2
             if (!materialized.Hex.Equals(pm.EconomyTarget.TargetHex)
                 && AiArmyRoles.DepartureStripsOperator(player, materialized, site))
             {
-                int released = LocalOperatorRelease.ReleaseBeforeDeparture(
-                    player, ctx, materialized, commitments, site);
-                if (released > 0)
-                {
-                    result.StateVersionAfter = WorldDeltaLifecycle.Current;
+                // The release commits its own revision and leaves no receipt on the step: the
+                // composition change below still stamps the step (TaskExecutor.StampVersion).
+                if (LocalOperatorRelease.ReleaseBeforeDeparture(
+                        player, ctx, materialized, commitments, site) > 0)
                     result.EconomyPrepared = true;
-                }
                 if (AiArmyRoles.DepartureStripsOperator(player, materialized, site)
                     || !AiArmyRoles.IsHeroLed(materialized))
                 {
@@ -315,8 +314,8 @@ namespace Game.Ai.V2
                         result.FinalHex = army.Hex;
                         yield break;
                     }
-                    if (LocalOperatorRelease.ReleaseBeforeDeparture(player, ctx, army, commitments, site) > 0)
-                        result.StateVersionAfter = WorldDeltaLifecycle.Current;
+                    // Commits its own revision; the walk below stamps the step.
+                    LocalOperatorRelease.ReleaseBeforeDeparture(player, ctx, army, commitments, site);
                     if (AiArmyRoles.DepartureStripsOperator(player, army, site))
                     {
                         result.StopForReplan(ExecutionStopReason.TargetInvalidated);
