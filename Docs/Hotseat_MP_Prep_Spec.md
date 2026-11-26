@@ -219,7 +219,7 @@ OnMatchFinished(survivors)               -> ParticipantResult?
   `Map/HexSelectionController.Movement.cs:305`, `BattleScreenUI.Combat.cs:628`, `BattleScreenUI.cs:1031`.
   Но `ResolveHumanObserver` (`Combat/BattleEncounterCoordinator.cs:184`) возвращает **первого**
   человека — для H-H должен быть текущий сиденье/инициатор.
-- Отложенные бои (`GameTurnController.cs:655-690` `RunCommittedBattle`): кнопка Continue — тому,
+- Отложенные бои (`GameTurnController.Battles.cs` `RunCommittedBattle`): кнопка Continue — тому,
   кто сейчас сидит; наблюдатель — сиденье, если участвует, иначе участник-человек через роутер.
 - Сообщения-подсказки владельцу вне его хода: `NotifyMoveBlocked` (`Movement.cs:342`),
   `NotifyBuildBlocked` (`Factory.cs:145`), событийные `eventRewardPopup` (`Events.cs:406,437`) — если
