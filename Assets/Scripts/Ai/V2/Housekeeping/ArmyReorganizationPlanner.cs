@@ -4,51 +4,44 @@ using System.Linq;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  ARMY REORGANIZATION PLANNER  (Strategy V2 — HousekeepingManager, step 8C)
+    //  ARMY REORGANIZATION PLANNER — the day pass of Housekeeping (the task layout).
     // ===========================================================================================
-    //  PURE, DETERMINISTIC. Snapshot first, plan second, mutate later in HousekeepingExecutor.
-    //  Every accepted candidate strictly improves this lexicographic tuple:
-    //    garrison safety -> legality -> operator exposure -> redundant hero/preparation slot waste
-    //    -> singleton count -> non-viable count
-    //    -> command/leadership defects -> strongest-first EffectiveArmyPower profile
-    //    -> canonical AiPower composition -> operation count.
-    //  Candidate generation is zero-AP: housekeeping holds no AP of its own.
+    //  Pure and deterministic: a snapshot of one hex in, a plan out; HousekeepingExecutor applies
+    //  it. Every accepted candidate strictly improves this lexicographic tuple:
+    //    garrison floor -> legality -> operator exposure -> redundant hero / preparation slot waste
+    //    -> singletons -> non-viable formations -> commander mismatch -> formation defect
+    //    -> strongest-first field formation power profile -> composition -> operation count.
+    //  Zero AP. The defence of the hex is the night fold's (HousekeepingNightFold), which reuses
+    //  this planner's virtual roster (VState).
     // ===========================================================================================
     public static partial class ArmyReorganizationPlanner
     {
-        private const float FloatEps = 0.001f;
+        internal const float FloatEps = 0.001f;
 
         private readonly struct Outcome
         {
             public readonly int GarrisonDeficit;
             public readonly int Legality;
-            // Required Research/Production operators exposed outside the local garrison.
+            // Operators and Support heroes exposed outside the local garrison or a hex bench.
             public readonly int OperatorExposure;
-            // Heroes that only occupy a fighter slot: preparation's contract and free field
-            // armies. Above the singleton/viability terms: a lone hero leaving the host for
-            // a free local container is the fix, never a reason to keep the fist short of slots.
+            // Heroes that only occupy a fighter slot (preparation host and free field armies), plus
+            // the preparation host's roster gap. Ranked above singletons and viability: a hero
+            // leaving for a free local container is the fix, never a reason to keep the fist short.
             public readonly int PreparationSlotWaste;
             public readonly int Singletons;
             public readonly int NonViable;
-            // §7 — number of mutable multi-hero containers not led by the one commander
-            // evaluation's best legal hero (HeroRoleEvaluator, see CommanderMismatch). Ranked as a
-            // formation-quality term: above generic strength/composition, below the hard
-            // legality/singleton/viability invariants.
+            // Multi-hero containers not led by their best legal commander (CommanderMismatch).
             public readonly int CommanderMismatch;
-            // §9 — count of heroless/support-led viable field formations a benched combat hero
-            // could take over. Ranked as a formation-quality term, below the commander mismatch
-            // and above generic strength/composition.
+            // Heroless or Support-led viable field formations a benched combat hero could lead.
             public readonly int FormationDefect;
-            // The strongest-first canonical AiPower profile of the field formations (the day
-            // layout is the task layout; the hex's defence is the night fold's). Higher is better.
-            private readonly LazyProfile _formationStrengths;
-            public IReadOnlyList<float> FormationStrengths => _formationStrengths.Value;
+            // The field formations' power, strongest first. Higher is better.
+            public readonly IReadOnlyList<float> FormationStrengths;
             public readonly float NegComposition;
             public readonly int Operations;
 
             public Outcome(int gd, int legal, int operatorExposure, int preparationSlotWaste,
                 int singles, int nonViable, int commandWaste, int formationDefect,
-                LazyProfile formationStrengths, float negComp, int operations)
+                IReadOnlyList<float> formationStrengths, float negComp, int operations)
             {
                 GarrisonDeficit = gd;
                 Legality = legal;
@@ -58,7 +51,7 @@ namespace Game.Ai.V2
                 NonViable = nonViable;
                 CommanderMismatch = commandWaste;
                 FormationDefect = formationDefect;
-                _formationStrengths = formationStrengths ?? new LazyProfile(System.Array.Empty<float>());
+                FormationStrengths = formationStrengths ?? System.Array.Empty<float>();
                 NegComposition = negComp;
                 Operations = operations;
             }
@@ -74,8 +67,7 @@ namespace Game.Ai.V2
                 c = CommanderMismatch.CompareTo(o.CommanderMismatch); if (c != 0) return c;
                 c = FormationDefect.CompareTo(o.FormationDefect); if (c != 0) return c;
 
-                c = CompareFormationProfiles(FormationStrengths, o.FormationStrengths,
-                    _formationStrengths.Tolerances, o._formationStrengths.Tolerances);
+                c = CompareFormationProfiles(FormationStrengths, o.FormationStrengths);
                 if (c != 0) return c;
 
                 if (NegComposition < o.NegComposition - FloatEps) return -1;
@@ -83,83 +75,33 @@ namespace Game.Ai.V2
                 return Operations.CompareTo(o.Operations);
             }
 
-            private static int CompareFormationProfiles(IReadOnlyList<float> a, IReadOnlyList<float> b,
-                IReadOnlyList<float> toleranceA, IReadOnlyList<float> toleranceB)
+            // Stronger first wins; a trailing weaker formation stays neutral, so an empty reusable
+            // shell never creates pressure to seed itself.
+            private static int CompareFormationProfiles(IReadOnlyList<float> a, IReadOnlyList<float> b)
             {
-                int common = System.Math.Min(a?.Count ?? 0, b?.Count ?? 0);
+                int common = System.Math.Min(a.Count, b.Count);
                 for (int i = 0; i < common; i++)
                 {
-                    float av = a[i];
-                    float bv = b[i];
-                    float eps = System.Math.Max(FloatEps, System.Math.Max(
-                        toleranceA != null && i < toleranceA.Count ? toleranceA[i] : 0f,
-                        toleranceB != null && i < toleranceB.Count ? toleranceB[i] : 0f));
-                    if (av > bv + eps) return -1; // stronger is better
-                    if (av < bv - eps) return 1;
+                    if (a[i] > b[i] + FloatEps) return -1;
+                    if (a[i] < b[i] - FloatEps) return 1;
                 }
-
-                // A trailing weaker formation remains neutral so an empty reusable shell never
-                // creates pressure to seed itself.
                 return 0;
             }
         }
 
-        // The readiness profile of one Outcome, built at most once and only when asked
-        // (the threat-backed profile runs WorthIt.EstimateHexControl per threat).
-        private sealed class LazyProfile
-        {
-            // Per-entry equality tolerance (null or 0 = FloatEps): the whole-hex readiness is a
-            // Monte Carlo estimate, so a difference inside its noise is no improvement.
-            internal readonly struct Data
-            {
-                public readonly IReadOnlyList<float> Values;
-                public readonly IReadOnlyList<float> Tolerances;
-                public Data(IReadOnlyList<float> values, IReadOnlyList<float> tolerances)
-                {
-                    Values = values ?? System.Array.Empty<float>();
-                    Tolerances = tolerances;
-                }
-            }
-
-            private System.Func<Data> _build;
-            private Data? _data;
-
-            public LazyProfile(IReadOnlyList<float> value) => _data = new Data(value, null);
-            public LazyProfile(System.Func<Data> build) => _build = build;
-
-            private Data Get()
-            {
-                if (!_data.HasValue)
-                {
-                    _data = _build();
-                    _build = null;
-                }
-                return _data.Value;
-            }
-
-            public IReadOnlyList<float> Value => Get().Values;
-            public IReadOnlyList<float> Tolerances => Get().Tolerances;
-        }
-
-        private sealed class VState
+        // The virtual roster of one hex: every container's members after the operations so far.
+        internal sealed class VState
         {
             public readonly Dictionary<int, List<ReorgUnit>> Roster = new Dictionary<int, List<ReorgUnit>>();
             public readonly Dictionary<int, ReorgContainer> Meta = new Dictionary<int, ReorgContainer>();
             public readonly List<PlannedTransfer> Transfers = new List<PlannedTransfer>();
-            // Executor rejects a unit moved twice in one plan; planning owns the same invariant.
+            // A unit moves at most once per plan (the executor rejects a second move).
             public readonly HashSet<int> MovedUnitKeys = new HashSet<int>();
             public readonly List<ReorgThreatBenchmark> ThreatBenchmarks = new List<ReorgThreatBenchmark>();
-            public float HexDefenseBonus;
-            public float BuildingDefenseBonus;
-            public Game.Combat.BattleEnvironment Environment;
-            // The per-threat contact rows of THIS roster (ThreatRowsOf), filled on first read.
-            // Never copied by Clone: a clone is a different roster once it is changed.
-            public List<ThreatContactRow> ThreatRows;
 
             public VState Clone()
             {
-                var v = new VState { HexDefenseBonus = HexDefenseBonus,
-                    BuildingDefenseBonus = BuildingDefenseBonus, Environment = Environment };
+                var v = new VState();
                 v.ThreatBenchmarks.AddRange(ThreatBenchmarks);
                 foreach (var kv in Meta) v.Meta[kv.Key] = kv.Value;
                 foreach (var kv in Roster) v.Roster[kv.Key] = new List<ReorgUnit>(kv.Value);
@@ -169,19 +111,20 @@ namespace Game.Ai.V2
             }
         }
 
-        public static ReorganizationPlan Plan(LocalForceGroup group)
+        internal static VState StateOf(LocalForceGroup group)
         {
-            var plan = new ReorganizationPlan { Q = group?.Q ?? 0, R = group?.R ?? 0 };
-            // No pacer: the routine never yields, so one MoveNext loop runs it to the end.
-            System.Collections.IEnumerator steps = PlanRoutine(group, null, plan);
-            while (steps.MoveNext()) { }
-            return plan;
+            var state = new VState();
+            state.ThreatBenchmarks.AddRange(group.ThreatBenchmarks);
+            foreach (ReorgContainer c in group.Containers)
+            {
+                state.Meta[c.ArmyId] = c;
+                state.Roster[c.ArmyId] = new List<ReorgUnit>(c.Units);
+            }
+            return state;
         }
 
-        // The same plan, giving frames back between candidate evaluations (FramePacer): under a
-        // deployed enemy every candidate runs the whole-hex simulation, so one hex can take far
-        // more than a frame (Kryll (0,4) T31: ~140 candidates). Nothing mutates the world between
-        // AI frames, and the group is a snapshot, so a split plan equals an unsplit one.
+        // The day plan of one hex, giving frames back between candidates (FramePacer). The group is
+        // a snapshot, so a split plan equals an unsplit one.
         internal static System.Collections.IEnumerator PlanRoutine(LocalForceGroup group, FramePacer pacer,
             ReorganizationPlan plan)
         {
@@ -195,15 +138,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            var state = new VState { HexDefenseBonus = group.HexDefenseBonus,
-                BuildingDefenseBonus = group.BuildingDefenseBonus, Environment = group.Environment };
-            state.ThreatBenchmarks.AddRange(group.ThreatBenchmarks);
-            foreach (ReorgContainer c in group.Containers)
-            {
-                state.Meta[c.ArmyId] = c;
-                state.Roster[c.ArmyId] = new List<ReorgUnit>(c.Units);
-            }
-
+            VState state = StateOf(group);
             Outcome initial = Evaluate(state);
             plan.BeforeFormationStrengths.AddRange(initial.FormationStrengths);
 

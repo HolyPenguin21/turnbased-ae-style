@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Game.Cards;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
@@ -11,22 +10,16 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  HOUSEKEEPING NIGHT FOLD  (owner 2026-11-25, housekeeping stand E13 / F06)
+    //  HOUSEKEEPING NIGHT FOLD — the defence of a held hex between the owner's turns.
     // ===========================================================================================
-    //  "Housekeeping must always be ready for a strong attack: the armies and the garrison are
-    //  joined, and separated again for the tasks." The day pass (ArmyReorganizationPlanner) shapes
-    //  the TASK layout: the garrison keeps its floor, its surplus goes to the armies with a task.
-    //  At the end of the owner's turn this fold joins every fighting formation of a held hex (a
-    //  hex whose own building keeps emptied armies: Barracks) into the strongest one formation
-    //  the commands allow — one hard fight for whoever attacks before the owner's next turn.
-    //  Tasks are not consulted: nothing moves until then. What a task needs back is recorded
-    //  (army, roster index): every member of a task army the fold touched and every unit that
-    //  spent the night in one; at the start of the owner's next turn Restore puts the survivors
-    //  back exactly — task armies with their id, roster and commander, the garrison with the
-    //  bodies it lent them — before any planning reads the world. The hex's fist counts as a
-    //  task here (ReorgContainer.IsFist). A fold between the garrison and other free armies stays
-    //  as it is (owner 2026-11-26: restoring an army without a task is a move for nothing). The record is persisted
-    //  (AiPersistentState.NightFold): a human-turn save lies between the two.
+    //  The day pass (ArmyReorganizationPlanner) shapes the TASK layout. At the end of the owner's
+    //  turn this fold joins every fighting formation of a held hex (one whose own building keeps
+    //  emptied armies: Barracks) into the strongest formation the commands allow, so an attacker
+    //  meets one hard fight. Tasks are not consulted. Everything a task needs back is recorded
+    //  (army, roster index) and Restore puts the survivors back at the start of the owner's next
+    //  turn, before any planning reads the world: task armies (the hex's fist counts as one) get
+    //  their id, roster and commander back, the garrison the bodies it lent them. A fold between
+    //  the garrison and free armies stays. The record is persisted (AiPersistentState.NightFold).
     //  Zero AP: a body never enters an army that would charge its activation tonight.
     // ===========================================================================================
     public sealed class NightFoldPlan
@@ -34,15 +27,14 @@ namespace Game.Ai.V2
         public int Q;
         public int R;
         public int DestinationArmyId = -1;
-        // The hero that leads the destination (a field army), or -1 (its order stays; a garrison
+        // The hero that leads the destination (a field army), or -1: its order stays (a garrison
         // is ordered by CommandRating, ArmyData.NormalizeRoster).
         public int CommanderKey = -1;
-        // Every move: a body or a hero into the destination, or (ToArmyId != the destination) a
-        // Support hero / operator stepping out of it to a hero-only bench on the hex.
+        // A body or hero into the destination, or (ToArmyId != the destination) a Support hero /
+        // operator stepping out to a hero-only bench on the hex.
         public readonly List<(int UnitKey, int FromArmyId, int ToArmyId)> Moves = new List<(int, int, int)>();
         public readonly Dictionary<int, List<int>> ExpectedMembership = new Dictionary<int, List<int>>();
-        // The whole-hex hold against the worst known enemy (WorthIt.EstimateHexControl through
-        // ThreatContactRow, ETA-weighted); -1 without a known enemy.
+        // The whole-hex hold against the worst known enemy (ETA-weighted); -1 without a known enemy.
         public float HoldBefore = -1f;
         public float HoldAfter = -1f;
         public string Before = "";
@@ -52,52 +44,72 @@ namespace Game.Ai.V2
         public string HexKey => Q + "," + R;
     }
 
-    public static partial class ArmyReorganizationPlanner
+    internal static class HousekeepingNightFold
     {
-        private readonly struct NightScore
+        // ---- planning ----------------------------------------------------------------------------
+
+        private readonly struct ThreatContactRow
         {
+            public readonly int ThreatArmyId;
+            public readonly float HexReadiness;
+            // Below this HexReadiness difference two rosters hold the hex equally (Monte Carlo noise).
+            public readonly float HexTolerance;
+
+            public ThreatContactRow(int threatArmyId, float hexReadiness, float hexTolerance)
+            {
+                ThreatArmyId = threatArmyId;
+                HexReadiness = hexReadiness;
+                HexTolerance = hexTolerance;
+            }
+        }
+
+        // One night layout's score. Better first: fewer fighting formations (one fight), then the
+        // whole-hex hold against every known enemy (worst first, within Monte Carlo tolerance), then
+        // the strongest formation, then its commander's Fate and initiative, then fewer moves.
+        private sealed class NightScore
+        {
+            private readonly LocalForceGroup _group;
+            private readonly ArmyReorganizationPlanner.VState _state;
+            private List<ThreatContactRow> _rows;
             public readonly int Formations;
             public readonly float Strongest;
-            // The strongest formation's commander (its first hero): Fate, then initiative.
             public readonly int Fate;
             public readonly int Initiative;
             public readonly int Moves;
-            private readonly VState _state;
 
-            public NightScore(VState state, int moves)
+            public NightScore(LocalForceGroup group, ArmyReorganizationPlanner.VState state, int moves)
             {
+                _group = group;
                 _state = state;
                 Moves = moves;
-                Formations = 0;
-                Strongest = 0f;
                 Fate = Initiative = -1;
                 foreach (KeyValuePair<int, ReorgContainer> kv in state.Meta)
                 {
                     if (!IsNightFighting(kv.Value))
                         continue;
                     List<ReorgUnit> units = state.Roster[kv.Key];
-                    if (!units.Any(u => u != null && u.IsGroundCombatant))
+                    if (!units.Any(u => u.IsGroundCombatant))
                         continue;
                     Formations++;
                     float power = ReorgViability.EffectivePower(units);
                     if (power <= Strongest)
                         continue;
                     Strongest = power;
-                    ReorgUnit lead = units.FirstOrDefault(u => u != null && u.IsHero);
+                    // The strongest formation's commander (its first hero).
+                    ReorgUnit lead = units.FirstOrDefault(u => u.IsHero);
                     Fate = lead?.AsCommander.Fate ?? -1;
                     Initiative = lead?.AsCommander.Initiative ?? -1;
                 }
             }
 
-            public IReadOnlyList<ThreatContactRow> Rows =>
-                _state.ThreatBenchmarks.Count == 0 ? Array.Empty<ThreatContactRow>()
-                    : (IReadOnlyList<ThreatContactRow>)ThreatRowsOf(_state);
+            public IReadOnlyList<ThreatContactRow> Rows => _state.ThreatBenchmarks.Count == 0
+                ? Array.Empty<ThreatContactRow>()
+                : (IReadOnlyList<ThreatContactRow>)(_rows ?? (_rows = ThreatRowsOf(_group, _state)));
 
-            // Better first: fewer fighting formations (one fight — owner), then the whole-hex
-            // hold against every known enemy (worst first, Monte Carlo tolerance), then the
-            // strongest formation, then its commander's Fate and initiative (owner 2026-11-25:
-            // command capacity beyond the seated bodies decides nothing), then fewer moves.
-            public int CompareTo(in NightScore o)
+            public float WorstHold => _state.ThreatBenchmarks.Count == 0 ? -1f
+                : Rows.Select(r => r.HexReadiness).DefaultIfEmpty(-1f).Min();
+
+            public int CompareTo(NightScore o)
             {
                 int c = Formations.CompareTo(o.Formations);
                 if (c != 0) return c;
@@ -107,13 +119,14 @@ namespace Game.Ai.V2
                     List<ThreatContactRow> b = o.Rows.OrderBy(r => r.HexReadiness).ThenBy(r => r.ThreatArmyId).ToList();
                     for (int i = 0; i < Math.Min(a.Count, b.Count); i++)
                     {
-                        float eps = Math.Max(FloatEps, Math.Max(a[i].HexTolerance, b[i].HexTolerance));
+                        float eps = Math.Max(ArmyReorganizationPlanner.FloatEps,
+                            Math.Max(a[i].HexTolerance, b[i].HexTolerance));
                         if (a[i].HexReadiness > b[i].HexReadiness + eps) return -1;
                         if (a[i].HexReadiness < b[i].HexReadiness - eps) return 1;
                     }
                 }
-                if (Strongest > o.Strongest + FloatEps) return -1;
-                if (Strongest < o.Strongest - FloatEps) return 1;
+                if (Strongest > o.Strongest + ArmyReorganizationPlanner.FloatEps) return -1;
+                if (Strongest < o.Strongest - ArmyReorganizationPlanner.FloatEps) return 1;
                 c = o.Fate.CompareTo(Fate);
                 if (c != 0) return c;
                 c = o.Initiative.CompareTo(Initiative);
@@ -130,68 +143,51 @@ namespace Game.Ai.V2
                 || c.Role == ReorgPhysicalRole.ProtectedMissionArmy || c.Role == ReorgPhysicalRole.EmptyReusableArmy);
 
         private static bool NightMovableBody(ReorgUnit u) =>
-            u != null && !u.IsHero && u.IsGroundBattleBody && !u.IsAviation && !u.IsCommitted
-            && !u.IsDevelopmentOperator;
+            !u.IsHero && u.IsGroundBattleBody && !u.IsAviation && !u.IsCommitted && !u.IsDevelopmentOperator;
 
-        // A hero that may lead or ride in the night formation: never a Research/Production operator
-        // or a Support (garrison) hero — they stay where they serve.
+        // A hero that may lead or ride in the night formation: never an operator or a Support
+        // (garrison) hero — they stay where they serve.
         private static bool NightMovableHero(ReorgUnit u) =>
-            u != null && u.IsHero && !u.IsAviation && !u.IsCommitted && !u.IsDevelopmentOperator
-            && !u.IsGarrisonHero;
+            u.IsHero && !u.IsAviation && !u.IsCommitted && !u.IsDevelopmentOperator && !u.IsGarrisonHero;
 
-        internal static NightFoldPlan PlanNightFold(LocalForceGroup group)
-        {
-            var plan = new NightFoldPlan();
-            // No pacer: the routine never yields, so one MoveNext loop runs it to the end.
-            System.Collections.IEnumerator steps = PlanNightFoldRoutine(group, null, plan);
-            while (steps.MoveNext()) { }
-            return plan;
-        }
-
-        // The same plan, giving frames back between layouts (FramePacer): under a known enemy
-        // every layout runs the whole-hex simulation (the day planner's Kryll case, ~1.7 s a plan).
-        internal static System.Collections.IEnumerator PlanNightFoldRoutine(LocalForceGroup group,
+        // The night plan of one hex, giving frames back between layouts (FramePacer): under a known
+        // enemy every layout runs the whole-hex simulation.
+        internal static System.Collections.IEnumerator PlanRoutine(LocalForceGroup group,
             FramePacer pacer, NightFoldPlan plan)
         {
             plan.Q = group?.Q ?? 0;
             plan.R = group?.R ?? 0;
             if (group?.Containers == null || group.Garrison == null)
                 yield break;
-            var state = new VState { HexDefenseBonus = group.HexDefenseBonus,
-                BuildingDefenseBonus = group.BuildingDefenseBonus, Environment = group.Environment };
-            state.ThreatBenchmarks.AddRange(group.ThreatBenchmarks);
-            foreach (ReorgContainer c in group.Containers)
-            {
-                state.Meta[c.ArmyId] = c;
-                state.Roster[c.ArmyId] = new List<ReorgUnit>(c.Units);
-            }
+            ArmyReorganizationPlanner.VState state = ArmyReorganizationPlanner.StateOf(group);
             List<int> parts = group.Containers.Where(IsNightFighting).Select(c => c.ArmyId).OrderBy(x => x).ToList();
             foreach (KeyValuePair<int, List<ReorgUnit>> kv in state.Roster)
                 plan.ExpectedMembership[kv.Key] = kv.Value.Select(u => u.Key).ToList();
-            plan.HoldBefore = WorstHold(state);
+            var baseline = new NightScore(group, state, 0);
+            plan.HoldBefore = baseline.WorstHold;
             plan.HoldAfter = plan.HoldBefore;
             plan.Before = FormatNight(state, parts);
-            if (parts.Count(id => state.Roster[id].Any(u => u != null && u.IsGroundCombatant)) < 2)
+            if (parts.Count(id => state.Roster[id].Any(u => u.IsGroundCombatant)) < 2)
                 yield break;
 
-            var baseline = new NightScore(state, 0);
             NightScore bestScore = baseline;
-            VState best = null;
+            ArmyReorganizationPlanner.VState best = null;
             int bestDst = -1, bestLead = -1;
             List<(int, int, int)> bestMoves = null;
             foreach (int dstId in parts)
             {
+                // Every candidate commander of the destination (null: its own order stays).
                 var leads = new List<ReorgUnit> { null };
                 foreach (int id in parts)
                     leads.AddRange(state.Roster[id].Where(NightMovableHero)
                         .Where(h => id != dstId || !state.Meta[dstId].IsGarrison));
                 foreach (ReorgUnit lead in leads)
                 {
-                    VState layout = BuildNightLayout(state, parts, dstId, lead, out List<(int, int, int)> moves,
-                        out bool reordered);
+                    ArmyReorganizationPlanner.VState layout = BuildLayout(state, parts, dstId, lead,
+                        out List<(int, int, int)> moves, out bool reordered);
                     if (layout == null || moves.Count == 0 && !reordered)
                         continue;
-                    var score = new NightScore(layout, moves.Count);
+                    var score = new NightScore(group, layout, moves.Count);
                     if (score.CompareTo(bestScore) < 0)
                     {
                         best = layout;
@@ -212,28 +208,24 @@ namespace Game.Ai.V2
             plan.Moves.AddRange(bestMoves);
             foreach (KeyValuePair<int, List<ReorgUnit>> kv in best.Roster)
                 plan.ExpectedMembership[kv.Key] = kv.Value.Select(u => u.Key).ToList();
-            plan.HoldAfter = WorstHold(best);
+            plan.HoldAfter = bestScore.WorstHold;
             plan.After = FormatNight(best, parts);
         }
 
-        private static float WorstHold(VState state) =>
-            state.ThreatBenchmarks.Count == 0 ? -1f
-                : ThreatRowsOf(state).Select(r => r.HexReadiness).DefaultIfEmpty(-1f).Min();
-
-        private static string FormatNight(VState state, List<int> parts) =>
+        private static string FormatNight(ArmyReorganizationPlanner.VState state, List<int> parts) =>
             string.Join(" | ", parts.Select(id => $"#{id}:{state.Roster[id].Count}"
                 + $"/P{ReorgViability.EffectivePower(state.Roster[id]):0.#}"));
 
         // `dstId` led by `lead` (null: as it is) takes the strongest movable bodies of the other
         // night containers while its command seats them, then their army support carriers
-        // (Heal/Drill/Transport fight under any commander). Null when a source would be left
-        // over its own capacity (its commander left) or a step would cost activation AP.
-        private static VState BuildNightLayout(VState state, List<int> parts, int dstId, ReorgUnit lead,
-            out List<(int, int, int)> moves, out bool reordered)
+        // (Heal/Drill/Transport fight under any commander). Null when a source would be left over
+        // its own capacity (its commander left) or a step would cost activation AP.
+        private static ArmyReorganizationPlanner.VState BuildLayout(ArmyReorganizationPlanner.VState state,
+            List<int> parts, int dstId, ReorgUnit lead, out List<(int, int, int)> moves, out bool reordered)
         {
             moves = new List<(int, int, int)>();
             reordered = false;
-            VState v = state.Clone();
+            ArmyReorganizationPlanner.VState v = state.Clone();
             ReorgContainer meta = v.Meta[dstId];
             List<ReorgUnit> dst = v.Roster[dstId];
             int OwnerOf(ReorgUnit u) => parts.First(id => v.Roster[id].Contains(u));
@@ -260,9 +252,8 @@ namespace Game.Ai.V2
             }
 
             List<(int, int, int)> taken = moves;
-            // 2026-11-26 (owner) — a garrison is never left without a body while it can keep one
-            // (a weak scout must not walk into an empty Base): its last fighter stays, the
-            // weakest one, since the strongest leave first.
+            // A garrison keeps its last fighter (the weakest one: the strongest leave first) — a
+            // weak scout must not walk into an empty Base.
             bool Takeable(ReorgUnit u, int from) =>
                 NightMovableBody(u) && !meta.ChargesActivationFor(u)
                 && !(v.Meta[from].IsGarrison && v.Roster[from].Count(x => x.IsGroundCombatant) <= 1);
@@ -285,9 +276,9 @@ namespace Game.Ai.V2
             }
             FillBodies();
 
-            // 2026-11-18 (owner) — a Support hero or an operator that does not command the formation
-            // steps out to a hero-only bench on the hex (it keeps serving that hex) while bodies wait
-            // for its slot; the bench is a night container left without fighters.
+            // A Support hero or an operator that does not command the formation steps out to a
+            // hero-only bench on the hex (it keeps serving the hex) while bodies wait for its slot;
+            // the bench is a night container left without fighters.
             while (parts.Any(id => id != dstId && v.Roster[id].Any(u => Takeable(u, id)))
                    && ReorgViability.Capacity(dst, meta.IsGarrison) <= dst.Count)
             {
@@ -347,10 +338,64 @@ namespace Game.Ai.V2
             }
             return v;
         }
-    }
 
-    internal static class HousekeepingNightFold
-    {
+        // Per known enemy, the hex's hold on this layout: every ground container it can target
+        // fights it in hardness order (BattleInitiator.CompareDefenderHardness), ETA-weighted.
+        private static List<ThreatContactRow> ThreatRowsOf(LocalForceGroup group, ArmyReorganizationPlanner.VState state)
+        {
+            var rows = new List<ThreatContactRow>();
+            foreach (ReorgThreatBenchmark threat in state.ThreatBenchmarks)
+            {
+                var ranked = new List<(int containerId, WorthIt.BattleEstimate selection,
+                    List<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander)>();
+
+                foreach (KeyValuePair<int, ReorgContainer> kv in state.Meta)
+                {
+                    ReorgContainer meta = kv.Value;
+                    if (meta.Role == ReorgPhysicalRole.Aviation
+                        || meta.Role == ReorgPhysicalRole.SpecialExcludedContainer)
+                        continue;
+                    if (!state.Roster.TryGetValue(kv.Key, out List<ReorgUnit> units))
+                        continue;
+
+                    var defenders = units
+                        .Where(u => threat.TargetableUnitKeys.Contains(u.Key))
+                        .Select(u => u.CombatProfile)
+                        .ToList();
+                    if (defenders.Count == 0)
+                        continue;
+                    ReorgUnit commanderUnit = units.FirstOrDefault(u => u.IsHero);
+                    WorthIt.SideCommander commander = commanderUnit?.AsCommander ?? default;
+
+                    WorthIt.BattleEstimate selection = WorthIt.Estimate(threat.Members, defenders, 0f,
+                        threat.Commander,
+                        commanderUnit != null && threat.TargetableUnitKeys.Contains(commanderUnit.Key)
+                            ? commander : default, environment: group.Environment);
+                    ranked.Add((kv.Key, selection, defenders, commander));
+                }
+
+                if (ranked.Count == 0)
+                    continue;
+
+                ranked.Sort((a, b) => BattleInitiator.CompareDefenderHardness(
+                    a.selection, a.containerId, b.selection, b.containerId));
+
+                var armies = new List<WorthIt.DefendingArmy>(ranked.Count);
+                foreach (var r in ranked)
+                    armies.Add(new WorthIt.DefendingArmy(r.defenders, r.commander, armyId: r.containerId,
+                        buildingDefenseBonus: group.BuildingDefenseBonus));
+                float attackerWins = WorthIt.EstimateHexControl(threat.Members, threat.Commander, armies,
+                    group.HexDefenseBonus, environment: group.Environment,
+                    monteCarloTrials: AiConfigV2.housekeepingHexHoldTrials).WinChance;
+                float eta = 1f + Math.Max(0, threat.EtaToGroup);
+                rows.Add(new ThreatContactRow(threat.ArmyId, 1f - attackerWins / eta,
+                    AiConfigV2.housekeepingHexHoldMargin / eta));
+            }
+            return rows;
+        }
+
+        // ---- the fold and the morning -----------------------------------------------------------
+
         // Per player: unit runtime id -> (the army it stood in by day, its roster index there).
         private static readonly Dictionary<PlayerSetupData, Dictionary<int, (int ArmyId, int Index)>> Records =
             new Dictionary<PlayerSetupData, Dictionary<int, (int ArmyId, int Index)>>();
@@ -360,34 +405,16 @@ namespace Game.Ai.V2
 
         internal static void ClearAll() => Records.Clear();
 
-        // A held hex keeps an emptied army alive until the owner's next turn (ArmyActions.
-        // DeleteArmyIfEmptied: the owner's building with Barracks): only there may an army be
-        // emptied for the night and refilled in the morning.
+        // Only where the owner's building has Barracks does an emptied army survive until the
+        // owner's next turn (ArmyActions.DeleteArmyIfEmptied), so only there may the night empty one.
         private static bool KeepsEmptiedArmies(PlayerSetupData player, HexCoord hex)
         {
             BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner == player && building.HasAbility(UnitAbilities.Barracks);
+            return building != null && building.Owner == player && building.HasAbility(Game.Cards.UnitAbilities.Barracks);
         }
 
-        // End of the owner's turn, after the day pass. Returns the number of units moved.
-        internal static int Fold(PlayerSetupData player, AiTurnContext ctx, ActorCommitments commitments,
-            WorldSnapshot snapshot)
-        {
-            var moved = new int[1];
-            // FoldRoutine yields the nested plan routine: drain the whole iterator tree.
-            var stack = new Stack<System.Collections.IEnumerator>();
-            stack.Push(FoldRoutine(player, ctx, commitments, snapshot, null, moved));
-            while (stack.Count > 0)
-            {
-                System.Collections.IEnumerator top = stack.Peek();
-                if (!top.MoveNext()) { stack.Pop(); continue; }
-                if (top.Current is System.Collections.IEnumerator nested) stack.Push(nested);
-            }
-            return moved[0];
-        }
-
-        // The paced form the AI turn runs (`moved[0]` = units moved). Nothing mutates the world
-        // between AI frames, and each hex is planned before it is executed.
+        // End of the owner's turn, after the day pass (`moved[0]` = units moved). Nothing mutates the
+        // world between frames, and each hex is planned before it is executed.
         internal static System.Collections.IEnumerator FoldRoutine(PlayerSetupData player, AiTurnContext ctx,
             ActorCommitments commitments, WorldSnapshot snapshot, FramePacer pacer, int[] moved)
         {
@@ -406,7 +433,7 @@ namespace Game.Ai.V2
                         && (a.IsMovementBusy || a.Controller != null && a.Controller.IsMoving)))
                     continue;
                 var plan = new NightFoldPlan();
-                yield return ArmyReorganizationPlanner.PlanNightFoldRoutine(group, pacer, plan);
+                yield return PlanRoutine(group, pacer, plan);
                 if (plan.IsEmpty)
                     continue;
                 moved[0] += Execute(plan, analysis, player, ctx, new HashSet<int>(group.Containers
@@ -414,8 +441,7 @@ namespace Game.Ai.V2
             }
         }
 
-        // `taskArmyIds` — the armies of the hex a task claims (ReorgPhysicalRole.ProtectedMissionArmy)
-        // and the hex's fist.
+        // `taskArmyIds` — the hex's armies a task claims, and its fist.
         private static int Execute(NightFoldPlan plan, ArmyReorgAnalysis analysis, PlayerSetupData player,
             AiTurnContext ctx, ISet<int> taskArmyIds)
         {
@@ -444,8 +470,8 @@ namespace Game.Ai.V2
                          .Distinct().Where(IsTask))
                 foreach (UnitData u in army.Members)
                     Remember(army, u);
-            // A unit that spent the night in a task army, and a Support hero / operator benched
-            // for the night only (it goes back to the formation it serves by day).
+            // A unit that spent the night in a task army, and a Support hero / operator benched for
+            // the night only (it goes back to the formation it serves by day).
             foreach ((ArmyData from, ArmyData to, List<UnitData> units) in batches.Where(b => IsTask(b.to) || b.to != dst))
                 foreach (UnitData u in units)
                     Remember(from, u);
@@ -463,11 +489,8 @@ namespace Game.Ai.V2
             foreach ((ArmyData from, ArmyData to, List<UnitData> units) in batches)
             {
                 UnitData promote = to == dst && !dst.IsGarrison && lead != null && units.Contains(lead) ? lead : null;
-                if (ArmyActions.TransferMembersAtomic(units, from, to, ctx.HexSelection, out string fail, promote))
-                {
-                    WorldDeltaLifecycle.CommitMutation();
+                if (Transfer(units, from, to, ctx, promote, out string fail))
                     moved += units.Count;
-                }
                 else
                     AiDebugLog.Write($"[AI][V2][NIGHT] ({plan.HexKey}) #{from.Id}->#{to.Id} "
                         + $"[{string.Join(",", units.Select(u => u.Name))}] failed: {fail}");
@@ -480,8 +503,8 @@ namespace Game.Ai.V2
             return moved;
         }
 
-        // Start of the owner's turn, before anything reads the world: every recorded survivor
-        // goes back to the army and roster place it held by day. Returns the units moved back.
+        // Start of the owner's turn, before anything reads the world: every recorded survivor goes
+        // back to the army and roster place it held by day. Returns the units moved back.
         internal static int Restore(PlayerSetupData player, AiTurnContext ctx, string why = "turn start")
         {
             if (player == null || !Records.TryGetValue(player, out var record))
@@ -499,8 +522,8 @@ namespace Game.Ai.V2
                 .Where(h => h.army != null && h.order.Count > 0)
                 .ToList();
 
-            // Batches (one source -> one home), retried until no progress: a merged formation
-            // fits its remaining members only once the other guests have left.
+            // Batches (one source -> one home), retried until no progress: a merged formation fits
+            // its remaining members only once the other guests have left.
             var pending = new List<(ArmyData from, ArmyData home, List<UnitData> units, UnitData lead)>();
             foreach ((ArmyData home, List<UnitData> order) in homes)
             {
@@ -519,13 +542,11 @@ namespace Game.Ai.V2
                 progress = false;
                 foreach (var b in pending.OrderByDescending(b => b.lead != null).ToList())
                 {
-                    if (!ArmyActions.TransferMembersAtomic(b.units, b.from, b.home, ctx?.HexSelection,
-                            out string fail, b.lead))
+                    if (!Transfer(b.units, b.from, b.home, ctx, b.lead, out string fail))
                     {
                         lastFail = $"#{b.from.Id}->#{b.home.Id}: {fail}";
                         continue;
                     }
-                    WorldDeltaLifecycle.CommitMutation();
                     moved += b.units.Count;
                     pending.Remove(b);
                     progress = true;
@@ -556,7 +577,18 @@ namespace Game.Ai.V2
             return moved;
         }
 
-        // ---- persistence (AiPersistentState.NightFold) --------------------------------------
+        // One batch of the fold or the morning: an atomic same-hex transfer, committed to the world delta.
+        private static bool Transfer(List<UnitData> units, ArmyData from, ArmyData to, AiTurnContext ctx,
+            UnitData promote, out string fail)
+        {
+            if (!ArmyActions.TransferMembersAtomic(units, from, to, ctx?.HexSelection, out fail, promote))
+                return false;
+            WorldDeltaLifecycle.CommitMutation();
+            return true;
+        }
+
+        // ---- persistence (AiPersistentState.NightFold) ---------------------------------------------
+
         internal static IReadOnlyDictionary<string, IReadOnlyDictionary<int, (int ArmyId, int Index)>> CapturePersistentState(
             Func<PlayerSetupData, string> playerId) =>
             AiPersistenceCollections.Capture(Records, playerId,

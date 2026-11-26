@@ -271,7 +271,7 @@ namespace Game.EditorTests
                 CanReceive = true, CanDonate = false, CanChangeComposition = true, CanReorderCommander = true,
                 Units = new System.Collections.Generic.List<Game.Ai.V2.ReorgUnit> { ReorgLead(), ReorgBody(4, 4), ReorgBody(4, 4) },
             };
-            var plan = Game.Ai.V2.ArmyReorganizationPlanner.Plan(new Game.Ai.V2.LocalForceGroup
+            var plan = HousekeepingStand.Plan(new Game.Ai.V2.LocalForceGroup
             {
                 Containers = new System.Collections.Generic.List<Game.Ai.V2.ReorgContainer> { garrison, field, other },
             });

@@ -808,7 +808,7 @@ namespace Game.EditorTests
         };
 
         private static ReorganizationPlan RPlan(params ReorgContainer[] containers) =>
-            ArmyReorganizationPlanner.Plan(new LocalForceGroup { Containers = containers.ToList() });
+            HousekeepingStand.Plan(new LocalForceGroup { Containers = containers.ToList() });
 
         private static ReorgUnit RFighter(float attack, float defence, float hp) => new ReorgUnit
         {
@@ -845,12 +845,12 @@ namespace Game.EditorTests
                     TargetableUnitKeys = new HashSet<int>(garrisonBodies.Concat(fieldBodies).Select(u => u.Key)),
                 });
 
-            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
+            ReorganizationPlan plan = HousekeepingStand.Plan(group);
             int dayBodies = plan.ExpectedMembership[1].Count(k => garrisonBodies.Concat(fieldBodies).Any(b => b.Key == k));
             Assert.That(dayBodies, Is.EqualTo(3), "by day nothing moves: " + plan.DebugSummary());
             Assert.That(plan.ExpectedMembership[1], Has.Member(rusty.Key).And.Member(nova.Key), plan.DebugSummary());
 
-            NightFoldPlan night = ArmyReorganizationPlanner.PlanNightFold(group);
+            NightFoldPlan night = HousekeepingStand.PlanNight(group);
             List<int> garrisonNight = night.ExpectedMembership[1];
             Assert.That(garrisonNight.Count(k => garrisonBodies.Concat(fieldBodies).Any(b => b.Key == k)), Is.EqualTo(7),
                 $"one defending formation at night: {night.Before} -> {night.After}");
@@ -890,7 +890,7 @@ namespace Game.EditorTests
                     TargetableUnitKeys = new HashSet<int>(bodies.Select(u => u.Key)),
                 });
                 // The night fold reads the whole-hex hold (the defence of the hex is its business).
-                return ArmyReorganizationPlanner.PlanNightFold(group).HoldBefore;
+                return HousekeepingStand.PlanNight(group).HoldBefore;
             }
 
             float plain = Hold(carrier: false, building: 2f);

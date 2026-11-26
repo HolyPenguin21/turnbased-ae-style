@@ -592,7 +592,8 @@ namespace Game.EditorTests
             };
         }
 
-        private static void Drain(IEnumerator routine)
+        // Runs a paced AI routine to its end, nested routines included.
+        internal static void Drain(IEnumerator routine)
         {
             var stack = new Stack<IEnumerator>();
             stack.Push(routine);
@@ -602,6 +603,21 @@ namespace Game.EditorTests
                 if (!top.MoveNext()) { stack.Pop(); continue; }
                 if (top.Current is IEnumerator nested) stack.Push(nested);
             }
+        }
+
+        // The day plan / night plan of one hex, run to the end (tests of the pure planners).
+        internal static ReorganizationPlan Plan(LocalForceGroup group)
+        {
+            var plan = new ReorganizationPlan();
+            Drain(ArmyReorganizationPlanner.PlanRoutine(group, null, plan));
+            return plan;
+        }
+
+        internal static NightFoldPlan PlanNight(LocalForceGroup group)
+        {
+            var plan = new NightFoldPlan();
+            Drain(HousekeepingNightFold.PlanRoutine(group, null, plan));
+            return plan;
         }
 
         // One owner's end-of-turn Housekeeping on the live world, with the standing checks.
@@ -616,7 +632,7 @@ namespace Game.EditorTests
             turn.GarrisonFloor = AiArmyRoles.GarrisonDefenceFloor(Me, Home, isCitadel);
 
             ArmyReorgAnalysis preview = ArmyReorgAnalyzer.Analyze(Me, commitments, snapshot, Ctx);
-            turn.Plans = preview.Groups.Select(ArmyReorganizationPlanner.Plan).ToList();
+            turn.Plans = preview.Groups.Select(Plan).ToList();
             turn.Inputs = preview.Groups.SelectMany(g => g.Containers).Select(c =>
                 $"#{c.ArmyId} {c.Role}{(c.MissionLabel != null ? "/" + c.MissionLabel : "")} recv={(c.CanReceive ? 1 : 0)} "
                 + $"give={(c.CanDonate ? 1 : 0)} mp>={c.MovementFloor}"
@@ -645,7 +661,7 @@ namespace Game.EditorTests
             WorldSnapshot again = Snapshot();
             ActorCommitments againCommitments = ActorCommitments.FromIntents(again.AllIntents, again, null);
             ArmyReorgAnalysis nextAnalysis = ArmyReorgAnalyzer.Analyze(Me, againCommitments, again, Ctx);
-            foreach (ReorganizationPlan p in nextAnalysis.Groups.Select(ArmyReorganizationPlanner.Plan)
+            foreach (ReorganizationPlan p in nextAnalysis.Groups.Select(Plan)
                          .Where(p => !p.IsEmpty))
             {
                 var back = new List<string>();
@@ -672,7 +688,9 @@ namespace Game.EditorTests
             turn.NightFist = new HashSet<int>(ArmyReorgAnalyzer.Analyze(Me, nightCommitments, night, Ctx,
                     includeEveryGroup: true).Groups.SelectMany(g => g.Containers).Where(c => c.IsFist)
                 .Select(c => c.ArmyId));
-            turn.NightMoved = HousekeepingNightFold.Fold(Me, Ctx, nightCommitments, night);
+            var nightMoved = new int[1];
+            Drain(HousekeepingNightFold.FoldRoutine(Me, Ctx, nightCommitments, night, null, nightMoved));
+            turn.NightMoved = nightMoved[0];
             HousekeepingTime.Stop();
             turn.NightApSpent = apNight - _root.ActionPoints;
             turn.Night = Capture(nightCommitments);

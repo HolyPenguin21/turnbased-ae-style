@@ -97,7 +97,7 @@ namespace Game.EditorTests
         };
 
         private static ReorganizationPlan Plan(params ReorgContainer[] containers) =>
-            ArmyReorganizationPlanner.Plan(new LocalForceGroup
+            HousekeepingStand.Plan(new LocalForceGroup
             {
                 Containers = containers.ToList(),
             });

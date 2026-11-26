@@ -7,25 +7,6 @@ namespace Game.Ai.V2
 {
     public static partial class ArmyReorganizationPlanner
     {
-        // The whole hex against one known attacker (HousekeepingNightFold's layouts).
-        private readonly struct ThreatContactRow
-        {
-            public readonly int ThreatArmyId;
-            // The whole hex against this attacker: every contactable formation in the rules' fight
-            // order, the attacker's wounds carried from one battle to the next.
-            public readonly float HexReadiness;
-            // Below this HexReadiness difference two rosters hold the hex equally (Monte Carlo
-            // noise, AiConfigV2.housekeepingHexHoldMargin in this threat's ETA weighting).
-            public readonly float HexTolerance;
-
-            public ThreatContactRow(int threatArmyId, float hexReadiness, float hexTolerance)
-            {
-                ThreatArmyId = threatArmyId;
-                HexReadiness = hexReadiness;
-                HexTolerance = hexTolerance;
-            }
-        }
-
         private static Outcome Evaluate(VState s)
         {
             int garrisonDeficit = 0;
@@ -169,88 +150,8 @@ namespace Game.Ai.V2
             // hex in one fight until the owner's next turn), so the threat-first whole-hex profile,
             // the passive garrison packing and the lost-hex fold no longer move bodies by day.
             return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
-                singles, nonViable, commandWaste, formationDefect, new LazyProfile(formationStrengths),
+                singles, nonViable, commandWaste, formationDefect, formationStrengths,
                 -composition, s.Transfers.Count);
-        }
-
-        // The per-threat contact rows of one roster (whole-hex hold, first and second defender),
-        // built once per VState: the night fold (HousekeepingNightFold) compares its layouts on
-        // them. Candidate states are fresh clones never mutated after enumeration.
-        private static List<ThreatContactRow> ThreatRowsOf(VState state)
-        {
-            if (state.ThreatRows != null)
-                return state.ThreatRows;
-            var rows = new List<ThreatContactRow>();
-
-            foreach (ReorgThreatBenchmark threat in state.ThreatBenchmarks)
-            {
-                var ranked = new List<(int containerId, WorthIt.BattleEstimate selection,
-                    List<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander)>();
-
-                foreach (KeyValuePair<int, ReorgContainer> kv in state.Meta)
-                {
-                    ReorgContainer meta = kv.Value;
-                    if (meta.Role == ReorgPhysicalRole.Aviation
-                        || meta.Role == ReorgPhysicalRole.SpecialExcludedContainer)
-                        continue;
-                    if (!state.Roster.TryGetValue(kv.Key, out List<ReorgUnit> units))
-                        continue;
-
-                    var defenders = units
-                        .Where(u => u != null && threat.TargetableUnitKeys.Contains(u.Key))
-                        .Select(u => u.CombatProfile)
-                        .ToList();
-                    if (defenders.Count == 0)
-                        continue;
-                    // The container's commander: its first hero (ArmyData.Commander's rule).
-                    ReorgUnit commanderUnit = units.FirstOrDefault(u => u != null && u.IsHero);
-                    WorthIt.SideCommander commander = commanderUnit?.AsCommander ?? default;
-
-                    // BattleInitiator ranks contact candidates with a zero bonus and only the
-                    // commander it can see. Keep selection identical. The actual readiness read
-                    // below applies the group's terrain/base defence and the real commander.
-                    WorthIt.BattleEstimate selection = WorthIt.Estimate(threat.Members, defenders, 0f,
-                        threat.Commander,
-                        commanderUnit != null && threat.TargetableUnitKeys.Contains(commanderUnit.Key)
-                            ? commander : default, environment: state.Environment);
-                    ranked.Add((kv.Key, selection, defenders, commander));
-                }
-
-                // This attacker cannot contact any non-hero defender on the hex (for example every
-                // unit is hidden from it), so it exerts no Housekeeping packaging pressure here.
-                if (ranked.Count == 0)
-                    continue;
-
-                ranked.Sort((a, b) => BattleInitiator.CompareDefenderHardness(
-                    a.selection, a.containerId, b.selection, b.containerId));
-
-                rows.Add(new ThreatContactRow(threat.ArmyId, HexReadiness(state, threat, ranked),
-                    AiConfigV2.housekeepingHexHoldMargin / (1f + Math.Max(0, threat.EtaToGroup))));
-            }
-            state.ThreatRows = rows;
-            return rows;
-        }
-
-        // 2026-11-18 (owner, match Kryll vs Tessek T31) — the hex is held or lost as a whole: the
-        // attacker fights every formation in turn and carries its wounds on (BattleInitiator,
-        // WorthIt.EstimateHexControl — the one hex-hold model ActiveDefence's HoldChanceAtAsset
-        // reads too). The first/second contact rows alone never saw the third and later
-        // formations, so folding two heroless 2-body armies into a 3/7 hero army changed nothing
-        // there and was refused (Kryll (0,4): hold 0.32 as it stood, 0.92 folded; lost all six).
-        private static float HexReadiness(VState state, ReorgThreatBenchmark threat,
-            List<(int containerId, WorthIt.BattleEstimate selection, List<WorthIt.DefenderProfile> defenders,
-                WorthIt.SideCommander commander)> ranked)
-        {
-            var armies = new List<WorthIt.DefendingArmy>(ranked.Count);
-            foreach (var r in ranked)
-                // The building part rides with every army: the estimator removes it for an
-                // attacker carrying Disruption (DefendingArmy.DefenseBonus), as in the real battle.
-                armies.Add(new WorthIt.DefendingArmy(r.defenders, r.commander, armyId: r.containerId,
-                    buildingDefenseBonus: state.BuildingDefenseBonus));
-            float attackerWins = WorthIt.EstimateHexControl(threat.Members, threat.Commander, armies,
-                state.HexDefenseBonus, environment: state.Environment,
-                monteCarloTrials: AiConfigV2.housekeepingHexHoldTrials).WinChance;
-            return 1f - attackerWins / (1f + Math.Max(0, threat.EtaToGroup));
         }
 
         // 1 when a container with two or more heroes is not led by the one commander evaluation's
