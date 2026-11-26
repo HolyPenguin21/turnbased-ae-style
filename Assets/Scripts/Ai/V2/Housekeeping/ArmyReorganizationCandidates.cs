@@ -404,22 +404,27 @@ namespace Game.Ai.V2
                 foreach (int hostId in armyIds)
                 {
                     ReorgContainer host = state.Meta[hostId];
-                    if (hostId == gId || host.IsGarrison || !host.NeedsUnits || !host.CanReceive)
+                    if (hostId == gId || host.IsGarrison || !(host.NeedsUnits || host.IsFist) || !host.CanReceive)
                         continue;
+                    string why = host.IsFist ? "a garrison body above its own share joins the hex's fist"
+                        : "a garrison body above its floor joins an army with a task";
+                    // The fist takes only what keeps the garrison's own share (the muster Intake's
+                    // rule): it stands on the hex now, but it is the army that leaves next.
+                    bool KeepsShare(VState v) => !host.IsFist || ReorgViability.EffectivePower(
+                        v.Roster[gId].Where(x => x != null && x.IsGroundBattleBody).ToList()) + 0.001f
+                        >= g.GarrisonOwnShareFloor;
                     foreach (ReorgUnit u in spare)
                     {
-                        VState one = TryMoveOne(state, gId, hostId, u,
-                            "a garrison body above its floor joins an army with a task");
-                        if (one != null)
+                        VState one = TryMoveOne(state, gId, hostId, u, why);
+                        if (one != null && KeepsShare(one))
                             yield return one;
                     }
                     VState all = state;
                     int moved = 0;
                     foreach (ReorgUnit u in spare)
                     {
-                        VState next = TryMoveOne(all, gId, hostId, u,
-                            "a garrison body above its floor joins an army with a task");
-                        if (next == null)
+                        VState next = TryMoveOne(all, gId, hostId, u, why);
+                        if (next == null || !KeepsShare(next))
                             continue;
                         all = next;
                         moved++;
@@ -641,8 +646,9 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> context)
         {
             bool isGarrison = meta.IsGarrison;
+            // The fist also seats what the garrison can still give it (FistGarrisonSpare).
             int neededBodySlots = !isGarrison && !meta.IsMissionReceiver && meta.CanDonate
-                ? units.Count(u => u != null && u.IsGroundCombatant)
+                ? units.Count(u => u != null && u.IsGroundCombatant) + (meta.IsFist ? meta.FistGarrisonSpare : 0)
                 : -1;
             List<ReorgUnit> heroes = units.Where(u => u != null && u.IsHero).ToList();
             if (heroes.Count == 0)

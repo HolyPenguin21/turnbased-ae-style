@@ -41,10 +41,11 @@ namespace Game.EditorTests
     //    * the next pass on the result plans nothing (no ping-pong).
     //  Then the night and the morning of the same turn (owner 2026-11-25): the night fold
     //  (HousekeepingNightFold.Fold) joins the hex into the fewest fighting formations — the hold
-    //  never drops against the day, no AP, no unit lost, operators / Support heroes stay — and the
-    //  owner's next turn starts with Restore: every army stands exactly as it did by day (members
-    //  and commander), so the tasks leave with what the day gave them. Case expectations read
-    //  the live world, i.e. the morning; ExpectNight* read the night.
+    //  never drops against the day, no AP, no unit lost, the garrison keeps a body — and the
+    //  owner's next turn starts with Restore: every army with a task stands exactly as it did by
+    //  day (members and commander), so the tasks leave with what the day gave them; a fold of the
+    //  garrison and free armies stays (owner 2026-11-26). Case expectations read the day
+    //  (StandTurn.After); ExpectNight* read the night.
     //  Units are materialized from the decks' cards (UnitData.FromDefinition); roles (combat /
     //  support hero, strong / weak body, ...) are picked with the game's own classifiers, so one
     //  case runs on every deck. A deck without the role a case needs ignores that case.
@@ -549,7 +550,19 @@ namespace Game.EditorTests
         public IEnumerable<ArmyData> OwnArmies =>
             ArmyRegistry.AllForOwner(Me).Where(a => a != null).OrderBy(a => a.Id);
 
-        public ArmyData ArmyOf(UnitData u) => OwnArmies.FirstOrDefault(a => a.Members.Contains(u));
+        // The army `u` stood in by day (the last turn's day result), else the live one.
+        public ArmyData ArmyOf(UnitData u)
+        {
+            StandArmy day = DayArmyOf(u);
+            return day != null ? OwnArmies.FirstOrDefault(a => a.Id == day.Id)
+                : OwnArmies.FirstOrDefault(a => a.Members.Contains(u));
+        }
+
+        private StandArmy DayArmyOf(UnitData u) =>
+            Last?.After.Values.FirstOrDefault(a => a.Members.Contains(u));
+
+        private List<UnitData> DayMembers(ArmyData army) =>
+            Last != null && Last.After.TryGetValue(army.Id, out StandArmy a) ? a.Members : army.Members;
 
         private WorldSnapshot Snapshot()
         {
@@ -656,6 +669,9 @@ namespace Game.EditorTests
             ActorCommitments nightCommitments = ActorCommitments.FromIntents(night.AllIntents, night, null);
             int apNight = _root.ActionPoints;
             HousekeepingTime.Start();
+            turn.NightFist = new HashSet<int>(ArmyReorgAnalyzer.Analyze(Me, nightCommitments, night, Ctx,
+                    includeEveryGroup: true).Groups.SelectMany(g => g.Containers).Where(c => c.IsFist)
+                .Select(c => c.ArmyId));
             turn.NightMoved = HousekeepingNightFold.Fold(Me, Ctx, nightCommitments, night);
             HousekeepingTime.Stop();
             turn.NightApSpent = apNight - _root.ActionPoints;
@@ -724,7 +740,7 @@ namespace Game.EditorTests
 
         private void CheckMorning(StandTurn t)
         {
-            foreach (StandArmy d in t.After.Values)
+            foreach (StandArmy d in t.After.Values.Where(a => a.Contract != null || t.NightFist.Contains(a.Id)))
             {
                 StandArmy m = t.Morning.TryGetValue(d.Id, out StandArmy x) ? x : null;
                 List<UnitData> now = m?.Members ?? new List<UnitData>();
@@ -898,36 +914,36 @@ namespace Game.EditorTests
         }
 
         public void ExpectIn(UnitData u, ArmyData army, string why = null) =>
-            Expect(army.Members.Contains(u), $"{Label(u)} in #{army.Id}{Why(why)}");
+            Expect(DayMembers(army).Contains(u), $"{Label(u)} in #{army.Id}{Why(why)}");
 
         public void ExpectNotIn(UnitData u, ArmyData army, string why = null) =>
-            Expect(!army.Members.Contains(u), $"{Label(u)} not in #{army.Id}{Why(why)}");
+            Expect(!DayMembers(army).Contains(u), $"{Label(u)} not in #{army.Id}{Why(why)}");
 
         public void ExpectInGarrison(UnitData u, string why = null) =>
-            Expect(ArmyOf(u)?.IsGarrison == true, $"{Label(u)} in the garrison{Why(why)}");
+            Expect(DayArmyOf(u)?.IsGarrison == true, $"{Label(u)} in the garrison{Why(why)}");
 
         public void ExpectNotInGarrison(UnitData u, string why = null) =>
-            Expect(ArmyOf(u)?.IsGarrison != true, $"{Label(u)} outside the garrison{Why(why)}");
+            Expect(DayArmyOf(u)?.IsGarrison != true, $"{Label(u)} outside the garrison{Why(why)}");
 
         public void ExpectTogether(UnitData a, UnitData b, string why = null) =>
-            Expect(ArmyOf(a) != null && ArmyOf(a) == ArmyOf(b), $"{Label(a)} with {Label(b)}{Why(why)}");
+            Expect(DayArmyOf(a) != null && DayArmyOf(a) == DayArmyOf(b), $"{Label(a)} with {Label(b)}{Why(why)}");
 
         public void ExpectApart(UnitData a, UnitData b, string why = null) =>
-            Expect(ArmyOf(a) != ArmyOf(b), $"{Label(a)} apart from {Label(b)}{Why(why)}");
+            Expect(DayArmyOf(a) != DayArmyOf(b), $"{Label(a)} apart from {Label(b)}{Why(why)}");
 
         // `hero` commands the army `body` stands in.
         public void ExpectCommands(UnitData hero, UnitData body, string why = null) =>
-            Expect(ArmyOf(body)?.Commander == hero, $"{Label(hero)} commands {Label(body)}{Why(why)}");
+            Expect(DayArmyOf(body)?.Commander == hero, $"{Label(hero)} commands {Label(body)}{Why(why)}");
 
         public void ExpectUnchanged(ArmyData army, string why = null)
         {
             StandArmy before = RequireTurn().Before.TryGetValue(army.Id, out StandArmy b) ? b : null;
-            Expect(before != null && new HashSet<UnitData>(before.Members).SetEquals(army.Members),
+            Expect(before != null && new HashSet<UnitData>(before.Members).SetEquals(DayMembers(army)),
                 $"#{army.Id} unchanged{Why(why)}");
         }
 
         public void ExpectEmpty(ArmyData army, string why = null) =>
-            Expect(army.Members.Count == 0, $"#{army.Id} empty{Why(why)}");
+            Expect(DayMembers(army).Count == 0, $"#{army.Id} empty{Why(why)}");
 
         public void ExpectNoOperations(string why = null) =>
             Expect(RequireTurn().Result.TransfersApplied == 0, $"no operation{Why(why)}");
@@ -936,11 +952,11 @@ namespace Game.EditorTests
             Expect(RequireTurn().Result.TransfersApplied > 0, $"an operation{Why(why)}");
 
         public void ExpectNotAlone(UnitData u, string why = null) =>
-            Expect(ArmyOf(u) != null && (ArmyOf(u).IsGarrison || ArmyOf(u).Members.Count > 1),
+            Expect(DayArmyOf(u) != null && (DayArmyOf(u).IsGarrison || DayArmyOf(u).Members.Count > 1),
                 $"{Label(u)} not left alone{Why(why)}");
 
         public void ExpectAlone(UnitData u, string why = null) =>
-            Expect(ArmyOf(u) != null && !ArmyOf(u).IsGarrison && ArmyOf(u).Members.Count == 1,
+            Expect(DayArmyOf(u) != null && !DayArmyOf(u).IsGarrison && DayArmyOf(u).Members.Count == 1,
                 $"{Label(u)} alone{Why(why)}");
 
         // `army` stands stronger after the day than before it.
@@ -953,7 +969,7 @@ namespace Game.EditorTests
         }
 
         public void ExpectHeroes(ArmyData army, int count, string why = null) =>
-            Expect(army.Members.Count(u => u.IsHero) == count, $"#{army.Id} with {count} hero(es){Why(why)}");
+            Expect(DayMembers(army).Count(u => u.IsHero) == count, $"#{army.Id} with {count} hero(es){Why(why)}");
 
         // No field army was taken into use: the armies holding units are the ones that held them.
         public void ExpectNoArmyTakenIntoUse(string why = null)
@@ -967,7 +983,7 @@ namespace Game.EditorTests
         // The own formations on the hex that hold ground battle bodies (garrison included).
         public void ExpectFightingFormations(int count, string why = null)
         {
-            int n = OwnArmies.Count(a => !a.IsPrison && !a.IsAirfield && !AviationRules.IsAirArmy(a)
+            int n = RequireTurn().After.Values.Count(a => !a.IsPrison && !a.IsAir
                 && a.Members.Any(AiArmyRoles.IsGroundBattleBody));
             Expect(n == count, $"{count} fighting formation(s) on the hex, got {n}{Why(why)}");
         }
@@ -976,7 +992,7 @@ namespace Game.EditorTests
         // or a hero-only bench on the hex).
         public void ExpectNoSupportHeroInFightingField(string why = null)
         {
-            foreach (ArmyData a in OwnArmies.Where(a => !a.IsGarrison))
+            foreach (StandArmy a in RequireTurn().After.Values.Where(a => !a.IsGarrison))
                 foreach (UnitData u in a.Members.Where(AiArmyRoles.IsGarrisonHero))
                     Expect(!a.Members.Any(AiArmyRoles.IsGroundBattleBody),
                         $"{Label(u)} not in the fighting field army #{a.Id}{Why(why)}");
@@ -1074,6 +1090,7 @@ namespace Game.EditorTests
         public Dictionary<int, StandArmy> Night, Morning;
         public Dictionary<int, float> HoldNight;
         public int NightMoved, MorningMoved, NightApSpent;
+        public HashSet<int> NightFist = new HashSet<int>();
     }
 }
 #endif

@@ -19,10 +19,13 @@ namespace Game.Ai.V2
     //  At the end of the owner's turn this fold joins every fighting formation of a held hex (a
     //  hex whose own building keeps emptied armies: Barracks) into the strongest one formation
     //  the commands allow — one hard fight for whoever attacks before the owner's next turn.
-    //  Tasks are not consulted: nothing moves until then. Every member of a touched army is
-    //  recorded (army, roster index); at the start of the owner's next turn Restore puts the
-    //  survivors back exactly — task armies with their id, roster and commander, the garrison
-    //  with its bodies — before any planning reads the world. The record is persisted
+    //  Tasks are not consulted: nothing moves until then. What a task needs back is recorded
+    //  (army, roster index): every member of a task army the fold touched and every unit that
+    //  spent the night in one; at the start of the owner's next turn Restore puts the survivors
+    //  back exactly — task armies with their id, roster and commander, the garrison with the
+    //  bodies it lent them — before any planning reads the world. The hex's fist counts as a
+    //  task here (ReorgContainer.IsFist). A fold between the garrison and other free armies stays
+    //  as it is (owner 2026-11-26: restoring an army without a task is a move for nothing). The record is persisted
     //  (AiPersistentState.NightFold): a human-turn save lies between the two.
     //  Zero AP: a body never enters an army that would charge its activation tonight.
     // ===========================================================================================
@@ -374,13 +377,16 @@ namespace Game.Ai.V2
                 NightFoldPlan plan = ArmyReorganizationPlanner.PlanNightFold(group);
                 if (plan.IsEmpty)
                     continue;
-                moved += Execute(plan, analysis, player, ctx);
+                moved += Execute(plan, analysis, player, ctx, new HashSet<int>(group.Containers
+                    .Where(c => c.Role == ReorgPhysicalRole.ProtectedMissionArmy || c.IsFist).Select(c => c.ArmyId)));
             }
             return moved;
         }
 
+        // `taskArmyIds` — the armies of the hex a task claims (ReorgPhysicalRole.ProtectedMissionArmy)
+        // and the hex's fist.
         private static int Execute(NightFoldPlan plan, ArmyReorgAnalysis analysis, PlayerSetupData player,
-            AiTurnContext ctx)
+            AiTurnContext ctx, ISet<int> taskArmyIds)
         {
             if (!analysis.ArmyById.TryGetValue(plan.DestinationArmyId, out ArmyData dst) || dst == null)
                 return 0;
@@ -397,10 +403,23 @@ namespace Game.Ai.V2
 
             if (!Records.TryGetValue(player, out var record))
                 Records[player] = record = new Dictionary<int, (int, int)>();
-            foreach (ArmyData army in new[] { dst }.Concat(batches.Select(b => b.from)).Concat(batches.Select(b => b.to)))
-                for (int i = 0; i < army.Members.Count; i++)
-                    if (!record.ContainsKey(army.Members[i].RuntimeId))
-                        record[army.Members[i].RuntimeId] = (army.Id, i);
+            bool IsTask(ArmyData a) => taskArmyIds.Contains(a.Id);
+            void Remember(ArmyData army, UnitData u)
+            {
+                if (!record.ContainsKey(u.RuntimeId))
+                    record[u.RuntimeId] = (army.Id, army.Members.IndexOf(u));
+            }
+            foreach (ArmyData army in new[] { dst }.Concat(batches.Select(b => b.from)).Concat(batches.Select(b => b.to))
+                         .Distinct().Where(IsTask))
+                foreach (UnitData u in army.Members)
+                    Remember(army, u);
+            // A unit that spent the night in a task army, and a Support hero / operator benched
+            // for the night only (it goes back to the formation it serves by day).
+            foreach ((ArmyData from, ArmyData to, List<UnitData> units) in batches.Where(b => IsTask(b.to) || b.to != dst))
+                foreach (UnitData u in units)
+                    Remember(from, u);
+            if (record.Count == 0)
+                Records.Remove(player);
 
             int moved = 0;
             if (lead != null && dst.Members.Contains(lead) && dst.Members.IndexOf(lead) > 0)

@@ -53,8 +53,12 @@ namespace Game.Ai.V2
             // 2026-11-18 — only while the garrison has a slot to take it: a garrison packed with
             // fighters for the same threat (passive defence) cannot shelter it, and the hero then
             // stands as a bench on the hex instead of blocking that packing.
+            // 2026-11-26 (owner, stand E04) — only while no army of the hex can take the blow: the
+            // hardest combat-capable army fights first (BattleInitiator.CompareDefenderHardness) and
+            // a hero-only army meets the enemy only after them, so beside any fighter it is safe.
             bool shelterLoneHeroes = s.ThreatBenchmarks.Any(t => !t.HiddenFromUs
                     && t.EtaToGroup <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+                && !s.Roster.Values.Any(r => r.Any(u => u != null && u.IsGroundCombatant))
                 && s.Meta.Any(kv => kv.Value.IsGarrison && kv.Value.CanReceive
                     && ReorgViability.Capacity(s.Roster[kv.Key], true) > s.Roster[kv.Key].Count);
 

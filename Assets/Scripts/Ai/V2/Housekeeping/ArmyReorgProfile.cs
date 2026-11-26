@@ -112,6 +112,18 @@ namespace Game.Ai.V2
         // A claimed army whose task needs units (ArmyMutationContract.NeedsUnits): the garrison's
         // surplus above its floor joins it (planner step 0.9).
         public bool NeedsUnits;
+        // 2026-11-26 (owner) — the hex's fist: the free field army with a commanding hero and
+        // fighters, the widest command then the strongest (FistMusterObjectiveEvaluator.FistHost's
+        // order). It takes the garrison's surplus like a task (step 0.9, above the garrison's own
+        // share floor as the muster Intake keeps it) and the morning restores it after the night.
+        public bool IsFist;
+        // The fist only: how many garrison bodies it may still take on this hex (the release rule
+        // and the garrison's own share, SpareableBodies) — the bodies it can still seat count
+        // toward its commander choice (owner 2026-11-25: "if the army does not gather 7").
+        public int FistGarrisonSpare;
+        // The garrison's own share floor (FistMusterObjectiveEvaluator.OwnShareFloor): what it
+        // keeps whoever else stands on its hex — the fist's intake never goes below it.
+        public float GarrisonOwnShareFloor;
 
         // T05 — a claimed operation container whose ActorCommitments contract lets it take free
         // same-hex members (ArmyMutationContract.MayReceive). It never donates, is never folded,
@@ -218,10 +230,10 @@ namespace Game.Ai.V2
                     && c.Units.Any(u => u != null && (u.IsDevelopmentOperator || u.IsGarrisonHero))))
                 return true;
             // 2026-11-25 (owner) — a garrison holding more than its one body beside an army whose
-            // task needs units: its surplus above the floor may join the task (planner step 0.9).
+            // task needs units, or the hex's fist: its surplus may join it (planner step 0.9).
             if (localGarrison != null && localGarrison.CanDonate
                 && localGarrison.Units.Count(u => u != null && u.IsGroundBattleBody) > 1
-                && Containers.Any(c => !c.IsGarrison && c.NeedsUnits && c.CanReceive))
+                && Containers.Any(c => !c.IsGarrison && (c.NeedsUnits || c.IsFist) && c.CanReceive))
                 return true;
 
             // §9 — a heroless OR support-led viable field formation plus a benched combat hero

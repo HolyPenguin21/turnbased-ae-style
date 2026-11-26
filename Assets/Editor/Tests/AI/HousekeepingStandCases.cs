@@ -116,7 +116,8 @@ namespace Game.EditorTests
                 if (small.Fate == big.Fate && small.Initiative == big.Initiative)
                     Assert.Ignore("the deck's heroes fight alike");
                 UnitData mid = s.Body(BodyPick.Mid);
-                s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
+                // A one-body garrison has nothing to give: the army seats its one body only.
+                s.Garrison(s.Body(BodyPick.Strong));
                 s.Field(small, big, mid);
                 s.EndTurn();
                 bool smallBetter = small.Fate > big.Fate || small.Fate == big.Fate && small.Initiative > big.Initiative;
@@ -158,14 +159,17 @@ namespace Game.EditorTests
                 s.ExpectTogether(a, b);
             });
 
-            Case("A08_SoundLayout_NoOperation",
-                "garrison Support hero + strong + mid, a led field army, an empty army -> nothing moves", s =>
+            // 2026-11-26 (owner) — the led field army is the hex's fist: it takes the garrison's
+            // bodies above the garrison's own share; the garrison keeps a body.
+            Case("A08_Fist_TakesTheGarrisonSurplus",
+                "garrison Support hero + strong + mid, a led field army, an empty army -> the fist takes the "
+                + "garrison's surplus, the empty army stays empty", s =>
             {
                 s.Garrison(s.Hero(HeroPick.Support), s.Body(BodyPick.Strong), s.Body(BodyPick.Mid));
-                s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
+                ArmyData fist = s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 ArmyData shell = s.Shell();
                 s.EndTurn();
-                s.ExpectNoOperations("a sound layout is not disturbed");
+                s.ExpectStrengthened(fist, "the fist takes the garrison's surplus");
                 s.ExpectEmpty(shell);
             });
 
@@ -356,14 +360,15 @@ namespace Game.EditorTests
         // ---- B. Armies coming back, tasks ending ---------------------------------------------
         private static void ReturnsAndEnds()
         {
-            Case("B01_RaidReturned_EndOfTurn",
-                "garrison, the raid army back home (raid over), an empty army -> nothing moves", s =>
+            Case("B01_RaidReturned_BecomesTheFist",
+                "garrison, the raid army back home (raid over), an empty army -> the army is the hex's fist and "
+                + "takes the garrison's surplus", s =>
             {
                 s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Strong));
                 ArmyData raid = s.Field(s.Hero(HeroPick.Combat), s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
                 ArmyData shell = s.Shell();
                 s.EndTurn();
-                s.ExpectUnchanged(raid);
+                s.ExpectStrengthened(raid, "the fist takes the garrison's surplus");
                 s.ExpectEmpty(shell);
             });
 
@@ -1027,15 +1032,29 @@ namespace Game.EditorTests
             });
 
             // 2026-10-15 (owner) - under a near threat a lone hero shelters in the local garrison.
-            Case("E04_LoneHero_SheltersUnderANearThreat",
-                "garrison strong + weak, a lone combat hero, a company next door -> the hero shelters", s =>
+            // 2026-11-26 (owner) — the hardest army of the hex fights first: beside a garrison with
+            // fighters a lone hero is not the one the enemy meets, so it keeps its place.
+            Case("E04_LoneHero_BesideFighters_StaysPut",
+                "garrison strong + weak, a lone combat hero, a company next door -> the garrison takes the blow, "
+                + "the hero stays where it is", s =>
             {
                 UnitData hero = s.Hero(HeroPick.Combat);
                 s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Weak));
+                ArmyData alone = s.Field(hero);
+                s.EnemyAtEta(1, EnemyForce.Company);
+                s.EndTurn();
+                s.ExpectIn(hero, alone, "the garrison fights first");
+            });
+
+            Case("E04b_LoneHero_NoFighterOnTheHex_Shelters",
+                "a garrison of a Support hero only, a lone combat hero, a company next door -> the hero shelters", s =>
+            {
+                UnitData hero = s.Hero(HeroPick.Combat);
+                s.Garrison(s.Hero(HeroPick.Support));
                 s.Field(hero);
                 s.EnemyAtEta(1, EnemyForce.Company);
                 s.EndTurn();
-                s.ExpectInGarrison(hero);
+                s.ExpectInGarrison(hero, "nobody else can take the blow");
             });
 
             // A lone hero beyond the shelter horizon joins the garrison only as its commander when
@@ -1050,10 +1069,10 @@ namespace Game.EditorTests
             });
 
             Case("E06_LoneHero_ShelterAtTheHorizon",
-                "the same with the company 2 turns away -> the hero shelters", s =>
+                "a Support-only garrison, the company 2 turns away -> the hero shelters", s =>
             {
                 UnitData hero = s.Hero(HeroPick.Combat);
-                s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Weak));
+                s.Garrison(s.Hero(HeroPick.Support));
                 s.Field(hero);
                 s.EnemyAtEta(2, EnemyForce.Company);
                 s.EndTurn();
@@ -1092,15 +1111,15 @@ namespace Game.EditorTests
                 s.EndTurn();
             });
 
-            Case("E10_Base_LoneHeroShelters",
-                "on a secondary Base: a lone hero, a company next door -> the hero shelters", s =>
+            Case("E10_Base_LoneHero_BesideFighters_StaysPut",
+                "on a secondary Base: a lone hero beside a garrison with fighters, a company next door -> it stays", s =>
             {
                 UnitData hero = s.Hero(HeroPick.Combat);
                 s.Garrison(s.Body(BodyPick.Strong), s.Body(BodyPick.Weak));
-                s.Field(hero);
+                ArmyData alone = s.Field(hero);
                 s.EnemyAtEta(1, EnemyForce.Company);
                 s.EndTurn();
-                s.ExpectInGarrison(hero);
+                s.ExpectIn(hero, alone, "the garrison fights first");
             }, StandSite.Base);
 
             Case("E11_Base_FarThreat_FistNotEmptied",
@@ -1393,6 +1412,7 @@ namespace Game.EditorTests
                 s.Garrison(s.Hero(HeroPick.Support), s.Body(BodyPick.Mid), s.Body(BodyPick.Mid), s.Body(BodyPick.Weak));
                 ArmyData fist = s.Field(new[] { nadia }.Concat(fistBodies).ToArray());
                 s.EndTurn("peace");
+                s.ExpectCommands(nadia, fistBodies[0], "the fist is back in the morning");
                 s.Field(s.Body(BodyPick.Mid), s.Body(BodyPick.Mid));
                 ArmyData raiders = s.EnemyAtEta(5, EnemyForce.Raiders);
                 float fistPower = s.Last.After[fist.Id].Power;

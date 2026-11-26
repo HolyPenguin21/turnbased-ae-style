@@ -130,6 +130,7 @@ namespace Game.Ai.V2
 
                 var groupHex = new HexCoord(hexGroup.Key.Q, hexGroup.Key.R);
                 MarkDevelopmentOperators(player, groupHex, containers, unitByKey);
+                MarkFist(player, containers, armyById);
                 var lfg = new LocalForceGroup
                 {
                     Q = hexGroup.Key.Q,
@@ -256,6 +257,7 @@ namespace Game.Ai.V2
                 container.GarrisonNonHeroFloor = 1;
                 container.GarrisonPowerFloor = AiArmyRoles.GarrisonDefenceFloor(player, army.Hex, isCitadel);
                 container.GarrisonBaseFloor = AiArmyRoles.GarrisonFloorBeforeResidents(player, army.Hex, isCitadel);
+                container.GarrisonOwnShareFloor = AiArmyRoles.GarrisonShareFloor(player, isCitadel);
             }
             else
             {
@@ -263,6 +265,32 @@ namespace Game.Ai.V2
             }
 
             return container;
+        }
+
+        // 2026-11-26 (owner) — the hex's fist, on a hex with an own garrison: a free field army
+        // (FistMusterObjectiveEvaluator.IsLiveFistContainer) led by a hero with fighters, the
+        // widest command first, then the strongest (FistHost's order).
+        private static void MarkFist(PlayerSetupData player, List<ReorgContainer> containers,
+            Dictionary<int, ArmyData> armyById)
+        {
+            if (!containers.Any(c => c.IsGarrison))
+                return;
+            ReorgContainer fist = containers
+                .Where(c => c.Role == ReorgPhysicalRole.NormalFieldArmy
+                    && c.Units.Any(u => u.IsHero) && c.Units.Any(u => u.IsGroundCombatant)
+                    && FistMusterObjectiveEvaluator.IsLiveFistContainer(player, armyById[c.ArmyId]))
+                .OrderByDescending(c => ReorgViability.Capacity(c.Units, false))
+                .ThenByDescending(c => ReorgViability.EffectivePower(c.Units))
+                .ThenBy(c => c.ArmyId)
+                .FirstOrDefault();
+            if (fist == null)
+                return;
+            fist.IsFist = true;
+            ReorgContainer g = containers.First(c => c.IsGarrison);
+            List<ReorgUnit> bodies = g.Units.Where(u => u != null && u.IsGroundCombatant).ToList();
+            fist.FistGarrisonSpare = AiArmyRoles.SpareableBodies(bodies,
+                set => ReorgViability.EffectivePower(set.ToList()),
+                System.Math.Max(g.GarrisonPowerFloor, g.GarrisonOwnShareFloor)).Count;
         }
 
         // Select the minimum set of on-hex heroes that keeps every currently installed

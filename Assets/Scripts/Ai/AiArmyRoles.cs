@@ -534,6 +534,17 @@ namespace Game.Ai
             return false;
         }
 
+        // The peacetime share of the player's live ground force (map + AI hand + remaining deck):
+        // the garrison's own floor whoever else stands on its hex (the fist muster's Intake reads
+        // it from the snapshot, FistMusterObjectiveEvaluator.OwnShareFloor; Housekeeping live).
+        public static float GarrisonShareFloor(PlayerSetupData player, bool isCitadel)
+        {
+            AiHandData hand = AiHandRegistry.Peek(player);
+            PlayerForceAnalysis.AdditivePower(player, ArmyRegistry.AllForOwner(player), hand?.Hand,
+                hand?.RemainingDeck, out _, out float available);
+            return GarrisonDefenceFloor(available, isCitadel);
+        }
+
         // The peacetime share of the ground force alone.
         public static float GarrisonDefenceFloor(float groundAvailablePower, bool isCitadel) =>
             Math.Max(0f, groundAvailablePower)
