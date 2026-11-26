@@ -45,7 +45,7 @@ namespace Game.Ai.V2
         // The ONE mutation of a resolved garrison sortie: the pinned bodies leave the garrison into
         // the pinned empty shell, or into one canonical new container on that hex. Null (world
         // unchanged) when refused.
-        internal static ArmyData MaterializeDetachment(PlayerSetupData player, AiTurnContext ctx,
+        private static ArmyData MaterializeDetachment(PlayerSetupData player, AiTurnContext ctx,
             ArmyData donor, ArmyData shell, List<UnitData> units, out string why)
         {
             if (shell == null)

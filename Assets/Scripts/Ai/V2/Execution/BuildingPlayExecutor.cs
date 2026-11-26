@@ -211,7 +211,7 @@ namespace Game.Ai.V2
         // 2026-11-19 (owner) — a threatened new Base keeps the builder's whole escort: every ground
         // body of the builder that fits the new garrison and joins it free stays; the hero walks
         // on alone. Same builder identification and free-transfer rule as LeaveGarrisonBody.
-        internal static void LeaveEscortAsGarrison(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
+        private static void LeaveEscortAsGarrison(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
             int? builderArmyId)
         {
             ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex, player);
@@ -240,7 +240,7 @@ namespace Game.Ai.V2
             }
         }
 
-        internal static void LeaveGarrisonBody(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
+        private static void LeaveGarrisonBody(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
             int? builderArmyId = null)
         {
             ArmyData garrison = ArmyRegistry.AllAt(hex).FirstOrDefault(a => a != null && a.IsGarrison

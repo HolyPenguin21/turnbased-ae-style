@@ -80,7 +80,7 @@ namespace Game.Ai.V2
         }
 
         // Free ground armies on the airfield hex whose whole roster the garrison can take.
-        internal static IEnumerable<ArmyData> UnloadableGroundArmiesAt(PlayerSetupData player,
+        private static IEnumerable<ArmyData> UnloadableGroundArmiesAt(PlayerSetupData player,
             ArmyData airfield, ActorCommitments commitments)
         {
             ArmyData garrison = GarrisonAt(player, airfield);
