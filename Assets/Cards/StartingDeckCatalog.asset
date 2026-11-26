@@ -1937,19 +1937,19 @@ MonoBehaviour:
     - cardKey: ashen.card.iron-husk
       count: 4
     - cardKey: ashen.card.rust-tank
-      count: 2
+      count: 1
     - cardKey: ashen.card.iron-maw
       count: 3
     - cardKey: ashen.card.scrap-mortar
-      count: 2
+      count: 1
     - cardKey: ashen.card.slag-lobber
-      count: 4
+      count: 2
     - cardKey: ashen.card.rad-hunter
       count: 2
     - cardKey: ashen.card.rad-brute
       count: 2
     - cardKey: ashen.card.rust-breacher
-      count: 2
+      count: 1
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
@@ -1963,10 +1963,16 @@ MonoBehaviour:
     - cardKey: neutral.facility.intel
       count: 1
     - cardKey: ashen.card.blister-juggernaut
-      count: 4
+      count: 3
     - cardKey: ashen.card.flywheel
       count: 1
     - cardKey: ashen.card.ash-walker
+      count: 1
+    - cardKey: ashen.card.gravebell-mortar
+      count: 2
+    - cardKey: ashen.card.colossus
+      count: 1
+    - cardKey: ashen.card.ash-howitzer
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -2733,13 +2739,13 @@ MonoBehaviour:
     - cardKey: ashen.card.iron-husk
       count: 2
     - cardKey: ashen.card.rust-tank
-      count: 2
+      count: 1
     - cardKey: ashen.card.boomstick
-      count: 3
+      count: 1
     - cardKey: ashen.card.iron-maw
       count: 2
     - cardKey: ashen.card.roadbreaker
-      count: 3
+      count: 2
     - cardKey: ashen.card.rad-hunter
       count: 2
     - cardKey: ashen.card.furnace-bearer
@@ -2765,6 +2771,12 @@ MonoBehaviour:
     - cardKey: ashen.card.flywheel
       count: 1
     - cardKey: ashen.card.ash-walker
+      count: 1
+    - cardKey: ashen.card.carrion-mother
+      count: 1
+    - cardKey: ashen.card.rivetstorm
+      count: 1
+    - cardKey: ashen.card.scrap-shaman
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -2957,12 +2969,16 @@ MonoBehaviour:
     - cardKey: neutral.facility.intel
       count: 1
     - cardKey: ashen.card.blister-juggernaut
-      count: 3
+      count: 1
     - cardKey: ashen.card.ash-walker
       count: 1
     - cardKey: ashen.card.cinder-stalker
       count: 2
     - cardKey: ashen.card.tech-scrapper
+      count: 1
+    - cardKey: ashen.card.striker
+      count: 1
+    - cardKey: ashen.card.ash-crossbowman
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -3933,7 +3949,7 @@ MonoBehaviour:
     - cardKey: vessels.15.vessel-rifleman
       count: 3
     - cardKey: vessels.unit.spindle-gunner
-      count: 3
+      count: 4
     - cardKey: vessels.unit.tuning-blade
       count: 4
     - cardKey: vessels.27.lens-watcher
@@ -3955,7 +3971,7 @@ MonoBehaviour:
     - cardKey: vessels.01.relay-base
       count: 1
     - cardKey: vessels.20.siege-walker
-      count: 2
+      count: 1
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
@@ -3969,6 +3985,8 @@ MonoBehaviour:
     - cardKey: vessels.27.gyrocopter
       count: 1
     - cardKey: vessels.unit.halo-kite
+      count: 1
+    - cardKey: vessels.unit.counterweight-lobber
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
