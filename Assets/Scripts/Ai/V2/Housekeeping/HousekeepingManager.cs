@@ -40,16 +40,14 @@ namespace Game.Ai.V2
             ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments, snapshot, ctx);
             if (analysis.Groups.Count == 0)
             {
-                AiDebugLog.Write("[AI][V2] housekeeping - no local force group worth reorganising.");
+                AiDebugLog.Write("[AI][V2] housekeeping - no own army on the map.");
                 yield break;
             }
 
             AiDebugLog.Write("[AI][V2][HOUSEKEEPING] -- LOCAL FORCE PACKAGING ----------------");
             foreach (LocalForceGroup group in analysis.Groups)
             {
-                LogGroupInput(group, analysis);
-                // Under a deployed enemy every candidate runs the whole-hex simulation: the plan
-                // gives frames back between candidates (FramePacer) and reports its cost.
+                // Every own hex is planned; the plan gives frames back between candidates.
                 var pacer = new FramePacer();
                 StagePerfMark planStart = StagePerfTelemetry.Mark(pacer);
                 var plan = new ReorganizationPlan();
@@ -59,11 +57,15 @@ namespace Game.Ai.V2
                         $"{plan.HexKey} threats={group.ThreatBenchmarks.Count}");
                 if (plan.IsEmpty)
                 {
-                    AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   {plan.HexKey} decision: "
-                        + $"{plan.DebugSummary()}; keep current composition.");
+                    // One line per unchanged hex (its threats, when any, on the benchmark line).
+                    AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   ({group.Q},{group.R}) keep: "
+                        + FormatProjectedGroup(group, analysis));
+                    if (group.ThreatBenchmarks.Count > 0)
+                        LogBenchmark(group);
                     continue;
                 }
 
+                LogGroupInput(group, analysis);
                 result.GroupsPlanned++;
                 AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   {plan.HexKey} decision: {plan.DebugSummary()}");
                 HousekeepingExecResult exec = HousekeepingExecutor.Execute(plan, analysis, player, ctx, commitments);
@@ -92,7 +94,11 @@ namespace Game.Ai.V2
         {
             AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   ({group.Q},{group.R}) before: "
                 + FormatProjectedGroup(group, analysis));
+            LogBenchmark(group);
+        }
 
+        private static void LogBenchmark(LocalForceGroup group)
+        {
             if (group.ThreatBenchmarks.Count == 0)
             {
                 AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   ({group.Q},{group.R}) benchmark: "

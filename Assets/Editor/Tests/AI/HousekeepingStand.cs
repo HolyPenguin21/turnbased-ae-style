@@ -685,8 +685,8 @@ namespace Game.EditorTests
             ActorCommitments nightCommitments = ActorCommitments.FromIntents(night.AllIntents, night, null);
             int apNight = _root.ActionPoints;
             HousekeepingTime.Start();
-            turn.NightFist = new HashSet<int>(ArmyReorgAnalyzer.Analyze(Me, nightCommitments, night, Ctx,
-                    includeEveryGroup: true).Groups.SelectMany(g => g.Containers).Where(c => c.IsFist)
+            turn.NightFist = new HashSet<int>(ArmyReorgAnalyzer.Analyze(Me, nightCommitments, night, Ctx)
+                    .Groups.SelectMany(g => g.Containers).Where(c => c.IsFist)
                 .Select(c => c.ArmyId));
             var nightMoved = new int[1];
             Drain(HousekeepingNightFold.FoldRoutine(Me, Ctx, nightCommitments, night, null, nightMoved));

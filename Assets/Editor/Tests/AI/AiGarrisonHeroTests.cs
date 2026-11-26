@@ -877,7 +877,7 @@ namespace Game.EditorTests
                 var group = new LocalForceGroup
                 {
                     HexDefenseBonus = 2f, BuildingDefenseBonus = building,
-                    // A free field body on the hex makes the group worth planning (WorthPlanning).
+                    // A free field body beside the garrison: two fighting formations on the hex.
                     Containers = new List<ReorgContainer> { RGarrison(1, new[] { iri }.Concat(bodies).ToArray()),
                         RFree(2, RFighter(4f, 2f, 5f)) },
                 };

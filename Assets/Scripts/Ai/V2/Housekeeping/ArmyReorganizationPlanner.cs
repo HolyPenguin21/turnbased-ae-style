@@ -130,13 +130,8 @@ namespace Game.Ai.V2
         {
             plan.Q = group?.Q ?? 0;
             plan.R = group?.R ?? 0;
-            if (group == null || !group.WorthPlanning())
-            {
-                if (group != null)
-                    foreach (ReorgContainer c in group.Containers)
-                        plan.ExpectedMembership[c.ArmyId] = c.Units.Select(u => u.Key).ToList();
+            if (group == null)
                 yield break;
-            }
 
             VState state = StateOf(group);
             Outcome initial = Evaluate(state);

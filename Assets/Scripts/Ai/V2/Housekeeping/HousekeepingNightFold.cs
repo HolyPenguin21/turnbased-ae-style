@@ -422,8 +422,7 @@ namespace Game.Ai.V2
                 yield break;
             if (HasRecord(player))
                 Restore(player, ctx, "a night record still open at the next fold");
-            ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments, snapshot, ctx,
-                includeEveryGroup: true);
+            ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments, snapshot, ctx);
             foreach (LocalForceGroup group in analysis.Groups)
             {
                 var hex = new HexCoord(group.Q, group.R);

@@ -18,21 +18,13 @@ namespace Game.Ai.V2
         // "non-viable" — a conservative structural floor, NOT a battle prediction. A singleton
         // (one non-hero member) and a lone hero are non-viable regardless of this number.
         public const float housekeepingViabilityPowerFloor = 6f;
-        // Fewer than this many friendly containers (garrison + field armies) on one hex -> there
-        // is nothing to reorganise, the hex is skipped.
-        public const int housekeepingMinContainersForGroup = 2;
         // Hard bound on the planner's greedy best-improvement loop per hex. Each iteration applies
         // at most one accepted structural move; the loop stops early the moment no move improves
         // the lexicographic outcome.
         public const int housekeepingMaxPlanIterationsPerHex = 24;
-        // Whole-hex readiness under a deployed enemy (ArmyReorganizationEvaluation.HexReadiness, read
-        // by the night fold since 2026-11-25 — HousekeepingNightFold):
-        // sequential trials of WorthIt.EstimateHexControl, and the attacker-win difference below
-        // which two rosters count as equal. Measured 2026-11-18 on Kryll's (0,4) T31 rosters
-        // (7 armies vs Dust Dogs, 30 unit orders of the SAME roster): 25 trials sd 0.10 (0.16-0.56)
-        // and the plan stopped at Ironclad 4/7; 50 trials sd 0.06 and it reached 7/7 with fewer
-        // iterations (1.66 s vs 1.45 s per plan, uncached Mono). The margin is one such sd: a fold
-        // that really helps there gained 0.45; a reshuffle inside the noise moves nothing.
+        // The night fold's whole-hex hold (HousekeepingNightFold.ThreatRowsOf): trials of
+        // WorthIt.EstimateHexControl, and the attacker-win difference below which two layouts count as
+        // equal (about one standard deviation at 50 trials; at 25 trials a real gain could drown in noise).
         public const int housekeepingHexHoldTrials = 50;
         public const float housekeepingHexHoldMargin = 0.06f;
 

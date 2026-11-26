@@ -28,10 +28,9 @@ namespace Game.Ai.V2
 
     public static class ArmyReorgAnalyzer
     {
-        // `includeEveryGroup` — every own hex, not only the ones worth a day pass (the night fold
-        // reads hexes the day planner has nothing to change on).
+        // One LocalForceGroup per own hex.
         public static ArmyReorgAnalysis Analyze(PlayerSetupData player, ActorCommitments commitments,
-            WorldSnapshot snapshot, AiTurnContext ctx, bool includeEveryGroup = false)
+            WorldSnapshot snapshot, AiTurnContext ctx)
         {
             var unitByKey = new Dictionary<int, UnitData>();
             var armyById = new Dictionary<int, ArmyData>();
@@ -83,8 +82,7 @@ namespace Game.Ai.V2
                     Containers = containers,
                     ThreatBenchmarks = BuildThreatBenchmarks(snapshot, groupHex, containers, unitByKey),
                 };
-                if (includeEveryGroup || lfg.WorthPlanning())
-                    groups.Add(lfg);
+                groups.Add(lfg);
             }
 
             return new ArmyReorgAnalysis { Groups = groups, UnitByKey = unitByKey, ArmyById = armyById };
