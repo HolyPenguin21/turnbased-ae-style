@@ -215,7 +215,11 @@ namespace Game.Ai
         // Housekeeping never puts it into a fighting formation, and an active task takes it only as
         // a priced fallback (GarrisonHeroFallbackCost) when no other hero qualifies.
         public static bool IsGarrisonHero(UnitData unit) =>
-            unit != null && unit.IsHero && unit.TypeTags.Contains(UnitTypeTag.Support);
+            unit != null && IsGarrisonHero(unit.IsHero, unit.TypeTags);
+
+        // The same rule over a unit's frozen facts (a planner's projection).
+        public static bool IsGarrisonHero(bool isHero, IEnumerable<UnitTypeTag> typeTags) =>
+            isHero && typeTags != null && typeTags.Contains(UnitTypeTag.Support);
 
         // THE one enumeration of the modes whose duty on `hex` `unit` qualifies for: an own facility of
         // the mode on the hex, or (preparationSite, when given) the hex the player's preparation has
@@ -228,8 +232,7 @@ namespace Game.Ai
             BuildingData building = BuildingRegistry.FindAt(hex);
             if (building == null || building.Owner != player)
                 yield break;
-            foreach (ResearchProductionMode mode in new[]
-                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
+            foreach (ResearchProductionMode mode in DevelopmentModes)
             {
                 if (!unit.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
                     continue;
@@ -237,6 +240,22 @@ namespace Game.Ai
                 if (facility || (preparationSite?.Invoke(mode) is HexCoord site && site.Equals(hex)))
                     yield return mode;
             }
+        }
+
+        private static readonly ResearchProductionMode[] DevelopmentModes =
+            { ResearchProductionMode.Research, ResearchProductionMode.Production };
+
+        // The modes an own facility on `hex` serves (the operator duties of that hex).
+        public static IEnumerable<ResearchProductionMode> FacilityModes(PlayerSetupData player, HexCoord hex)
+        {
+            if (player == null)
+                yield break;
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building == null || building.Owner != player)
+                yield break;
+            foreach (ResearchProductionMode mode in DevelopmentModes)
+                if (building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
+                    yield return mode;
         }
 
         // A hero that operates an own Research/Production facility on `hex`: the facility's
@@ -261,6 +280,11 @@ namespace Game.Ai
                 !ResearchProductionSystem.FindActors(player, army.Hex, mode)
                     .Any(a => a != hero && !(departingMembers ?? army.Members).Contains(a)));
         }
+
+        // `hero` is the only operator on `hex` of a mode an own facility there serves.
+        public static bool IsSoleFacilityOperator(PlayerSetupData player, HexCoord hex, UnitData hero) =>
+            hero != null && DutyModes(player, hex, hero, null).Any(mode =>
+                !ResearchProductionSystem.FindActors(player, hex, mode).Any(a => a != hero));
 
         // `unit` is an operator of an own facility on `hex`, or (preparationSite) of the preparation
         // site the player has selected there for a mode it qualifies for.

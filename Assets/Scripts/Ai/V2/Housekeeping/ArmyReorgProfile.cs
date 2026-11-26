@@ -69,7 +69,7 @@ namespace Game.Ai.V2
         public bool IsDevelopmentOperator;
         // 2026-09-30 (user decision) — a garrison hero (AiArmyRoles.IsGarrisonHero: the card's
         // Support type tag). Housekeeping moves it into the local garrison and never out of it.
-        public bool IsGarrisonHero => IsHero && TypeTags != null && TypeTags.Contains(UnitTypeTag.Support);
+        public bool IsGarrisonHero => AiArmyRoles.IsGarrisonHero(IsHero, TypeTags);
         // Exact immutable combat profile consumed by WorthIt. Heroes keep a profile for
         // diagnostics but are excluded from Ground Combat roster estimates.
         public WorthIt.DefenderProfile CombatProfile;
@@ -320,15 +320,16 @@ namespace Game.Ai.V2
         public static bool IsSingletonShape(IReadOnlyList<ReorgUnit> units) =>
             units != null && units.Count == 1 && units[0].IsGroundCombatant;
 
-        // 2026-11-18 (owner) — an operator / Support hero must stay on the hex of its facility's
-        // Citadel or Base, not in the garrison container itself (ResearchProductionSystem.FindActors
-        // reads every own army on the hex; ApBonus works anywhere in play). A free ground container
-        // on the hex holding heroes only is that place too: it takes no garrison slot, never fights,
-        // and a departure that would take the facility's operator is refused by its duty
-        // (OperatorDutyBlocksDeparture). Live twin: HousekeepingExecutor.IsHexBench.
+        // A hero-only free ground container on the hex: besides the garrison, the place of an
+        // operator / Support hero (ResearchProductionSystem.FindActors reads every own army on the
+        // hex). It takes no garrison slot, never fights, and a departure that would take the
+        // facility's operator is refused by its duty (OperatorDutyBlocksDeparture). The executor
+        // asks the same container with its live members.
         public static bool IsHexBench(ReorgContainer meta, IReadOnlyList<ReorgUnit> units) =>
-            meta != null && !meta.IsGarrison && meta.IsMutableGround && !meta.IsMissionReceiver
-            && units != null && units.All(u => u != null && u.IsHero);
+            IsBenchContainer(meta) && units != null && units.All(u => u.IsHero);
+
+        public static bool IsBenchContainer(ReorgContainer meta) =>
+            meta != null && !meta.IsGarrison && meta.IsMutableGround && !meta.IsMissionReceiver;
 
         public static bool IsNonExemptSingleton(ReorgContainer c) =>
             c != null && !c.SingletonExempt && c.IsScoredField && IsSingletonShape(c.Units);
@@ -502,21 +503,11 @@ namespace Game.Ai.V2
         public static bool HasCommanderChoice(ReorgContainer c) =>
             c != null && c.CanReorderCommander && c.Units.Count(u => u != null && u.IsHero) >= 2;
 
-        // Mirrors ArmyData.ComputeCapacity exactly: preserve roster order, first hero wins; for a
-        // no-hero roster ask the canonical gameplay function for its default instead of duplicating
-        // BaseCapacity/GarrisonBaseCapacity in V2 config.
-        public static int Capacity(IReadOnlyList<ReorgUnit> units, bool isGarrison)
-        {
-            if (units != null)
-                foreach (ReorgUnit u in units)
-                    if (u.IsHero)
-                        return u.CommandRating;
-            return ArmyData.ComputeCapacity(Array.Empty<UnitData>(), isGarrison);
-        }
+        // The live roster rules (ArmyData: capacity, sorted insert, garrison order) on the projected
+        // roster, so the virtual plan and gameplay can never disagree.
+        public static int Capacity(IReadOnlyList<ReorgUnit> units, bool isGarrison) =>
+            ArmyData.ComputeCapacity(units, isGarrison, u => u.IsHero, u => u.CommandRating);
 
-        // Mirrors ArmyData.AddMemberSorted so virtual hero order — and therefore first-hero
-        // CommandRating semantics — stays identical to the live gameplay roster after transfers.
-        // A garrison is re-normalized (ArmyData.NormalizeRoster) exactly as the live add does.
         public static void AddMemberSorted(List<ReorgUnit> roster, ReorgUnit unit, bool isGarrison)
         {
             if (isGarrison)
@@ -527,23 +518,12 @@ namespace Game.Ai.V2
                 roster.AddRange(ordered);
                 return;
             }
-            int index = unit.IsHero ? roster.Count(u => u.IsHero) : roster.Count;
-            roster.Insert(index, unit);
+            roster.Insert(ArmyData.SortedInsertIndex(roster, unit.IsHero, u => u.IsHero), unit);
         }
 
-        // Mirrors ArmyData.NormalizeRoster: heroes first, stable by descending CommandRating then
-        // Fate (the commander's battle Fate, SideCommander), then the other units in their order.
-        public static List<ReorgUnit> NormalizeRoster(IEnumerable<ReorgUnit> units)
-        {
-            var heroes = new List<ReorgUnit>();
-            var rest = new List<ReorgUnit>();
-            foreach (ReorgUnit u in units ?? Enumerable.Empty<ReorgUnit>())
-                (u != null && u.IsHero ? heroes : rest).Add(u);
-            List<ReorgUnit> ordered = heroes.OrderByDescending(h => h.CommandRating)
-                .ThenByDescending(h => h.AsCommander.Fate).ToList();
-            ordered.AddRange(rest);
-            return ordered;
-        }
+        public static List<ReorgUnit> NormalizeRoster(IEnumerable<ReorgUnit> units) =>
+            ArmyData.NormalizeRoster(units, u => u != null && u.IsHero, h => h.CommandRating,
+                h => h.AsCommander.Fate);
 
         public static bool IsCanonicalGarrisonOrder(IReadOnlyList<ReorgUnit> units)
         {

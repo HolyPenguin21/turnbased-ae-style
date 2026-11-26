@@ -242,19 +242,9 @@ namespace Game.Ai.V2
         private static void MarkDevelopmentOperators(PlayerSetupData player, HexCoord hex,
             IReadOnlyList<ReorgContainer> containers, IReadOnlyDictionary<int, UnitData> unitByKey)
         {
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building == null || building.Owner != player)
-                return;
-
             var actorsByMode = new Dictionary<ResearchProductionMode, HashSet<UnitData>>();
-            foreach (ResearchProductionMode mode in new[]
-                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
-            {
-                if (!building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
-                    continue;
-                actorsByMode[mode] = new HashSet<UnitData>(
-                    ResearchProductionSystem.FindActors(player, hex, mode));
-            }
+            foreach (ResearchProductionMode mode in AiArmyRoles.FacilityModes(player, hex))
+                actorsByMode[mode] = new HashSet<UnitData>(ResearchProductionSystem.FindActors(player, hex, mode));
             if (actorsByMode.Count == 0)
                 return;
 
@@ -361,7 +351,7 @@ namespace Game.Ai.V2
                 return ReorgPhysicalRole.Garrison;
             if (army.IsPrison)
                 return ReorgPhysicalRole.SpecialExcludedContainer;
-            if (army.IsCarrierContainer || AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
+            if (AviationRules.IsAviationContainer(army))
                 return ReorgPhysicalRole.Aviation;
             ArmyMutationContract protection = MissionActorPolicy.PhysicalMutationContract(player, turn, army, commitments);
             if (protection != null && !protection.ProtectsSoloRole)

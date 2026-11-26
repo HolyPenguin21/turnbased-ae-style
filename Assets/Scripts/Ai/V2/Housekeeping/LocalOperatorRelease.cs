@@ -41,22 +41,6 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // The hero is the only qualified operator left on its facility's hex for some served mode
-        // (wherever it stands now): moving it anywhere but the local garrison would risk the site.
-        internal static bool IsSoleOperator(PlayerSetupData player, HexCoord hex, UnitData hero)
-        {
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building == null || building.Owner != player)
-                return false;
-            foreach (ResearchProductionMode mode in new[]
-                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
-                if (building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
-                    && hero.HasAbility(ResearchProductionSystem.RoleAbility(mode))
-                    && !ResearchProductionSystem.FindActors(player, hex, mode).Any(a => a != hero))
-                    return true;
-            return false;
-        }
-
         // The heroes whose departure with `army` would leave a served duty without an operator.
         internal static List<UnitData> OperatorsNeededHome(PlayerSetupData player, ArmyData army,
             System.Func<ResearchProductionMode, HexCoord?> preparationSite) =>

@@ -372,13 +372,23 @@ namespace Game.Map
         // The Capacity rule as a pure function of a (candidate) member list, rather than always
         // reading this instance's own Members — lets a caller ask "what would capacity become
         // if the roster looked like THIS" before actually committing to an order.
-        public static int ComputeCapacity(IEnumerable<UnitData> members, bool isGarrison)
+        public static int ComputeCapacity(IEnumerable<UnitData> members, bool isGarrison) =>
+            ComputeCapacity(members, isGarrison, m => m != null && m.IsHero, m => m.CommandRating);
+
+        // The same rule over any member model (a planner's projection of a roster): the first hero
+        // in list order commands.
+        public static int ComputeCapacity<T>(IEnumerable<T> members, bool isGarrison,
+            System.Func<T, bool> isHero, System.Func<T, int> commandRating)
         {
             int nominalCapacity = isGarrison ? GarrisonBaseCapacity : BaseCapacity;
-            UnitData commander = CommanderOf(members);
+            bool found = false;
+            T commander = default;
+            if (members != null)
+                foreach (T member in members)
+                    if (isHero(member)) { commander = member; found = true; break; }
             return ComputeProjectedCapacity(nominalCapacity, hasExistingHero: false,
-                addedHeroCount: commander != null ? 1 : 0,
-                firstAddedHeroCommandRating: commander != null ? commander.CommandRating : 0);
+                addedHeroCount: found ? 1 : 0,
+                firstAddedHeroCommandRating: found ? commandRating(commander) : 0);
         }
 
         // Canonical capacity projection for BOTH live gameplay and read-only planning. A capacity
@@ -494,22 +504,31 @@ namespace Game.Map
                 NormalizeGarrisonOrder();
                 return;
             }
-            int index = unit.IsHero ? Members.Count(m => m.IsHero) : Members.Count;
-            members.Insert(index, unit);
+            members.Insert(SortedInsertIndex(Members, unit.IsHero, m => m.IsHero), unit);
         }
+
+        // Where AddMemberSorted puts a newcomer in a FIELD army: a hero right after the heroes
+        // already there, any other unit at the end. Over any member model.
+        public static int SortedInsertIndex<T>(IEnumerable<T> roster, bool incomingIsHero, System.Func<T, bool> isHero) =>
+            incomingIsHero ? roster.Count(isHero) : roster.Count();
 
         // Canonical garrison order: heroes first, stable by descending CommandRating, an equal
         // rating led by the higher Fate (2026-11-25, owner: the commander's Fate is the battle's;
         // a full tie keeps the relative order), then ordinary units in their existing order. A
         // pure function of the list — never touches live Members.
-        public static List<UnitData> NormalizeRoster(IEnumerable<UnitData> members)
+        public static List<UnitData> NormalizeRoster(IEnumerable<UnitData> members) =>
+            NormalizeRoster(members, m => m != null && m.IsHero, h => h.CommandRating, h => h.Fate);
+
+        // The same order over any member model (a planner's projection of a roster).
+        public static List<T> NormalizeRoster<T>(IEnumerable<T> members, System.Func<T, bool> isHero,
+            System.Func<T, int> commandRating, System.Func<T, int> fate)
         {
-            var heroes = new List<UnitData>();
-            var rest = new List<UnitData>();
+            var heroes = new List<T>();
+            var rest = new List<T>();
             if (members != null)
-                foreach (UnitData m in members)
-                    (m != null && m.IsHero ? heroes : rest).Add(m);
-            var ordered = heroes.OrderByDescending(h => h.CommandRating).ThenByDescending(h => h.Fate).ToList();
+                foreach (T m in members)
+                    (isHero(m) ? heroes : rest).Add(m);
+            var ordered = heroes.OrderByDescending(commandRating).ThenByDescending(fate).ToList();
             ordered.AddRange(rest);
             return ordered;
         }
@@ -524,8 +543,7 @@ namespace Game.Map
                 list.Add(unit);
                 return NormalizeRoster(list);
             }
-            int index = unit != null && unit.IsHero ? list.Count(m => m != null && m.IsHero) : list.Count;
-            list.Insert(index, unit);
+            list.Insert(SortedInsertIndex(list, unit != null && unit.IsHero, m => m != null && m.IsHero), unit);
             return list;
         }
 

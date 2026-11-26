@@ -38,6 +38,8 @@ namespace Game.Ai.V2
             int turn = ctx.TurnNumber;
 
             var movedUnits = new HashSet<UnitData>();
+            var containers = (analysis.Groups ?? System.Array.Empty<LocalForceGroup>())
+                .SelectMany(g => g.Containers).ToDictionary(c => c.ArmyId);
 
             for (int operationIndex = 0; operationIndex < plan.Transfers.Count; operationIndex++)
             {
@@ -170,7 +172,8 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                if (!PreflightTransfer(player, turn, from, to, unit, commitments, movedUnits, out string transferWhy))
+                containers.TryGetValue(t.ToArmyId, out ReorgContainer toMeta);
+                if (!PreflightTransfer(player, turn, from, to, toMeta, unit, commitments, movedUnits, out string transferWhy))
                 {
                     Fail(res, plan, $"preflight rejected {unit.Name} #{from.Id}->#{to.Id} ({transferWhy})");
                     break;
@@ -212,8 +215,7 @@ namespace Game.Ai.V2
             if (!ArmyRegistry.AllForOwner(player).Contains(a) || !ArmyRegistry.AllForOwner(player).Contains(b))
             { why = "container no longer registered"; return false; }
             if (a.IsPrison || b.IsPrison) { why = "prison container"; return false; }
-            if (a.IsCarrierContainer || b.IsCarrierContainer || AviationRules.IsAirfield(a) || AviationRules.IsAirArmy(a)
-                || AviationRules.IsAirfield(b) || AviationRules.IsAirArmy(b))
+            if (AviationRules.IsAviationContainer(a) || AviationRules.IsAviationContainer(b))
             { why = "aviation container"; return false; }
             ArmyMutationContract giver = ArmyReorgAnalyzer.MutationContractFor(player, turn, a, commitments);
             ArmyMutationContract receiver = ArmyReorgAnalyzer.MutationContractFor(player, turn, b, commitments);
@@ -222,7 +224,7 @@ namespace Game.Ai.V2
             bool heroRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
                 && released != null && released.IsHero && released != a.Commander && receiver == null
                 && (!StrategicEffectRegistry.IsArmySupportCarrier(released)
-                    || LocalOperatorRelease.IsSoleOperator(player, a.Hex, released));
+                    || AiArmyRoles.IsSoleFacilityOperator(player, a.Hex, released));
             // 2026-10-01 — and a body its frozen target roster does not contain (the planner chose
             // it for a missing position's source; ReorgViability.PreparationRosterWaste).
             bool bodyRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
@@ -230,7 +232,7 @@ namespace Game.Ai.V2
             if (giver != null && !heroRelease && !bodyRelease && !rosterExchange)
             { why = "source is mission-claimed"; return false; }
             // A facility operator of a protected host may only stay home: the one local-garrison rule.
-            if (giver != null && heroRelease && LocalOperatorRelease.IsSoleOperator(player, a.Hex, released)
+            if (giver != null && heroRelease && AiArmyRoles.IsSoleFacilityOperator(player, a.Hex, released)
                 && !LocalOperatorRelease.MayLeaveForLocalGarrison(player, a, released, b, out why))
                 return false;
             if (receiver != null && (!inboundOnly || !receiver.MayReceive))
@@ -281,8 +283,10 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // `toMeta` — the destination as the Analyzer classified it (null when unknown).
         private static bool PreflightTransfer(PlayerSetupData player, int turn, ArmyData from, ArmyData to,
-            UnitData unit, ActorCommitments commitments, HashSet<UnitData> movedUnits, out string why)
+            ReorgContainer toMeta, UnitData unit, ActorCommitments commitments, HashSet<UnitData> movedUnits,
+            out string why)
         {
             if (!CommonPreflight(player, turn, from, to, commitments, out why, released: unit))
                 return false;
@@ -302,7 +306,8 @@ namespace Game.Ai.V2
             if (!from.CanLeaveWithoutOvercrowding(unit)) { why = "source would overcrowd"; return false; }
             if (!KeepsOperationMovement(player, turn, to, new[] { unit }, commitments, out why))
                 return false;
-            if (from.IsGarrison && IsHexBench(player, turn, to, unit, commitments))
+            if (from.IsGarrison && unit.IsHero && ReorgViability.IsBenchContainer(toMeta)
+                && to.Members.All(m => m.IsHero))
             {
                 // The hero stays on its facility's hex (ReorgViability.IsHexBench): only the
                 // garrison's "never the literal last member" rule applies.
@@ -312,15 +317,6 @@ namespace Game.Ai.V2
             { why = "garrison safety floor"; return false; }
             return true;
         }
-
-        // Live twin of ReorgViability.IsHexBench: a hero joins a free ground field container on the
-        // same hex (CommonPreflight) that holds heroes only — it keeps serving that hex.
-        private static bool IsHexBench(PlayerSetupData player, int turn, ArmyData to, UnitData unit,
-            ActorCommitments commitments) =>
-            unit != null && unit.IsHero && to != null && !to.IsGarrison && !to.IsPrison
-            && !to.IsCarrierContainer && !AviationRules.IsAirfield(to) && !AviationRules.IsAirArmy(to)
-            && to.Members.All(m => m != null && m.IsHero)
-            && ArmyReorgAnalyzer.MutationContractFor(player, turn, to, commitments) == null;
 
         // Live twin of the planner's TrySwap rosterExchange: `armyA` is a claimed Attack preparation
         // host whose contract releases `unitA` (a body its target roster does not contain) and

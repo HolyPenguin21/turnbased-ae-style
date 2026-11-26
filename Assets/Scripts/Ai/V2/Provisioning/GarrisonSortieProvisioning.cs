@@ -100,7 +100,7 @@ namespace Game.Ai.V2
             { why = "planned bodies left the garrison or died"; return false; }
             if (shell != null && (shell.Owner != player || !shell.Hex.Equals(donor.Hex)
                 || shell.Members.Count != 0 || shell.HasActivatedThisTurn || shell.IsGarrison || shell.IsPrison
-                || shell.IsCarrierContainer || AviationRules.IsAirfield(shell) || AviationRules.IsAirArmy(shell)
+                || AviationRules.IsAviationContainer(shell)
                 || commitments != null && !ReusableArmySelector.IsReusableShell(shell, player, commitments)))
             { why = "shell no longer an empty free container"; return false; }
             if (!AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))

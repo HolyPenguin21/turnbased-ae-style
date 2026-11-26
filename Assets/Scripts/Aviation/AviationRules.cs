@@ -27,6 +27,9 @@ namespace Game.Aviation
         public static bool IsAirArmy(ArmyData army) => army != null && !army.IsAirfield && !army.IsGarrison
             && !army.IsPrison && army.Members.Count > 0 && army.Members.All(unit => unit.IsAviation);
         public static bool IsAirfield(ArmyData army) => army != null && army.IsAirfield;
+        // Any container of the air layer: an airfield, a carrier's flight deck or an air wing.
+        public static bool IsAviationContainer(ArmyData army) =>
+            army != null && (army.IsCarrierContainer || IsAirfield(army) || IsAirArmy(army));
 
         public static IEnumerable<ArmyData> AirfieldsAt(HexCoord hex, PlayerSetupData owner) =>
             ArmyRegistry.AllAt(hex).Where(a => a.IsAirfield && a.Owner == owner)
