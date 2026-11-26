@@ -475,12 +475,6 @@ namespace Game.Map
             return building;
         }
 
-        public static InfrastructureBuildOutcome TryBuildExtractionSite(HexSelectionController hexSelection,
-            CardDefinition facilityDefinition, HexCoord hex, PlayerSetupData owner)
-            => TryBuildExtractionSiteOnMap(hexSelection?.Map, hexSelection?.ExtractionConfig,
-                facilityDefinition, hex, owner, hexSelection == null ? null : hexSelection.BindExtractionVisual,
-                hexSelection == null ? null : () => hexSelection.RestackArmiesOn(hex, null));
-
         public static bool CanBuildExtractionSite(HexMap map, IExtractionSiteRules config, CardDefinition definition,
             HexCoord hex, PlayerSetupData owner, out PaymentQuote quote, out string reason,
             bool requireCurrentBudget = true)
@@ -561,7 +555,7 @@ namespace Game.Map
         private static bool IsOwnedHeroArmy(ArmyData army, PlayerSetupData player)
             => army.Owner == player && army.Members.Exists(member => member != null && member.IsHero);
 
-        private static void ApplyExtractionBuilderConsequences(ArmyData actingHeroArmy)
+        internal static void ApplyExtractionBuilderConsequences(ArmyData actingHeroArmy)
         {
             if (actingHeroArmy == null)
                 return;

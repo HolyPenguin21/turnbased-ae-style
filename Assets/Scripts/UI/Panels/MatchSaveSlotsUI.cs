@@ -58,7 +58,6 @@ namespace Game.UI
             UIFocusUtility.SetModal(this, gameObject, ModalBlock.Full, cancel);
             try { ReloadSlots(); Draw(); }
             catch (Exception ex) { slots.Clear(); Draw(); status.text = "Could not read save slots: " + ex.Message; }
-            cancel.Select();
             return true;
         }
         private bool HasBindings() => title != null && description != null && status != null && actionText != null
@@ -158,7 +157,6 @@ namespace Game.UI
             if (deleting < 0) return;
             deleting = -1; deleteConfirmation.SetActive(false);
             UIFocusUtility.SetNestedModal(this, null);
-            deleteButton.Select();
         }
         private void ConfirmDelete()
         {
@@ -228,9 +226,9 @@ namespace Game.UI
             bool wasShowing = IsShowing;
             IsShowing = false; selected = deleting = -1; overwriteArmed = false;
             if (!wasShowing) return;
+            Closed?.Invoke();
             UIFocusUtility.SetNestedModal(this, null);
             UIFocusUtility.SetModal(this, null);
-            Closed?.Invoke();
         }
     }
 }

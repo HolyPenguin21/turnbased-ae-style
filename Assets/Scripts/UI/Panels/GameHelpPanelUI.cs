@@ -36,7 +36,9 @@ namespace Game.UI
             && topicsScroll != null && topicsScroll.content != null && articleScroll != null
             && articleScroll.content != null;
 
-        public void Show()
+        public void Show() => Show(null);
+
+        internal void Show(Transform sceneControls)
         {
             if (!HasBindings) return;
             gameObject.SetActive(true);
@@ -44,7 +46,7 @@ namespace Game.UI
             RefreshLocalizedText();
             if (selectedIndex < 0 && topics.Count > 0) SelectTopic(0);
             else RebuildArticle();
-            UIFocusUtility.SetModal(this, gameObject, ModalBlock.Full, closeButton);
+            UIFocusUtility.SetModal(this, gameObject, ModalBlock.Full, closeButton, sceneControls);
         }
 
         // The future locale service supplies a key lookup and calls this when language changes.

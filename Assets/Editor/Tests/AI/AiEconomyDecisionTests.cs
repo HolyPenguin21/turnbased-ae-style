@@ -2430,7 +2430,7 @@ namespace Game.EditorTests
             escort.IsHidden = true;
             army.Members.AddRange(new[] { hero, escort });
 
-            HexSelectionController.ApplyExtractionBuilderConsequences(army);
+            InfrastructureActions.ApplyExtractionBuilderConsequences(army);
 
             Assert.That(hero.MoveCurrent, Is.Zero);
             Assert.That(escort.MoveCurrent, Is.Zero);

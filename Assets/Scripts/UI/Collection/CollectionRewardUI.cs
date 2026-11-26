@@ -136,7 +136,7 @@ namespace Game.UI
                 cell.Preview.SetupPreview(card, config,
                     selectedCard => CollectionMessageUI.ShowReward(CollectionCardDetail.Describe(selectedCard, config, ProgressionContext.Collection.Owned(key))),
                     () => !CollectionMessageUI.IsShowing);
-                cell.DetailsButton.GetComponentInChildren<TMP_Text>().text = card?.displayName ?? key;
+                cell.DetailsLabel.text = card?.displayName ?? key;
                 cell.DetailsButton.onClick.AddListener(() => CollectionMessageUI.ShowReward(
                     CollectionCardDetail.Describe(card, config, ProgressionContext.Collection.Owned(key))));
                 cell.ChooseButton.gameObject.SetActive(!reward.Claimed);
@@ -157,7 +157,7 @@ namespace Game.UI
             }
             view.Status.text = string.IsNullOrEmpty(state.Error) ? notice : state.Error;
             var button = view.PrimaryButton;
-            button.GetComponentInChildren<TMP_Text>().text = reward.Claimed ? "CONTINUE" : "CONFIRM REWARDS";
+            view.PrimaryLabel.text = reward.Claimed ? "CONTINUE" : "CONFIRM REWARDS";
             button.interactable = reward.Claimed || selection.Count == required;
             if (!reward.Claimed)
             {
@@ -167,9 +167,7 @@ namespace Game.UI
                     displayed.Claim(reward.MatchId, selection);
                     Draw();
                 });
-                if (focusedChoice != null) focusedChoice.Select();
-                else if (firstChoice != null) firstChoice.Select();
-                else button.Select();
+                if (UIFocusUtility.IsTop(this)) (focusedChoice ?? firstChoice ?? button).Select();
             }
             else
             {
@@ -179,7 +177,7 @@ namespace Game.UI
                     displayed.Dismiss(reward.MatchId);
                     Draw();
                 });
-                button.Select();
+                if (UIFocusUtility.IsTop(this)) button.Select();
             }
         }
         private void DrawSaveError(string message, Action retry)
@@ -190,10 +188,10 @@ namespace Game.UI
             view.Status.gameObject.SetActive(false);
             view.BodyRoot.SetActive(true);
             view.Body.text = message;
-            view.PrimaryButton.GetComponentInChildren<TMP_Text>().text = "RETRY";
+            view.PrimaryLabel.text = "RETRY";
             view.PrimaryButton.interactable = true;
             view.PrimaryButton.onClick.AddListener(() => retry());
-            view.PrimaryButton.Select();
+            if (UIFocusUtility.IsTop(this)) view.PrimaryButton.Select();
         }
         private void CompletePresentation(MatchResultStage stage)
         {

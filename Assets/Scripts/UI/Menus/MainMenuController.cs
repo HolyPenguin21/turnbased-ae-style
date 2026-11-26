@@ -239,8 +239,8 @@ namespace Game.UI
 
         public void OnSettingsClosed()
         {
-            if (settingsPanel != null) settingsPanel.SetActive(false);
             if (mainMenuPanel != null) mainMenuPanel.SetActive(true);
+            if (settingsPanel != null) settingsPanel.SetActive(false);
             RefreshContinue();
             if (settingsButton != null) settingsButton.Select();
         }

@@ -137,7 +137,7 @@ namespace Game.Map
                 building.Visual = CreateBuildingMarker(building.Hex, building.Owner, catalog.basePrefab, catalog.citadelIcon);
         }
         internal GameConfig ExtractionConfig => gameConfig;
-        internal void BindExtractionVisual(BuildingData building)
+        private void BindExtractionVisual(BuildingData building)
         {
             FactionCardCatalog catalog = cardHandUI?.StartingDeckCatalog?.GetCatalog(building.Owner.Faction);
             if (gameConfig?.facilityMarkerPrefab != null)
@@ -170,10 +170,13 @@ namespace Game.Map
                 AiDebugLog.Write($"[AI] {owner?.Nickname ?? "Neutral"}: extraction build rejected - {message}");
         }
 
+        internal InfrastructureBuildOutcome BuildExtractionSite(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
+            => InfrastructureActions.TryBuildExtractionSiteOnMap(Map, ExtractionConfig, definition, hex, owner,
+                BindExtractionVisual, () => RestackArmiesOn(hex, null));
+
         public bool TryBuildExtractionFacility(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
-            var result = InfrastructureActions.TryBuildExtractionSiteOnMap(Map, ExtractionConfig, definition, hex, owner,
-                BindExtractionVisual, () => RestackArmiesOn(hex, null));
+            var result = BuildExtractionSite(definition, hex, owner);
             if (!result.Ok) NotifyBuildBlocked(owner, result.FailReason);
             else RefreshSelectedHexIf(hex);
             return result.Ok;

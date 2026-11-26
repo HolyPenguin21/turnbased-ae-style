@@ -34,7 +34,6 @@ namespace Game.UI
             if (musicEnabledToggle != null) musicEnabledToggle.onValueChanged.AddListener(OnMusicEnabled);
             if (musicVolumeSlider != null) musicVolumeSlider.onValueChanged.AddListener(OnMusicChanged);
             Refresh();
-            if (masterVolumeSlider != null) masterVolumeSlider.Select();
         }
         private void Refresh()
         {
@@ -67,9 +66,9 @@ namespace Game.UI
         public void Close()
         {
             settings?.Save();
+            Closed?.Invoke();
             if (menuController != null) menuController.OnSettingsClosed();
             else gameObject.SetActive(false);
-            Closed?.Invoke();
         }
         private void OnDisable()
         {

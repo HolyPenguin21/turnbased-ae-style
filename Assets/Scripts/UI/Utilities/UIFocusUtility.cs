@@ -32,6 +32,8 @@ namespace Game.UI
             public Selectable DefaultFocus;
             public ModalBlock Blocks;
             public bool Nested;
+            public Transform SceneControls;
+            public List<Transform> SceneCanvases;
         }
 
         private struct GroupState
@@ -75,13 +77,13 @@ namespace Game.UI
             => SetModal(owner, showing && owner != null ? owner.gameObject : null, ModalBlock.Full);
 
         internal static void SetModal(MonoBehaviour owner, GameObject root,
-            ModalBlock blocks = ModalBlock.Decision, Selectable defaultFocus = null)
-            => SetWindow(owner, root, blocks, defaultFocus, nested: false);
+            ModalBlock blocks = ModalBlock.Decision, Selectable defaultFocus = null, Transform sceneControls = null)
+            => SetWindow(owner, root, blocks, defaultFocus, nested: false, sceneControls);
 
         internal static void SetNestedModal(MonoBehaviour owner, GameObject root, Selectable defaultFocus = null)
             => SetWindow(owner, root, ModalBlock.Full, defaultFocus, nested: true);
 
-        private static void SetWindow(MonoBehaviour owner, GameObject root, ModalBlock blocks, Selectable focus, bool nested)
+        private static void SetWindow(MonoBehaviour owner, GameObject root, ModalBlock blocks, Selectable focus, bool nested, Transform sceneControls = null)
         {
             if (ReferenceEquals(owner, null)) return;
             int index = windows.FindIndex(window => ReferenceEquals(owner, window.Owner) && window.Nested == nested);
@@ -99,7 +101,8 @@ namespace Game.UI
             windows.Add(new Window
             {
                 Owner = owner, Root = root, PreviousFocus = Selection,
-                DefaultFocus = focus, Blocks = blocks, Nested = nested
+                DefaultFocus = focus, Blocks = blocks, Nested = nested, SceneControls = sceneControls,
+                SceneCanvases = sceneControls != null ? FindSceneCanvases(sceneControls) : null
             });
             UpdateInput(restoreFocus: true, preferred: null);
         }
@@ -144,19 +147,38 @@ namespace Game.UI
             var top = Top;
             if (top != null)
                 foreach (var window in windows)
+                {
+                    if (window.SceneControls != null)
+                        foreach (var canvas in window.SceneCanvases)
+                            if (canvas != null && !canvas.IsChildOf(window.SceneControls))
+                                SuspendBranch(canvas, top.Root.transform, window.SceneControls);
                     if (window != top && !Contains(top.Root, window.Root))
                         SuspendBranch(window.Root.transform, top.Root.transform);
+                }
             InputGeneration++;
             if (restoreFocus) Focus(preferred, top);
             BlockingChanged?.Invoke();
         }
 
-        private static void SuspendBranch(Transform branch, Transform top)
+        private static List<Transform> FindSceneCanvases(Transform controls)
         {
-            if (branch == top) return;
-            if (top.IsChildOf(branch))
+            var roots = new List<Transform>();
+            foreach (var canvas in UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include))
             {
-                foreach (Transform child in branch) SuspendBranch(child, top);
+                if (canvas.gameObject.scene != controls.gameObject.scene) continue;
+                var parent = canvas.transform.parent;
+                if (parent == null || parent.GetComponentInParent<Canvas>(true) == null)
+                    roots.Add(canvas.transform);
+            }
+            return roots;
+        }
+
+        private static void SuspendBranch(Transform branch, Transform top, Transform controls = null)
+        {
+            if (branch == top || branch == controls) return;
+            if (top.IsChildOf(branch) || (controls != null && controls.IsChildOf(branch)))
+            {
+                foreach (Transform child in branch) SuspendBranch(child, top, controls);
                 return;
             }
 
@@ -209,6 +231,7 @@ namespace Game.UI
                         if (target != null) break;
                     }
             }
+            if (target == null && window == null) target = ValidFocus(events.firstSelectedGameObject, null);
             if (events.currentSelectedGameObject != target) events.SetSelectedGameObject(target);
         }
 

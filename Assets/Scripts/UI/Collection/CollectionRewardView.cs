@@ -7,7 +7,7 @@ namespace Game.UI
     // Authored presentation only. MatchResultOperation owns the reward workflow.
     public sealed class CollectionRewardView : MonoBehaviour
     {
-        [SerializeField] private TMP_Text title, subtitle, status, body;
+        [SerializeField] private TMP_Text title, subtitle, status, body, primaryLabel;
         [SerializeField] private RectTransform cardsHost;
         [SerializeField] private GameObject bodyRoot;
         [SerializeField] private Button primaryButton;
@@ -16,6 +16,7 @@ namespace Game.UI
         public TMP_Text Subtitle => subtitle;
         public TMP_Text Status => status;
         public TMP_Text Body => body;
+        public TMP_Text PrimaryLabel => primaryLabel;
         public GameObject BodyRoot => bodyRoot;
         public RectTransform CardsHost => cardsHost;
         public Button PrimaryButton => primaryButton;
