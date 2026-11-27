@@ -96,7 +96,7 @@ namespace Game.Ai.V2
             ResourceVector debit = TradeFunding.PricedVector(player, root, ctx, ResourceVector.Of(fuel));
             float energyEnvelope = funded.PhysicalDraw.Energy;
             if (realAp > apEnvelope + eps || !funded.PhysicalDraw.CoversPhysical(debit, eps))
-                // Round 7 (Problem 3) — report BOTH the real AP and the real Energy this exact air
+                // Report BOTH the real AP and the real Energy this exact air
                 // actor needs, not AP alone: an air launch's Energy shortfall must raise an Energy
                 // floor too, so ResourceAllocator's next Pack() can actually fund it, instead of
                 // repricing only the AP dimension and looping on the same Energy-starved envelope.
@@ -116,7 +116,7 @@ namespace Game.Ai.V2
                     $"spendable Energy exhausted: air actor #{moverArmyId} needs {N(realEnergy)}, "
                     + $"{N(liveEnergyLeft)} left after reservations and earlier claims this pass"));
 
-            // AI-MGR — the SINGLE strategic sortie-reservation admission. Everything above
+            // The SINGLE strategic sortie-reservation admission. Everything above
             // (CanAffordLaunch, the funded-envelope comparison, the cumulative live AP/Energy checks)
             // is HARD feasibility: "enough resources exist right now". This is the one strategic
             // question — "is THIS exact sortie worth paying for this turn versus keeping the Energy

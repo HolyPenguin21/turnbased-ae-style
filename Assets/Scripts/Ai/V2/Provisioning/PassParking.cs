@@ -34,7 +34,7 @@ namespace Game.Ai.V2
             CapabilityPoolExhaustionRegistry.CarryRetryNextTurn(player, mission);
         }
 
-        // 2026-11-09 (match P2) — an executed step that changed nothing and stopped for a
+        // An executed step that changed nothing and stopped for a
         // mover-side reason (OperationalWorkSelection.ParksIdleStep) is out of the running for
         // the rest of the turn exactly like a NoExecutableStep provisioning failure: the same
         // turn-wide deferral and the same pass set. Orchestration decides WHEN; this owns HOW.

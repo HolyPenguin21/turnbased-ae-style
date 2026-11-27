@@ -11,7 +11,7 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  ATK §40/§46/§47 — PROVISIONING FOR THE ATTACK LANE.
+    //  PROVISIONING FOR THE ATTACK LANE.
     //
     //  Every physical procedure here belongs to the shared GroundCombat kernel: the assault is the
     //  one transactional assembly (GroundCombatAssaultTransactionRunner), the convoy and walk-home
@@ -48,8 +48,8 @@ namespace Game.Ai.V2
                         target.SupportArmyId, "gather donor");
                 case AttackMissionPhase.AirSupport:
                     return ProvisionAirSupport(player, root, ctx, session, funded, target, key, eps);
-                // Audit F7 — a Gather leg is the same convoy + handoff with a pinned support.
-                // T01 — a host-side preparation step has no support; it binds / fills the host.
+                // A Gather leg is the same convoy + handoff with a pinned support.
+                // A host-side preparation step has no support; it binds / fills the host.
                 // The preparation host walking to its staging Base: the walk-home leg's validation.
                 // Already there is Blocked-class, never "satisfied" (that would end the operation).
                 case AttackMissionPhase.Gather when target.PreparationStep == AttackPreparationStep.MoveHost:
@@ -131,7 +131,7 @@ namespace Game.Ai.V2
             });
         }
 
-        // §25 — the target must still be the thing we set out to capture, answered from honest
+        // The target must still be the thing we set out to capture, answered from honest
         // memory by the one owner. "Now ours" is a satisfied objective, not a failure.
         private static ProvisioningResult ProvisionAssault(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
@@ -156,7 +156,7 @@ namespace Game.Ai.V2
             HexCoord targetHex = target.AssaultTarget.Hex;
             // Re-read the site from the CURRENT snapshot rather than trusting the proposal's frozen
             // copy: a fresh observation between planning and provisioning is exactly the kind of
-            // honest news that must reach the estimator. 2026-11-02 — the same forecast the
+            // honest news that must reach the estimator. The same forecast the
             // planner priced (AttackSupportProjection): what the assigned fist meets after the
             // committed support. An optional Base gets no air.
             ArmySnapshot mover = funded.Mission.PreferredMoverArmyId.HasValue
@@ -200,7 +200,7 @@ namespace Game.Ai.V2
             }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
         }
 
-        // T01 — a preparation host step. Re-validates the frozen decision against the live world and
+        // A preparation host step. Re-validates the frozen decision against the live world and
         // this cycle's claims, prices it (2 AP only when a container is really created, 0 for a
         // reuse or a same-hex join) and pins the exact transfers. No mutation here: the step is
         // Execution's one canonical action (AttackExecutor.RunPreparationStep).
@@ -315,7 +315,7 @@ namespace Game.Ai.V2
             });
         }
 
-        // 2026-10-01 (variant B) — the fetched commander leaves its garrison: the host still exists,
+        // The fetched commander leaves its garrison: the host still exists,
         // the hero still stands in that own garrison, is no garrison hero / operator, the garrison
         // may spare it, and the turn has the creation AP. Every refusal is Blocked-class.
         private static ProvisioningResult ProvisionFetchCommander(PlayerSetupData player, PlayerRoot root,
@@ -364,7 +364,7 @@ namespace Game.Ai.V2
             });
         }
 
-        // ATK-F05 — the priced donor purchase: the host holds, every planned support is still an own
+        // The priced donor purchase: the host holds, every planned support is still an own
         // mobile ground army that no mission used this cycle, and each one held by an operation is
         // still for sale at a price (GroundCombatDonorPolicy.BorrowableDonorValues). 0 AP; the
         // supports are claimed for the rest of the cycle so their lender cannot move them after
@@ -416,7 +416,7 @@ namespace Game.Ai.V2
             });
         }
 
-        // 2026-10-21 — the second operation materialized from a garrison: the same pinned-pair and
+        // The second operation materialized from a garrison: the same pinned-pair and
         // AP-envelope proof ActiveDefence's sortie uses (GarrisonSortieProvisioning.TryResolve)
         // with Attack's own fight test (AttackSecondaryPolicy.SortieStillTakesSite). Nothing moves
         // here; the executor's terminal step does (AttackExecutor.TryMaterializeSortie).

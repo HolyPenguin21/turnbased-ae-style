@@ -30,7 +30,7 @@ namespace Game.Ai.V2
 
         private static string Prefix(string lane) => string.IsNullOrEmpty(lane) ? "" : lane + " ";
 
-        // 2026-10-21 — the lane-neutral half of a pinned garrison sortie, shared by ActiveDefence's
+        // The lane-neutral half of a pinned garrison sortie, shared by ActiveDefence's
         // immediate intercept and Attack's second operation:
         // the pinned shell (or a canonical creation), the donor's extraction under its floor, the
         // transfer legality and the complete AP envelope. `evaluate` is the lane's own fight test

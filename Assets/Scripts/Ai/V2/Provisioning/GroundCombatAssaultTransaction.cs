@@ -11,7 +11,7 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  ATK §28/§46 — THE transactional ground-combat ASSAULT ASSEMBLY, shared by every lane that
+    //  THE transactional ground-combat ASSAULT ASSEMBLY, shared by every lane that
     //  marches a ground force onto a defended hex.
     //
     //  Moved here verbatim from RaidProvisioner, which was its only caller. Nothing in it was ever
@@ -34,7 +34,7 @@ namespace Game.Ai.V2
         // The opposition this fight is against (every defending army with its commander).
         public IReadOnlyList<WorthIt.DefendingArmy> Opposition =
             System.Array.Empty<WorthIt.DefendingArmy>();
-        // §30 — the defence the DEFENDERS enjoy where this fight will happen. 0 for open ground;
+        // The defence the DEFENDERS enjoy where this fight will happen. 0 for open ground;
         // an assault on a known Base/Citadel passes what honest memory observed.
         public float DefenderHexDefenseBonus;
         // Lane name for log lines and failure text only — never a behavioural switch.
@@ -65,7 +65,7 @@ namespace Game.Ai.V2
 
     internal static class GroundCombatAssaultTransactionRunner
     {
-        // ATK §28/§45 — the ONE "re-plan exactly the actor the batch assignment picked" rule. It
+        // The ONE "re-plan exactly the actor the batch assignment picked" rule. It
         // lived in the Raid lane only because Raid was the first lane built on the shared batch
         // solve; nothing in it is Raid-specific.
         // A single binding path for assault, used by both the real Provision method and
@@ -106,10 +106,10 @@ namespace Game.Ai.V2
                     $"attack #{actorId} awaits observation before entry: {intelWhy}");
                 return null;
             }
-            // 2026-10-16 — an Attack may take it for a decisive fight while the stronghold stays
+            // An Attack may take it for a decisive fight while the stronghold stays
             // covered (Plan below re-checks the fight: GroundCombatAssemblyPlanner.DecisiveIfPinned).
             bool attackLane = proposal.Kind == MissionKind.Attack;
-            // 2026-11-15 — an intercept of the very enemy that pins this defender is its defence
+            // An intercept of the very enemy that pins this defender is its defence
             // (the same exception the proposal-side registry and planner applied).
             int? pinIgnored = proposal.Target is ActiveDefenceMissionTarget interceptOf
                 ? interceptOf.EnemyArmyId : (int?)null;
@@ -165,7 +165,7 @@ namespace Game.Ai.V2
                     $"{lane} {key} assigned actor #{actorId} / eligible donors unavailable: {plan.Reason}");
                 return null;
             }
-            // 2026-11-13 (owner, P1) — the entry gate's Disruption half, on the roster that departs.
+            // The entry gate's Disruption half, on the roster that departs.
             if (assigned != null && proposal.Target is AttackMissionTarget entry
                 && HexGridMath.Distance(assigned.Hex, entry.AssaultTarget.Hex) <= 1 && !entry.Local.IsLocalFight
                 && !AttackObjectiveEvaluator.HasAssaultDisruption(session.Snapshot, entry.AssaultTarget,
@@ -311,7 +311,7 @@ namespace Game.Ai.V2
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible("fresh attack force fell below the current deck peak")));
 
-            // AI-01 — every check below is priced against `projectedUnits`, the roster that will
+            // Every check below is priced against `projectedUnits`, the roster that will
             // actually march, and every one of them runs BEFORE the first ArmyActions.TransferMember
             // call. Reachability too: a recruit slower than the host lowers the whole army's shared
             // movement (ArmyData.ComputeCurrentMovement), so the first step must be re-asked with
@@ -399,7 +399,7 @@ namespace Game.Ai.V2
             if (lead != null && lead != host.Commander)
                 reordered |= host.TryReorderCommander(lead, out _);
 
-            // AI-01 — the assembled force must cost exactly what was projected and funded. Any
+            // The assembled force must cost exactly what was projected and funded. Any
             // divergence is a failure, never a partial success: roll the transaction back and let
             // the existing repack/reprice loop re-decide with honest numbers.
             int actualAp = host.ProjectedActivationApCost(host.Members);

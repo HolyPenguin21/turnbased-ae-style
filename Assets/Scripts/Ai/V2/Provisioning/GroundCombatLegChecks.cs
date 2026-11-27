@@ -11,7 +11,7 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  ATK §28/§46/§47 — the two NON-assault ground-combat legs, shared by every lane.
+    //  the two NON-assault ground-combat legs, shared by every lane.
     //
     //  Walking a mover home and bringing a support convoy to a primary are physical procedures with
     //  no lane semantics at all: resolve the actor, refuse a contended one, check it can actually
@@ -34,7 +34,7 @@ namespace Game.Ai.V2
     {
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
-        // §47 — the mover walks to an ALREADY CHOSEN destination. This never re-picks the base:
+        // The mover walks to an ALREADY CHOSEN destination. This never re-picks the base:
         // Continuity owns that decision (AiReturnBasePolicy.SelectReturnBase).
         internal static GroundCombatLegCheck ValidateWalkHome(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded, StableMissionKey key,
@@ -94,7 +94,7 @@ namespace Game.Ai.V2
             return new GroundCombatLegCheck { Ok = true, Mover = mover, ActivationAp = activationAp };
         }
 
-        // §46 — the support convoy leg. `atRendezvous` tells the caller whether this step is the
+        // The support convoy leg. `atRendezvous` tells the caller whether this step is the
         // atomic same-hex roster handoff or another transit step toward the primary.
         // `meetingHex` (a committed Attack's rendezvous on the primary's route): the support walks
         // there instead of to the primary's current hex, and waits there for the primary; the
@@ -130,7 +130,7 @@ namespace Game.Ai.V2
 
             // Does the projected delivered roster actually improve the primary's odds? The SAME
             // WorthIt projection provisioning/execution will use, never a separate estimator.
-            // ATK-F04 — composition only: whether the arrival handoff strengthens the primary does
+            // Composition only: whether the arrival handoff strengthens the primary does
             // not depend on today's AP; the rendezvous step below prices and checks the charge.
             string improveWhy;
             bool improves = lane == "attack"

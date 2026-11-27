@@ -39,11 +39,11 @@ namespace Game.Ai.V2
         public HexCoord? RaidAirSupportLandingHex;
         public HexCoord RaidDestinationHex;
         public ActiveDefenceMissionTarget ActiveDefenceTarget;
-        // ATK §22 — the whole Attack leg in ONE frozen object (phase, actors, destination, site
+        // The whole Attack leg in ONE frozen object (phase, actors, destination, site
         // facts). Deliberately not a spray of Attack* fields beside it: the mission target struct
         // already is the lane's transport, so Execution reads the same object Provisioning wrote.
         public AttackMissionTarget AttackTarget;
-        // T01 — a host-side preparation step (AttackTarget.PreparationStep): the exact same-hex
+        // A host-side preparation step (AttackTarget.PreparationStep): the exact same-hex
         // transfers Provisioning validated against its claims (null when a creation has no first
         // member / a reuse only binds the shell). Execution applies precisely these; it never
         // re-plans. MoverArmyId is -1 while the container does not exist yet (CreateHost).
@@ -92,7 +92,7 @@ namespace Game.Ai.V2
         // provisioned missions may coexist; the future selected-only loop executes immediately
         // and can require this version to still be current before issuing a gameplay command.
         public int PlannedAtStateVersion = -1;
-        // AI-RECON-02 — this Scout mission's requirement is a stealthy one (StealthRequirement.
+        // This Scout mission's requirement is a stealthy one (StealthRequirement.
         // Required OR a non-zero DetectionRisk). Flows Requirement -> Mission -> Intent so the
         // durable ScoutIntent knows an active lane is a stealth lane a generic scout can't cover.
         public bool RequiresStealth;

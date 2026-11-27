@@ -19,7 +19,7 @@ namespace Game.Ai.V2
     {
         public readonly ProvisionFailureKind Kind;
         public readonly ProvisionDisposition Disposition;
-        // Round 7 (Problem 3) — the GENERIC multi-resource envelope this failure reports as needed.
+        // The GENERIC multi-resource envelope this failure reports as needed.
         // Only meaningful for EnvelopeTooSmall/RepriceThisTurn; every other constructor leaves it at
         // ProvisionRequirement.Zero. RequiredAp is kept as a read-only convenience projection for
         // existing AP-only call sites/log lines — it is never the underlying storage any more.

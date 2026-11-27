@@ -29,7 +29,7 @@ namespace Game.Ai.V2
             new Dictionary<StableMissionKey, ProvisionedMission>();
         private readonly Dictionary<StableMissionKey, ScoutExecutionCandidate> _assignment =
             new Dictionary<StableMissionKey, ScoutExecutionCandidate>();
-        // Round 3 (Problem 2) — the rejection reason ReconAssignmentPlanner.AssignFunded already
+        // The rejection reason ReconAssignmentPlanner.AssignFunded already
         // computed for every Scout mission that got no actor this pass. ClassifyNoAssignment below
         // is now a pure translation of this into a ProvisionFailure — it never re-derives it.
         private readonly Dictionary<StableMissionKey, ScoutAssignmentFailureReason> _assignmentRejections =
@@ -38,9 +38,8 @@ namespace Game.Ai.V2
             new Dictionary<StableMissionKey, int>();
         // The SAME ownership constraints used for the single ground-combat batch assignment must
         // survive into the per-leg provisioners (including their same-hex donors). Refreshed on
-        // every repack. ATK §44 — this store is the ONE ground-combat actor assignment for every
-        // lane that fights on the ground (Raid, ActiveDefence and, from ATK, Attack); it was named
-        // after Raid only because Raid happened to be the first lane built on it.
+        // every repack. This store is the one ground-combat actor assignment of every lane that
+        // fights on the ground (Raid, ActiveDefence, Attack).
         private ActorCommitments _groundCombatDurableCommitments;
         private HashSet<int> _groundCombatPinnedByOtherLegs = new HashSet<int>();
         // Read-only funded lifecycle proposals for joint feasibility, not another claim store.

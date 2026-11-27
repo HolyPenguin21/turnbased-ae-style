@@ -233,7 +233,7 @@ namespace Game.Ai.V2
                         "regroup_no_longer_needed"));
                 }
             }
-            // RecoveryWalk (2026-11-25, owner variant 2) — the superseded Attack walk home owes no
+            // RecoveryWalk: the superseded Attack walk home owes no
             // threat to the army itself: the own Base checked above is its only condition.
             else if (target.ReturnPurpose != ActiveDefenceReturnPurpose.RecoveryWalk)
             {
@@ -336,7 +336,7 @@ namespace Game.Ai.V2
             });
         }
 
-        // Muster (2026-11-19). A Detach is the GarrisonRelief extraction (same pinned donor, bodies
+        // Muster. A Detach is the GarrisonRelief extraction (same pinned donor, bodies
         // and empty shell, same live check); an Intake moves the staging garrison's pinned units
         // straight into the fist on the same hex (TryResolveMusterIntake, zero AP); a Walk is a
         // plain Return of a free army to the staging Base.

@@ -445,7 +445,7 @@ namespace Game.Ai.V2
                     EconomySiteValue = target.BuildValue,
                     // The admitted mission's canonical TaskScore — the intent's IntrinsicValue.
                     // Without it the handoff recorded 0 (not "unknown"), and a later turn with no
-                    // refreshed demand priced the durable build at zero (Economy audit B9).
+                    // refreshed demand priced the durable build at zero.
                     Value = m.BaseValue,
                 }, hero.Id, ctx.TurnNumber);
                 if (delivery == null)

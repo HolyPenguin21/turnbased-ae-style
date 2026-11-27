@@ -107,7 +107,7 @@ namespace Game.Ai.V2
                 targetIsNeutral = sighting.Value.Owner != null && sighting.Value.Owner.IsNeutral;
             }
 
-            // ATK §28/§46 — the transactional assault assembly is the SHARED ground-combat
+            // The transactional assault assembly is the SHARED ground-combat
             // primitive (GroundCombatAssaultTransactionRunner). This lane supplies only which fight
             // it is; it owns no assembly, no estimator and no transaction of its own.
             GroundCombatAssaultOutcome assault = GroundCombatAssaultTransactionRunner.Run(
@@ -207,7 +207,7 @@ namespace Game.Ai.V2
             string roleLabel = phase == RaidMissionPhase.SupportReturn ? "support"
                 : phase == RaidMissionPhase.RecoveryReturn ? "recovery primary" : "primary";
             HexCoord home = target.DestinationHex;
-            // ATK §28 — the walk-home checks are the shared ground-combat leg primitive.
+            // The walk-home checks are the shared ground-combat leg primitive.
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateWalkHome(player, root, ctx,
                 session, funded, key, eps, moverArmyId, home, "raid", roleLabel);
             if (!check.Ok)
@@ -277,7 +277,7 @@ namespace Game.Ai.V2
             HexCoord rendezvous = primary.Hex;
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
                 KnownOpposition.ForRaid(session.Snapshot, target.Target);
-            // ATK §28/§46 — the convoy checks are the shared ground-combat leg primitive.
+            // The convoy checks are the shared ground-combat leg primitive.
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition,
                 KnownOpposition.RaidDefenceBonus(session.Snapshot, target.Target), "raid",
@@ -314,10 +314,6 @@ namespace Game.Ai.V2
                 ClaimedAp = activationAp,
             });
         }
-
-        // Was a duplicate of GroundCombatFeasibility.Clears — with a stale hardcoded win-chance
-        // threshold and no `cover` output — now calls that shared, parameterized implementation
-        // directly at the one call site above.
 
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }

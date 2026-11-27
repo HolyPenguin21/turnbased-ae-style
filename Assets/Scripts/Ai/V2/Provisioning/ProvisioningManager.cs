@@ -55,7 +55,7 @@ namespace Game.Ai.V2
         // Delegates the actual actor<->job matching to ReconAssignmentPlanner (the ONE canonical
         // Assignment owner, spec Level 5) — ProvisioningManager only collects the open FUNDED Scout
         // missions, hands them over, and stores the result. Only funded missions ever reach here:
-        // there is no pre-funding reservation state to reconcile against any more. Round 4 — `root`
+        // there is no pre-funding reservation state to reconcile against any more. `root`
         // is now threaded through so AssignFunded can size/probe the air-actor pool (Energy/AP gates)
         // the same way ReconAirReservationPrepass already does for capacity sizing.
         private static void PrepareScoutAssignments(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
@@ -393,7 +393,7 @@ namespace Game.Ai.V2
                         $"refresh focus ({focus.Q},{focus.R}) is already visible again"));
                 if (!executionHex.Equals(focus))
                 {
-                    // Recon audit B2 — a vantage Refresh (the Attack observation need on a known
+                    // A vantage Refresh (the Attack observation need on a known
                     // hostile site): its defenders are the point of the look, never a reason to
                     // cancel it. The vantage gets the same live safety checks.
                     if (HexGridMath.Distance(executionHex, focus) > exec.Army.EffectiveVisionRadius)
@@ -417,7 +417,7 @@ namespace Game.Ai.V2
                         $"focus ({focus.Q},{focus.R}) now holds a known army"));
             }
 
-            // Task 2 — preflight approach + AP purely off PRE-mutation data: the real mover for a
+            // Preflight approach + AP purely off PRE-mutation data: the real mover for a
             // normal candidate, or the not-yet-extracted unit's own stats/hex for a garrison one
             // (the exact same coordinate-based primitive BuildCandidates already used to admit this
             // candidate — see ReconAssignmentPlanner.BuildCandidates' garrison-extraction branch).
@@ -451,7 +451,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: need {N(realNeed)}, {N(turnApLeft)} left after earlier claims"));
 
-            // Task 2 — COMMIT. Only now, after every check above ran on pre-mutation data, does the
+            // COMMIT. Only now, after every check above ran on pre-mutation data, does the
             // garrison Recce actually leave. `extractedUnit` tracks the EXACT UnitData that moved so
             // FailAfterRecce can send that same unit back rather than re-deriving "the" Recce from
             // the shell's roster (a Host-style shared container could, in principle, hold more than
@@ -487,7 +487,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(failure, stateChanged);
             }
 
-            // Task 2 — the one genuine post-commit check TransferMember's own validation does not
+            // The one genuine post-commit check TransferMember's own validation does not
             // already cover end-to-end: the resulting shell must actually BE a usable solo Recce. A
             // real (non-garrison) mover repeats the same cheap structural predicate already proven
             // above (harmless — nothing mutated it in between); a freshly extracted garrison Recce
@@ -516,7 +516,7 @@ namespace Game.Ai.V2
             }, extractedUnit != null ? 1 : 0);
         }
 
-        // Round 3 (Problem 2) — PURE translation of ReconAssignmentPlanner.AssignFunded's already-
+        // PURE translation of ReconAssignmentPlanner.AssignFunded's already-
         // computed rejection reason into a ProvisionFailure. No eligibility / route / vantage
         // re-derivation happens here any more — "why couldn't this job be assigned" has exactly ONE
         // owner, ReconAssignmentPlanner, and this is just its vocabulary mapped onto Provisioning's.
