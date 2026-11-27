@@ -70,6 +70,9 @@ namespace Game.EditorTests
     internal sealed class TurnStandCase : IDisposable
     {
         internal const string CatalogPath = "Assets/Cards/StartingDeckCatalog.asset";
+        private const string GameConfigPath = "Assets/Config/GameConfig.asset";
+        private const string ResearchProductionPath = "Assets/Cards/ResearchProductionCatalog.asset";
+        private const string GameScenePath = "Assets/Scenes/Game.unity";
         internal const int TurnNumber = 1;
 
         internal readonly List<string> Lines = new List<string>();
@@ -143,6 +146,10 @@ namespace Game.EditorTests
                         hexes[new HexCoord(q, r)] = new Game.Terrain.TerrainTypeEntry
                             { terrainName = "Plains", moveCost = 1 };
             map.SetData(radius, 1f, hexes);
+            // The match's own world configuration (vision rules, map observation, stealth terrain,
+            // AI memory bound to the map), as a launched match runs it.
+            var config = UnityEditor.AssetDatabase.LoadAssetAtPath<Game.Core.GameConfig>(GameConfigPath);
+            Game.Setup.MatchSceneAssembly.ConfigureWorld(config, map);
             if (_play)
             {
                 var selectionObject = new GameObject("turn stand selection");
@@ -162,7 +169,6 @@ namespace Game.EditorTests
             NewRoot(Foe);
             Citadel(catalog, Me, new HexCoord(0, 0));
             Citadel(catalog, Foe, new HexCoord(6, 0));
-            AiMapMemory.EnsureSubscribed();
 
             List<CardDefinition> ownCards = Cards(catalog, own);
             List<CardDefinition> foeCards = Cards(catalog, foeDeck);
@@ -218,10 +224,16 @@ namespace Game.EditorTests
                              ResourceType.Materials, ResourceType.Tech })
                     Root.AddResource(type, 34);
 
+            // The context AiTurnContext.From builds in a match: the scene hand's draw price, start
+            // size and capacity, the game config and the Research/Production catalog.
+            SceneHand sceneHand = SceneHand.Read();
             Ctx = new AiTurnContext
             {
-                Map = map, StartingDeckCatalog = catalog, StartingHandSize = 5, HandCapacity = 10,
-                TurnNumber = TurnNumber, StepDelay = 0f, HexSelection = _selection,
+                Map = map, StartingDeckCatalog = catalog, StartingHandSize = sceneHand.StartingSize,
+                DrawApCost = sceneHand.DrawApCost, HandCapacity = sceneHand.Capacity,
+                GameConfig = config, TurnNumber = TurnNumber, StepDelay = 0f, HexSelection = _selection,
+                ResearchProductionCatalog = UnityEditor.AssetDatabase
+                    .LoadAssetAtPath<ResearchProductionCatalog>(ResearchProductionPath),
             };
             Hand = AiHandRegistry.GetOrCreate(Me, catalog, Ctx.StartingHandSize, Ctx.HandCapacity);
             Hand.SetCurrentTurn(TurnNumber);
@@ -303,6 +315,35 @@ namespace Game.EditorTests
             if (scenario == TurnScenario.PendingContactFar)
                 StrategicInterruptRegistry.MarkDiscovery(Me, TurnNumber, seen.Select(a => a.Id));
             return true;
+        }
+
+        // The values the match's CardHandUI hands AiTurnContext.From: its serialized draw price and
+        // capacity in the Game scene, and its start size constant.
+        private readonly struct SceneHand
+        {
+            internal readonly int DrawApCost, Capacity, StartingSize;
+            private SceneHand(int draw, int capacity, int start) { DrawApCost = draw; Capacity = capacity; StartingSize = start; }
+
+            internal static SceneHand Read()
+            {
+                string scriptGuid = UnityEditor.AssetDatabase.FindAssets("CardHandUI t:MonoScript")
+                    .Select(UnityEditor.AssetDatabase.GUIDToAssetPath)
+                    .Where(p => p.EndsWith("/CardHandUI.cs", StringComparison.Ordinal))
+                    .Select(UnityEditor.AssetDatabase.AssetPathToGUID).Single();
+                string[] lines = File.ReadAllLines(GameScenePath);
+                int at = Array.FindIndex(lines, l => l.Contains("guid: " + scriptGuid));
+                Assert.That(at, Is.GreaterThanOrEqualTo(0), "the Game scene has no CardHandUI");
+                int Field(string name)
+                {
+                    for (int i = at; i < lines.Length && !lines[i].StartsWith("---", StringComparison.Ordinal); i++)
+                        if (lines[i].TrimStart().StartsWith(name + ":", StringComparison.Ordinal))
+                            return int.Parse(lines[i].Split(':')[1].Trim());
+                    throw new InvalidOperationException("CardHandUI." + name + " not serialized in the Game scene");
+                }
+                int start = (int)typeof(Game.UI.CardHandUI).GetField("startingHandSize",
+                    BindingFlags.NonPublic | BindingFlags.Static).GetRawConstantValue();
+                return new SceneHand(Field("drawApCost"), Field("maxHandSize"), start);
+            }
         }
 
         private PlayerRoot NewRoot(PlayerSetupData player)
