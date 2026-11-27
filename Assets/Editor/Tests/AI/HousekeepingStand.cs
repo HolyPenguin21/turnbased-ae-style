@@ -569,12 +569,25 @@ namespace Game.EditorTests
             IMissionIntentView intents = Intents;
             foreach (ArmyData enemy in _enemies)
                 AiMapMemory.ObserveForTest(Me, enemy);
+            // A stand enemy not fully hidden is seen now: an Exact contact, as WorldAnalysis.BuildThreat
+            // gives a visible sighting.
+            List<ArmySnapshot> enemies = _enemies.Select(a => WorldAnalysis.ToArmySnapshot(a, Me, false, 0, null, Ctx)).ToList();
             return new WorldSnapshot
             {
                 Observer = Me,
                 TurnNumber = Turn,
                 Intents = intents,
                 KnowledgeVersion = AiMapMemory.KnowledgeVersionFor(Me),
+                Threat = new ThreatModel
+                {
+                    Contacts = enemies.Where(e => !e.IsHiddenFromUs).Select(e => new EnemyContactSnapshot
+                    {
+                        Army = e, Knowledge = ContactKnowledge.Exact, Position = e.Hex,
+                        Confidence = AiConfigV2.threatConfidenceExact, LastObservedTurn = Turn,
+                    }).ToList(),
+                    Assets = Array.Empty<StrategicAssetSnapshot>(),
+                    Threats = Array.Empty<AssetThreatSnapshot>(),
+                },
                 Self = new SelfSnapshot
                 {
                     Citadel = AiTurnController.GarrisonHexFor(Me),
@@ -584,7 +597,7 @@ namespace Game.EditorTests
                 },
                 TrueWorld = new TrueWorldSnapshot
                 {
-                    EnemyArmies = _enemies.Select(a => WorldAnalysis.ToArmySnapshot(a, Me, false, 0, null, Ctx)).ToList(),
+                    EnemyArmies = enemies,
                     NeutralArmies = Array.Empty<ArmySnapshot>(),
                     AllBuildings = Array.Empty<BuildingSnapshot>(),
                     Opponents = Array.Empty<OpponentSnapshot>(),
