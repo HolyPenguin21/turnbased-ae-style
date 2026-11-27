@@ -14,10 +14,8 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // Executes provisioned V2 missions through authoritative game paths. TaskExecutor now owns
-    // the shared mission lifecycle/accounting shell and routes to mission-specific executors. Ground Scout
-    // execution is delegated to ReconGroundExecutor, whose durable ReconPatrolState and live
-    // one-step planner replace the old fixed Explore focus + single follow-through loop.
+    // Executes one provisioned mission step through authoritative game paths: TaskExecutor owns the
+    // shared step shell (stale checks, AP, state version) and routes to the lane executors.
     public enum ExecutionStopReason
     {
         ReachedGoal,
@@ -35,13 +33,13 @@ namespace Game.Ai.V2
         StepCompleted,
     }
 
-    public sealed class ExecutionResult : IV2ActionResult
+    public sealed class ExecutionResult
     {
         // The AP a step spent is the turn pool's physical loss across it (never negative).
         // TaskExecutor.FinishStep settles it for every step; a lane whose own log line reports
         // the AP settles it there first (the same value).
         internal void SettleAp(int apBefore, PlayerRoot root) =>
-            ApSpent = UnityEngine.Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root);
 
         public StableMissionKey Key;
         public HexCoord StartHex;
@@ -71,7 +69,6 @@ namespace Game.Ai.V2
         public bool AttackCaptureHadBattle;
         public bool AirSupportStrikeSucceeded;
         public bool RaidRefitSucceeded;
-        public ResourceVector ResourcesSpent;
 
         // Set when an Economy builder reaches its BuildExtraction/FoundBase target this step but
         // the infrastructure itself is not up yet (that's Phase A's job next admission). Nothing in
@@ -91,25 +88,15 @@ namespace Game.Ai.V2
         // The real ArmyId after an actor is materialized or otherwise resolved during execution.
         public int? ActualActorArmyId;
 
-        // Spec §1/§7 (review P1 #1) — set by the continuous ground Recon executor when ReachedGoal
-        // is true only because the CURRENT focus hex (a live waypoint) was satisfied, while the
-        // actor's durable Explore/Refresh role is still runnable. The ledger then classifies this
-        // as a ProductiveStop, NOT a Completed objective, so the durable MissionIntent is kept and
-        // re-focused next turn instead of being retired — the churn the rework was meant to end.
+        // ReachedGoal only because the current focus hex (a waypoint) is satisfied while the
+        // durable Explore/Refresh role still runs: a ProductiveStop, the intent is re-focused.
         public bool DurableRoleContinues;
 
-        // Spec §2 — the requested Recon movement never started because the actor was ALREADY
-        // combat-locked before its first step (BattleStarted with zero progress on iteration 1).
-        // The ledger treats that as a recoverable Blocked, not a structural Failed: the durable
-        // Recon role survives and is retried once the actor can leave combat. A battle/event that
-        // interrupts a scout AFTER it has moved / entered stealth / made a discovery is a
-        // ProductiveStop instead and never sets this.
+        // The Recon move never started: the actor was combat-locked before its first step. A
+        // recoverable Blocked (the role is retried); a battle after progress is a ProductiveStop.
         public bool BlockedBeforeMovement;
 
-        // ARCH-02 §36 — a stale-goal mission that did nothing (revalidation found the objective
-        // already satisfied: ReachedGoal=true, 0 AP, no movement). It "succeeded" in that the
-        // objective is met, but it changed NOTHING — the common contract must not report
-        // StateChanged for it.
+        // Revalidation found the goal already met: a success that changed nothing.
         public bool StaleNoOp;
         // A real hero-led mover was created from a garrison candidate.
         public bool ActorMaterialized;
@@ -128,15 +115,12 @@ namespace Game.Ai.V2
             NeedsReplan = true;
         }
         public int PlannedAtStateVersion = -1;
-        public int StateVersionBefore = -1;
         public int StateVersionAfter = -1;
         // Observation boundary supplies immutable receipts; the registry remains the sole
         // pending-fact owner. Canonical mutation freshness is StateVersionAfter above.
         internal IReadOnlyList<WorldDelta> WorldDeltas = System.Array.Empty<WorldDelta>();
-        public V2ResourceStamp ResourcesBefore;
-        public V2ResourceStamp ResourcesAfter;
 
-        // ARCH-02 §36 — the common lifecycle projection. StateChanged is the honest floor:
+        // The step's lifecycle facts. StateChanged is the honest floor:
         // movement, stealth transition, or infrastructure ownership/destruction. Reaching a goal
         // that was already satisfied (StaleNoOp) is a success but NOT a state change.
         public V2ActionOutcome Outcome
@@ -152,13 +136,7 @@ namespace Game.Ai.V2
                 bool changed = moved || EnteredStealth || StealthChanged
                     || InfrastructureChanged || CombatChanged || ActorMaterialized || EconomyPrepared || ResourceConverted;
                 // ReachedGoal alone remains a stale no-op; capture/ownership mutation is explicit.
-                return new V2ActionOutcome(
-                    succeeded: succeeded, stateChanged: changed, apSpent: ApSpent,
-                    resourcesSpent: null, played: false, generated: false, attached: false,
-                    moved: moved, created: false, needsReplan: NeedsReplan,
-                    stateVersionAfter: StateVersionAfter,
-                    failReason: succeeded ? (StaleNoOp && !moved ? "goal already satisfied (no-op)" : null)
-                                          : StopReason.ToString());
+                return new V2ActionOutcome(succeeded, changed);
             }
         }
     }
@@ -178,10 +156,9 @@ namespace Game.Ai.V2
             result.StartHex = pm.ExecutionHex;
             result.FinalHex = pm.ExecutionHex;
             result.StopForReplan(ExecutionStopReason.TargetInvalidated);
-            result.ApSpent = 0f;
             WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
                 StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
             return true;
@@ -204,9 +181,8 @@ namespace Game.Ai.V2
             result.StartHex = pm.ExecutionHex;
             result.FinalHex = pm.ExecutionHex;
             result.StopReason = ExecutionStopReason.MoverLost;
-            result.ApSpent = 0f;
             result.NeedsReplan = true;
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
             ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover gone before atomic execution");
@@ -222,7 +198,6 @@ namespace Game.Ai.V2
                 return false;
 
             result.FinalHex = army.Hex;
-            result.ApSpent = 0f;
             result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
             result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
             result.DurableRoleContinues = result.ReachedGoal
@@ -237,7 +212,7 @@ namespace Game.Ai.V2
                     ? ExecutionStopReason.ReachedGoal
                     : ExecutionStopReason.TargetInvalidated;
             result.NeedsReplan = validity != MissionValidity.StaleGoalMet;
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
             if (validity == MissionValidity.StaleMoverLost)
@@ -280,9 +255,8 @@ namespace Game.Ai.V2
             if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, out ArmyData army))
                 yield break;
 
-            // ARCH-02 §35 — the executor does NOT synthesise a replacement mission for a
-            // stale-goal Scout. It records the stale outcome; MissionContinuityLayer.Reconcile
-            // + the mission planner re-target the durable ReconPatrolState on the next pass.
+            // A stale-goal Scout gets no replacement mission here: the stale outcome is recorded
+            // and Continuity + the planner re-target its ReconPatrolState on the next pass.
             if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results))
                 yield break;
 
@@ -351,8 +325,7 @@ namespace Game.Ai.V2
             // an unknown mission as Scout or let it mutate the world through a fallback path.
             result.StopReason = ExecutionStopReason.TargetInvalidated;
             result.NeedsReplan = true;
-            result.ApSpent = 0f;
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
         }
@@ -372,29 +345,23 @@ namespace Game.Ai.V2
                 Key = pm.Key,
                 Source = pm,
                 PlannedAtStateVersion = pm.PlannedAtStateVersion,
-                StateVersionBefore = WorldDeltaLifecycle.Current,
-                ResourcesBefore = AiV2Trace.Stamp(root),
             };
             yield return ExecuteMissionCore(player, root, ctx, pm, result, results,
                 enforceFreshPlan, snapshot);
         }
 
-        // §2.1 — the real AP the turn's pool lost while this mission executed must equal the AP the
-        // ExecutionResult reports it spent. Both executors derive ApSpent from the same physical
-        // turn-pool delta; this catches any action path that reports less/more than it really used.
-        // The settled-step tail of every executor branch: AP audit, state version, completion,
-        // and the result handed to the caller.
+        // The settled-step tail of every executor branch: the AP the step spent, state version,
+        // completion, and the result handed to the caller.
         private static void FinishStep(ProvisionedMission pm, int apBefore, PlayerRoot root,
             ExecutionResult result, List<ExecutionResult> results)
         {
             result.SettleAp(apBefore, root);
             StampVersion(result);
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
         }
 
-        // ARCH-02 §36 — bump the shared state version iff this mission execution actually moved the
-        // world (a real step or a stealth entry), then stamp it onto the result.
+        // Advance the shared state version iff this step moved the world, then stamp it on the result.
         private static void StampVersion(ExecutionResult result)
         {
             if (result == null) return;
@@ -411,12 +378,11 @@ namespace Game.Ai.V2
                 childAlreadyCommitted: result.StateVersionAfter >= 0);
         }
 
-        private static void CompleteResult(ExecutionResult result, PlayerRoot root)
+        private static void CompleteResult(ExecutionResult result)
         {
             if (result == null) return;
             if (result.StateVersionAfter < 0)
                 result.StateVersionAfter = WorldDeltaLifecycle.Current;
-            result.ResourcesAfter = AiV2Trace.Stamp(root);
         }
     }
 }

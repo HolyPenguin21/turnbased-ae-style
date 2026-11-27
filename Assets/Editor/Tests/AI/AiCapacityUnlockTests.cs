@@ -140,8 +140,15 @@ namespace Game.EditorTests
             _root.GetResource(ResourceType.Materials), _root.GetResource(ResourceType.Tech),
         };
 
-        private InfraFulfillResult Fulfill(DevelopmentOpportunity op) => InfrastructureFulfillment.TryFulfill(
-            _snapshot, _player, _root, _hand, _ctx, DemandFor(op), PhaseAApBudget.Create(_root));
+        // Phase A's infrastructure lane: admission, then the executor.
+        private InfraFulfillResult Fulfill(DevelopmentOpportunity op)
+        {
+            AxisDemand demand = DemandFor(op);
+            InfraBuildAction action = InfrastructureFulfillment.Admit(_snapshot, _player, _root, _hand, _ctx,
+                demand, PhaseAApBudget.Create(_root), out string refusal);
+            return action == null ? InfraFulfillResult.No(refusal)
+                : InfrastructureBuildExecutor.Execute(action, demand.SpendAuthority, _player, _root, _hand, _ctx);
+        }
 
         [TestCase(false)]
         [TestCase(true)]
@@ -184,6 +191,40 @@ namespace Game.EditorTests
             Assert.That(protectedSource.Score, Is.EqualTo(expected.NetScore).Within(0.0001f),
                 "the source and its capacity prerequisite pay one combined bill, including preservation");
             Assert.That(Bank(), Is.EqualTo(bank), "proposing must not reserve or spend resources");
+        }
+
+        [Test]
+        public void BaseLevelBoughtBeforeAFailedPlacementIsReportedAsAPartialAction()
+        {
+            var source = new CardData(new CardDefinition
+            {
+                cardType = CardType.Facility, authoredKey = "recurring-source", apCost = 0,
+                resourceCost = new ResourceCost(human: 1),
+                grantedAbilities = new List<string> { UnitAbilities.ApBonus },
+            });
+            _hand.AddCard(source);
+            // A free level: the AP delta alone cannot tell that the level was paid for.
+            _config.baseUpgradeTiers[0].apCost = 0;
+            _config.baseUpgradeTiers[0].cost = new ResourceCost(human: 1);
+            _snapshot.Self.ActionPoints = 12;
+            _snapshot.Self.ApEconomy = new ApActionEconomySnapshot { BaseActionPoints = 12 };
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.GlobalResourceFacility, EconomySourceCard = source,
+                DesiredAmount = 1, Value = 7.3f };
+            InfraBuildAction action = InfrastructureFulfillment.Admit(_snapshot, _player, _root, _hand, _ctx,
+                demand, PhaseAApBudget.Create(_root), out string refusal, witnessedUsefulApDemand: 30f);
+            Assert.That(action, Is.Not.Null, refusal);
+            Assert.That(action.Kind, Is.EqualTo(InfraBuildKind.FacilityAfterUpgrade));
+
+            _hand.RemoveCard(source);   // the level is bought, then the placement cannot happen
+            InfraFulfillResult r = InfrastructureBuildExecutor.Execute(action, demand.SpendAuthority,
+                _player, _root, _hand, _ctx);
+
+            Assert.That(r.Built, Is.False);
+            Assert.That(r.BaseLevelBought, Is.True);
+            Assert.That(r.ApSpent, Is.Zero);
+            Assert.That(r.StateChanged, Is.True);
+            Assert.That(_base.Level, Is.EqualTo(2));
         }
 
         private DevelopmentOpportunity CapacityStep()
@@ -302,13 +343,8 @@ namespace Game.EditorTests
 
             Assert.That(unlock.CapacityUnlocked, Is.True, unlock.Detail);
             Assert.That(unlock.Built, Is.False, "no facility exists yet");
-            Assert.That(unlock.CardPlayed, Is.False);
             Assert.That(unlock.AdditionalCardsConsumed, Is.Zero);
             Assert.That(unlock.Generated || unlock.GenerationAttempted, Is.False);
-            Assert.That(unlock.Outcome.Succeeded, Is.True);
-            Assert.That(unlock.Outcome.Created, Is.False, "a level is not a new building");
-            Assert.That(unlock.Outcome.Played, Is.False);
-            Assert.That(unlock.Outcome.NeedsReplan, Is.True);
             Assert.That(_base.Level, Is.EqualTo(levelBefore + 1));
             Assert.That(_base.UnlockedFacilitySlots, Is.EqualTo(unlockedBefore + 1));
             Assert.That(_base.Defense, Is.EqualTo(defenseBefore + 1));
@@ -427,8 +463,6 @@ namespace Game.EditorTests
             Assert.That(r.CapacityUnlocked, Is.True, r.Detail);
             int[] after = Bank();
             ResourceCost bill = _config.baseUpgradeTiers[0].cost;
-            Assert.That(r.ResourcesSpent.human, Is.EqualTo(before[1] - after[1]));
-            Assert.That(r.ResourcesSpent.tech, Is.EqualTo(before[4] - after[4]));
             Assert.That(before[4] - after[4], Is.EqualTo(bill.tech));
             Assert.That(StrategicResourceReservationLedger.DebugLine(_player, _ctx.TurnNumber), Is.EqualTo(rows));
         }

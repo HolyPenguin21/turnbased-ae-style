@@ -13,34 +13,21 @@ using Game.Combat;
 
 namespace Game.Ai.V2
 {
-    // ARCH-02 §36 — the common lifecycle-readable projection for a whole air-recon pass. Air recon
-    // is a coroutine (it cannot `return` a value), so the caller passes one of these in to read
-    // "did the world move, what did it cost, what is the state-version now".
-    internal sealed class AirReconExecutionResult : IV2ActionResult
+    // What one air-recon step did. Air recon is a coroutine (it cannot `return` a value), so the
+    // caller passes one of these in to read whether the world moved.
+    internal sealed class AirReconExecutionResult
     {
         public bool AnyMoved;
-        public bool AnyLaunched;
         public bool AnyStruck;
         public bool ResourceConverted;
-        public int Steps;
-        public float ApSpent;
-        public Game.Cards.ResourceCost ResourcesSpent;   // real H/E/M/T delta over the pass (null = none)
-        public int StateVersionAfter = -1;
 
-        public void RecordMove() { AnyMoved = true; Steps++; }
-        public void RecordLaunch() { AnyLaunched = true; }
+        public void RecordMove() { AnyMoved = true; }
         public void RecordStrike() { AnyStruck = true; }
 
-        public bool Mutated => AnyMoved || AnyLaunched || AnyStruck || ResourceConverted;
-
-        public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Mutated, stateChanged: Mutated, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
-            played: false, generated: false, attached: false, moved: AnyMoved, created: AnyLaunched,
-            needsReplan: false, stateVersionAfter: StateVersionAfter,
-            failReason: Mutated ? null : "air recon pass changed nothing");
+        public bool Mutated => AnyMoved || AnyStruck || ResourceConverted;
     }
 
-    // ARCH-02 §35 — EXECUTION ONLY. It receives an AirReconPlan (actor/airfield/subset WHO is
+    // EXECUTION ONLY. It receives an AirReconPlan (actor/airfield/subset WHO is
     // picked by ReconAssignmentPlanner/ProvisioningManager, the same single owner Ground has;
     // AirReconPlanner only turns that binding, plus continuing wings, into this plan's shape — mode,
     // first-step gate and energy policy re-derived fresh as execution-input assembly, never a second
@@ -64,7 +51,7 @@ namespace Game.Ai.V2
         }
 
         private static bool PrepareStoredMissions(AirReconPlan plan, PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result)
+            AiTurnContext ctx, WorldSnapshot snapshot)
         {
             bool changed = false;
             foreach (ProvisionedMission pm in plan.StoredMissions.ToList())
@@ -99,7 +86,6 @@ namespace Game.Ai.V2
                 plan.MaterializedActorIds.Add(wing.Id);
                 plan.ReadyActorIds.Add(wing.Id);
                 plan.ReadyMissionByActorId[wing.Id] = pm;
-                result.RecordLaunch();
                 changed = true;
                 WorldDeltaLifecycle.CommitMutation();
             }
@@ -138,8 +124,6 @@ namespace Game.Ai.V2
         // Every outbound step leaves this executor's own Recon AirSortie record on the wing
         // (EnsureAirReconReservation), so that record does not mean "driven by someone else" —
         // only a Strike/Rebase record does (RecallUnsafeStrikes / AviationRebaseExecutor own it).
-        // Match 2026-11-13 Tessek T14: Rusty Vulture kept its Recon record, was skipped, and took
-        // the overdue-refuel damage 2 hexes from its airfield.
         internal static List<ArmyData> RecallUnsafeReconWings(PlayerSetupData player, AiTurnContext ctx)
         {
             if (player == null || ctx?.Map == null)
@@ -164,17 +148,13 @@ namespace Game.Ai.V2
         // in AirReconPlanner; launch/actor validation and result construction stay in this executor.
         internal static IEnumerator ExecutePlanStep(AirReconPlan plan, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
-            AirReconExecutionResult result, List<ExecutionResult> perMissionResults)
+            List<ExecutionResult> perMissionResults)
         {
-            result ??= new AirReconExecutionResult();
             if (plan == null || player == null || root == null || ctx?.Map == null
                 || snapshot?.Self == null || perMissionResults == null)
-            {
-                result.StateVersionAfter = WorldDeltaLifecycle.Current;
                 yield break;
-            }
 
-            if (PrepareStoredMissions(plan, player, root, ctx, snapshot, result))
+            if (PrepareStoredMissions(plan, player, root, ctx, snapshot))
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, AiHandRegistry.Peek(player), ctx);
             AirReconSkippedMission skipped = plan.SkippedMissions.FirstOrDefault();
             if (skipped?.Mission != null)
@@ -186,8 +166,6 @@ namespace Game.Ai.V2
                 else
                     er.StopReason = skipped.Reason;
                 er.StateVersionAfter = WorldDeltaLifecycle.Current;
-                er.ResourcesBefore = AiV2Trace.Stamp(root);
-                er.ResourcesAfter = AiV2Trace.Stamp(root);
                 perMissionResults.Add(er);
                 yield break;
             }
@@ -203,10 +181,8 @@ namespace Game.Ai.V2
                 if (air != null && ObjectiveSatisfied(player, pm))
                 {
                     ExecutionResult stale = NewPerMissionResult(pm, air.Hex, air.Id);
-                    stale.ResourcesBefore = AiV2Trace.Stamp(root);
                     MarkSatisfiedNoOp(pm, stale);
                     stale.StateVersionAfter = WorldDeltaLifecycle.Current;
-                    stale.ResourcesAfter = AiV2Trace.Stamp(root);
                     perMissionResults.Add(stale);
                     yield break;
                 }
@@ -215,7 +191,7 @@ namespace Game.Ai.V2
                     air?.Hex ?? pm.ExecutionHex, air?.Id ?? -1);
                 perMission.ActorMaterialized = plan.MaterializedActorIds.Contains(id);
                 int apBefore = root.ActionPoints;
-                yield return RunActorStep(player, root, ctx, snapshot, air, result, apBefore,
+                yield return RunActorStep(player, root, ctx, snapshot, air, null, apBefore,
                     pm.FocusHex, perMission);
                 perMissionResults.Add(perMission);
                 yield break;
@@ -290,13 +266,7 @@ namespace Game.Ai.V2
             }
 
             var stepResult = result ?? new AirReconExecutionResult();
-            if (perMissionResult != null && root != null)
-                perMissionResult.ResourcesBefore = AiV2Trace.Stamp(root);
             int rateBefore = root?.TradeRate ?? 2;
-            int h0 = root != null ? root.GetResource(Game.Economy.ResourceType.Human) : 0;
-            int e0 = root != null ? root.GetResource(Game.Economy.ResourceType.Energy) : 0;
-            int m0 = root != null ? root.GetResource(Game.Economy.ResourceType.Materials) : 0;
-            int t0 = root != null ? root.GetResource(Game.Economy.ResourceType.Tech) : 0;
 
             yield return RunActorStepCore(player, root, ctx, snapshot, initial.Id,
                 stepResult, missionFocusHex, perMissionResult, control);
@@ -305,23 +275,9 @@ namespace Game.Ai.V2
             if (perMissionResult != null) perMissionResult.ResourceConverted |= converted;
             FinishActorStep(player, initial.Id, perMissionResult, control, control.StopReason);
 
-            stepResult.ApSpent = Math.Max(0f,
-                apBefore - (root != null ? root.ActionPoints : apBefore));
-            int hSpent = root != null ? Math.Max(0, h0 - root.GetResource(Game.Economy.ResourceType.Human)) : 0;
-            int eSpent = root != null ? Math.Max(0, e0 - root.GetResource(Game.Economy.ResourceType.Energy)) : 0;
-            int mSpent = root != null ? Math.Max(0, m0 - root.GetResource(Game.Economy.ResourceType.Materials)) : 0;
-            int tSpent = root != null ? Math.Max(0, t0 - root.GetResource(Game.Economy.ResourceType.Tech)) : 0;
-            stepResult.ResourcesSpent = (hSpent | eSpent | mSpent | tSpent) != 0
-                ? new Game.Cards.ResourceCost
-                    { human = hSpent, energy = eSpent, materials = mSpent, tech = tSpent }
-                : null;
-            stepResult.StateVersionAfter = WorldDeltaLifecycle.Current;
-
             if (perMissionResult != null)
             {
-                perMissionResult.ApSpent = stepResult.ApSpent;
-                if (root != null)
-                    perMissionResult.ResourcesAfter = AiV2Trace.Stamp(root);
+                perMissionResult.SettleAp(apBefore, root);
                 FinalizePerMissionResult(player, perMissionResult.Source, perMissionResult);
             }
         }

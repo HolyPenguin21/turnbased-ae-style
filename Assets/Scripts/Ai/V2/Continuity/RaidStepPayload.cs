@@ -17,6 +17,5 @@ namespace Game.Ai.V2
         public bool RaidAirSupportStrikeSucceeded;
         public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;
-        public ResourceVector RaidResourcesSpent;
     }
 }

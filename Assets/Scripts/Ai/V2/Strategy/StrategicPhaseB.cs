@@ -192,7 +192,7 @@ namespace Game.Ai.V2
                         break;
                     }
                 }
-                exec.ApSpent = Mathf.Max(0, ap0 - root.ActionPoints);
+                exec.ApSpent = V2ActionOutcome.ApSpentSince(ap0, root);
                 exec.HumanSpent = Mathf.Max(0, h0 - root.GetResource(Game.Economy.ResourceType.Human));
                 exec.EnergySpent = Mathf.Max(0, e0 - root.GetResource(Game.Economy.ResourceType.Energy));
                 exec.MaterialsSpent = Mathf.Max(0, m0 - root.GetResource(Game.Economy.ResourceType.Materials));

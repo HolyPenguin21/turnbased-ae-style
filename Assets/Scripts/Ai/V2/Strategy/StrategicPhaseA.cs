@@ -297,14 +297,13 @@ namespace Game.Ai.V2
         {
             var armyIdsBefore = new HashSet<int>(pass.Snap.Self?.Armies?
                 .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
-            int chainApBefore = pass.Root.ActionPoints;
             if (selected.Plan.Kind == MaterializationChainKind.GenerateAttachUpgrade)
-                ExecuteDevelopmentUpgrade(pass, selected, chainApBefore);
+                ExecuteDevelopmentUpgrade(pass, selected);
             else
-                ExecuteMaterialization(pass, round, selected, armyIdsBefore, chainApBefore);
+                ExecuteMaterialization(pass, round, selected, armyIdsBefore);
         }
 
-        private static void ExecuteDevelopmentUpgrade(PhaseAPass pass, PhaseACandidate selected, int chainApBefore)
+        private static void ExecuteDevelopmentUpgrade(PhaseAPass pass, PhaseACandidate selected)
         {
             StrategicPhaseResult result = pass.Result;
             AxisDemand chosenDemand = selected.State.Demand;
@@ -322,26 +321,23 @@ namespace Game.Ai.V2
                     + $":: {strikeWhy}");
                 return;
             }
-            DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
-                pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, chosenDemand, plan, pass.ApBudget);
-            int upgradeApAfter = pass.Root.ActionPoints;
+            string skip = DevelopmentUpgradeFulfillment.Admit(pass.Snap, pass.Player, pass.Root, pass.Hand,
+                pass.Ctx, chosenDemand, plan, pass.ApBudget, out GenerationStep generation);
+            bool wasHiddenHero = skip == null && generation.Mode == ResearchProductionMode.Research
+                && generation.Hero != null && generation.Hero.IsHidden;
+            // A won Challenge leaves the card in hand; the hand-card lane attaches it later.
+            MaterializationResult up = skip != null ? new MaterializationResult { FailReason = skip }
+                : MaterializationExecutor.ExecuteGeneration(generation, pass.Player, pass.Root, pass.Hand,
+                    pass.Ctx, chosenDemand.SpendAuthority);
+            string detail = up.Generated
+                ? $"Challenge won, '{up.GeneratedCard?.Definition?.displayName}' retained in hand; attachment pending"
+                    + (wasHiddenHero ? " [hero revealed]" : "")
+                : up.FailReason;
             pass.ChainAttempts++;
             result.MaterializationAttempts++;
 
-            if (up.ApSpent > 0f)
-                AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
-                    chainApBefore - upgradeApAfter, up.ApSpent);
-
-            if (up.Executed)
-                result.RecordGenerationAttempt(pass.Player, pass.Turn, plan.Generation,
-                    new MaterializationResult
-                    {
-                        StateChanged = up.StateChanged,
-                        GenerationAttempted = true,
-                        Generated = up.ChallengeWon,
-                        ApSpent = up.ApSpent,
-                        AttemptedGenerationUseKey = plan.Generation?.UseKey,
-                    }, up.ChallengeWon);
+            if (up.GenerationAttempted)
+                result.RecordGenerationAttempt(pass.Player, pass.Turn, plan.Generation, up, up.Generated);
             // Executed or not, the upgrade demand is done for this pass: creation is complete and
             // the capability is delivered by the hand-card lane.
             selected.State.Blocked = true;
@@ -351,18 +347,18 @@ namespace Game.Ai.V2
                 result.StateChanged = true;
                 pass.RefreshKnowledge();
             }
-            DevelopmentOutcomeTelemetry.RecordUpgrade(pass.Player, pass.Turn, up.Executed, up.ChallengeWon);
-            AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} - "
+            DevelopmentOutcomeTelemetry.RecordUpgrade(pass.Player, pass.Turn, up.GenerationAttempted, up.Generated);
+            AiDebugLog.Write($"[AI][V2][Dev] {(up.GenerationAttempted ? "EXEC" : "SKIP")} - "
                 + $"{plan.DevelopmentUpgrade?.Mode} '{plan.DevelopmentUpgrade?.Card?.displayName}' "
                 + $"-> {plan.DevelopmentUpgrade?.RecipientLabel} "
                 + $"p={F(plan.DevelopmentUpgrade?.SuccessChance ?? 0f)} "
                 + $"gain={F(plan.DevelopmentUpgrade?.ExpectedGain ?? 0f)} "
                 + $"policy={plan.DevelopmentUpgrade?.Explain} "
-                + $":: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
+                + $":: {detail} (ap {F(up.ApSpent)} -> DEV)");
         }
 
         private static void ExecuteMaterialization(PhaseAPass pass, PhaseACandidateRound round,
-            PhaseACandidate selected, HashSet<int> armyIdsBefore, int chainApBefore)
+            PhaseACandidate selected, HashSet<int> armyIdsBefore)
         {
             StrategicPhaseResult result = pass.Result;
             AxisDemand chosenDemand = selected.State.Demand;
@@ -382,16 +378,11 @@ namespace Game.Ai.V2
                 play = MaterializationExecutor.Execute(
                     pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, plan, pass.Commitments,
                     chosenDemand.SpendAuthority);
-            int chainApAfter = pass.Root.ActionPoints;
             pass.ChainAttempts++;
 
             // Production telemetry (spec §12) — attempts/successes per chain stage. Derived
             // from the plan shape + MaterializationResult; no scoring change.
             result.RecordMaterialization(pass.Player, pass.Turn, plan, play);
-
-            // §2.3 — the physical AP drop must match the chain's reported ApSpent.
-            AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
-                chainApBefore - chainApAfter, play.ApSpent);
 
             if (!play.Deployed)
             {

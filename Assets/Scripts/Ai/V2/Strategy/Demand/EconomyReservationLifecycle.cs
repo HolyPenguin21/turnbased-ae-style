@@ -227,7 +227,7 @@ namespace Game.Ai.V2
                         >= build.BuildApCost + (route > 0 ? activationAp : 0f)
                     // Through TurnResourceBook: its own hold and other builds' deferred holds are
                     // drawable, another owner's completion is not. The
-                    // completion (InfrastructureFulfillment.TryFulfill) funds a shortage through Trade.
+                    // completion (InfrastructureBuildExecutor.Execute) funds a shortage through Trade.
                     && TradeFunding.CanFund(player, root, ctx, build.BuildResourceCost,
                         new SpendAuthority(owner, true));
                 ReconcileEconomyCompletionOwner(player, turn, owner, intent, true,

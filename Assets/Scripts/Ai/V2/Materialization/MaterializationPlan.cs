@@ -111,7 +111,7 @@ namespace Game.Ai.V2
         //  the best option from a pre-mint enumeration; MaterializationExecutor re-validates it
         //  against the live world after minting and, if it no longer holds, returns a stale-
         //  placement failure (result.PlacementStale) — it does NOT substitute a different
-        //  placement. The caller refreshes the world and replans (ARCH-02 §35).
+        //  placement. The caller refreshes the world and replans.
         public PlacementOption Deploy;
         // Optional terminal same-hex handoff into a pinned recipient (AttackBaseRefitPolicy):
         // the window that owns it and the fight it was judged against.
@@ -123,7 +123,7 @@ namespace Game.Ai.V2
         public string AttackRefitRoster;
         public float AttackRefitFollowupAp;
 
-        // --- current-stage accounting (ARCH-02 §13 — the canonical StrategicActionCost) -------------
+        // --- current-stage accounting (the canonical StrategicActionCost) -------------
         //  One cost description per plan, consumed identically by Phase A, Phase B and the
         //  portfolio solver. AP = ApCost; Human/Energy/Materials/Tech = ResCost;
         //  GenerationAttempts = (Generation != null ? 1 : 0); HandSlotPeak = HandSlotsNeededAtPeak.
@@ -150,20 +150,18 @@ namespace Game.Ai.V2
         public override string ToString() => $"{Kind} {StableKey}";
     }
 
-    public sealed class MaterializationResult : IV2ActionResult
+    public sealed class MaterializationResult
     {
         public bool StateChanged;
         public bool Deployed;
         public bool CardDeployed;                 // physical play can succeed before a refit handoff fails
         public bool Generated;
+        public CardData GeneratedCard;            // the card a won Challenge put into the hand
         public bool GenerationAttempted;
         public bool Attached;
-        public bool ArmyCreated;                  // a new army shell was founded by this chain
         public float ApSpent;                     // real PlayerRoot AP delta across the whole chain
-        public ResourceCost ResourcesSpent;       // real H/E/M/T delta across the whole chain (null = none)
-        // ARCH-02 §35 — set when plan.Deploy no longer preflights at execution time. The chain did
-        // NOT deploy and the executor did NOT substitute a placement; the caller must refresh the
-        // world and replan (do not treat the demand as structurally blocked).
+        // plan.Deploy did not preflight at execution time: nothing was deployed and no other placement
+        // was tried; the caller refreshes the world and replans (the demand is not blocked).
         public bool PlacementStale;
         public int StateVersionAfter = -1;
         public string FailReason;
@@ -172,11 +170,6 @@ namespace Game.Ai.V2
         // suppression is keyed by GenerationStep.CardKey, not by this prefix.
         public string AttemptedGenerationUseKey;
 
-        public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Deployed, stateChanged: StateChanged, apSpent: ApSpent,
-            resourcesSpent: ResourcesSpent, played: Deployed || CardDeployed, generated: Generated, attached: Attached,
-            moved: false, created: ArmyCreated, needsReplan: PlacementStale,
-            stateVersionAfter: StateVersionAfter, failReason: Deployed ? null : FailReason);
     }
 }
 

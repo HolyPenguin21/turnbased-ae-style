@@ -833,7 +833,6 @@ namespace Game.Ai.V2
             o.RaidFactsForWrite().RaidAirSupportStrikeSucceeded =
                 e.AirSupportStrikeSucceeded;
             o.RaidFactsForWrite().RaidRefitSucceeded = e.RaidRefitSucceeded;
-            o.RaidFactsForWrite().RaidResourcesSpent = e.ResourcesSpent;
 
             o.MadeProgress |= raidEngaged;
         }

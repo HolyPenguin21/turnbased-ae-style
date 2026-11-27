@@ -46,8 +46,7 @@ namespace Game.Ai.V2
             // card score x its own Radar scale against the best materialization chain, so the
             // better of the two acts first and the other is re-judged on the refreshed world.
             // An Economy global-source Facility is the same kind of plain card play (no builder,
-            // no hold): playtest 2026-10-18 Thane spent its only Energy on Intel Center (net 2.7)
-            // ahead of a threatened Citadel's garrison chain, so it competes there too.
+            // no hold), so it competes there too.
             pass.ArbitratedInfrastructure = pass.States
                 .Where(state => StrategicPhaseA.CompetesInCardArbitration(state.Demand)
                     && !pass.ResidualInfrastructure.Contains(state))
@@ -127,28 +126,39 @@ namespace Game.Ai.V2
                     $"[AI][V2]   strat.A infra - {demand}: held :: {reserveWhy}");
                 return;
             }
-            // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
-            // checks the shared AP pool and live affordability, and
-            // only then runs the authoritative build. A shortfall => nothing spent, not built.
+            // Admission (shared AP pool, live affordability) passes BEFORE any gameplay mutation;
+            // only then the executor runs the action. A shortfall => nothing spent, not built.
             // §2.4 — independent controlled-state snapshot around the op (building count,
             // filled facility slots, army movement, resources), NOT derived from the op's own
             // result. A failed build that changed any of these is a rollback leak.
+            SpendAuthority authority = demand.SpendAuthority;
             V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(pass.Player, pass.Root);
             InfraFulfillResult infra;
             using (new Game.Core.ProfileScope("AI/PhaseA.InfraFulfill"))
-                infra = InfrastructureFulfillment.TryFulfill(
-                    pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, demand, pass.ApBudget,
-                    pass.Reservation, pass.ActiveIntents, pass.Commitments, pass.WitnessedUsefulApDemand);
+            {
+                InfraBuildAction action = InfrastructureFulfillment.Admit(pass.Snap, pass.Player, pass.Root,
+                    pass.Hand, pass.Ctx, demand, pass.ApBudget, out string refusal, pass.Reservation,
+                    pass.ActiveIntents, pass.Commitments, pass.WitnessedUsefulApDemand);
+                infra = action == null ? InfraFulfillResult.No(refusal)
+                    : InfrastructureBuildExecutor.Execute(action, authority,
+                        pass.Player, pass.Root, pass.Hand, pass.Ctx);
+                if (action != null && !infra.Built && action.Kind != InfraBuildKind.OperatorGeneration
+                    && action.Kind != InfraBuildKind.CapacityUnlock)
+                    AiDebugLog.Write($"[AI][V2]   infra - {demand.Capability} action rejected: {infra.Detail} ({action.Label})");
+            }
+            // A completed Economy build ends the lease its demand held.
+            if (infra.Built && authority.Owner != null)
+                MissionLeaseBook.ReleaseByOwner(pass.Player, pass.Turn, authority.Owner);
             V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(pass.Player, pass.Root);
             if (infra.StateChanged)
                 result.StateChanged = true;
-            // A failed BUILD must roll back. A paid Challenge (win or loss) is an
-            // intentional partial action and must NOT be diagnosed as a build leak.
+            // A failed BUILD must roll back. A paid Challenge (win or loss) and a Base level bought
+            // before a failed placement are intentional partial actions, not build leaks.
             // A paid stand-alone Base level is its own successful operation (separate invariant);
             // every other non-built outcome must still have rolled back cleanly.
             if (infra.CapacityUnlocked)
                 AiV2Trace.CheckCapacityUnlock(demand.TraceId, infraBefore, infraAfter);
-            else if (!infra.GenerationAttempted)
+            else if (!infra.GenerationAttempted && !infra.BaseLevelBought)
                 AiV2Trace.CheckInfrastructureRollback(demand.TraceId, infra.Built,
                     infra.StateChanged, infraBefore, infraAfter, resourceConverted: infra.ResourceConverted);
             // A compensated failure can still publish newer knowledge/version stamps.
@@ -171,18 +181,14 @@ namespace Game.Ai.V2
                             demand.DevelopmentOperatorMode.Value, pass.Turn);
                 result.RecordGenerationAttempt(pass.Player, pass.Turn, infra.Generation, null, infra.Generated);
             }
-            // A partial state-changing action (a paid Base capacity upgrade whose Facility
-            // placement then failed) is debited like a Challenge: its AP is really spent.
+            // A Base level bought before its Facility placement failed is a real partial action.
             if (!(infra.Built || infra.CapacityUnlocked || infra.GenerationAttempted || infra.ResourceConverted
-                || (infra.StateChanged && infra.ApSpent > 0f)))
+                || infra.BaseLevelBought))
             {
                 AiDebugLog.WriteDedupedWithId(demand.TraceId,
                     $"[AI][V2]   strat.A infra - {demand}: not built ({infra.Detail})");
                 return;
             }
-            // §2.3 — the physical AP drop must match what the transaction reports.
-            AiV2Trace.CheckPhaseAAp(demand.TraceId, demand.RequestingAxis,
-                infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent);
             if (infra.Built)
             {
                 istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);

@@ -431,7 +431,7 @@ namespace Game.Ai.V2
             turnSession.CompleteReservations();
             ReservationInvariants.LogTurnSummary(player, ctx.TurnNumber);
 
-            RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
+            RecordInitiativeAnalytics(player, hand, apMeasure, initiativeBaseAp, initiativeActionableAtStart);
 
             // Emit the canonical turn summary only after every turn-scoped cleanup/invariant check
             // has completed, so [TURN-END] really is the final strategic lifecycle marker.
@@ -495,11 +495,10 @@ namespace Game.Ai.V2
         // End-of-turn initiative AP telemetry write-back (see the turn-start capture above). A
         // turn that ended at 0 AP only counts as "needed more AP" if real AP work still remained
         // — an unactivated field army, or an affordable AP-costing card still in hand.
-        private static void RecordInitiativeAnalytics(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            int startAp, int baseAp, int actionableAtStart)
+        private static void RecordInitiativeAnalytics(PlayerSetupData player, AiHandData hand,
+            ApTurnMeasure apMeasure, int baseAp, int actionableAtStart)
         {
-            int endAp = root.ActionPoints;
-            int apSpent = UnityEngine.Mathf.Max(0, startAp - endAp);
+            int startAp = apMeasure.StartAp, endAp = apMeasure.EndAp, apSpent = apMeasure.Spent;
             int unactivatedActionable =
                 Game.Ai.V2.Initiative.PreTurnCapacityAnalysis.CountActionableFieldArmies(player, unactivatedOnly: true);
 

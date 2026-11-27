@@ -286,22 +286,6 @@ namespace Game.Ai.V2
                 Check("OK", attemptId, "ProvisionEnvelope", detail, cf, cm, cl);
         }
 
-        // §2.3 — a committed Phase-A action: two INDEPENDENTLY sourced facts must agree —
-        //  physicalDelta (root AP before/after) and reportedSpend (the action's own ApSpent).
-        //  Catches an action that misreports what it spent. Phase-A spend only; later mission
-        //  execution spend is the allocator's (_lockedClaims) territory.
-        public static void CheckPhaseAAp(string demandTraceId, DesireAxis axis,
-            float physicalDelta, float reportedSpend,
-            [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0)
-        {
-            string detail = $"physicalDelta={Num(physicalDelta)} reported={Num(reportedSpend)} "
-                + $"axis={DesireAxes.Abbrev(axis)}";
-            if (Mathf.Abs(physicalDelta - reportedSpend) > Eps)
-                Check("ERROR", demandTraceId, "PhaseAApMismatch", detail, cf, cm, cl);
-            else
-                Check("OK", demandTraceId, "PhaseAApAccounting", detail, cf, cm, cl);
-        }
-
         // §2.4 — a FAILED infrastructure op must have left the controlled game state untouched.
         //  The `before`/`after` stamps are the INDEPENDENT evidence (building count, filled
         //  facility slots, army movement, resources); `stateChanged` is only OR'd in as an extra

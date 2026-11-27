@@ -236,9 +236,8 @@ namespace Game.Ai.V2
             {
                 AirReconPlan plan = AirReconPlanner.Plan(_player, _root, _ctx,
                     _frame.Snapshot, new[] { selected });
-                var airStepResult = new AirReconExecutionResult();
                 yield return ReconAirExecutor.ExecutePlanStep(plan, _player, _root, _ctx,
-                    _frame.Snapshot, airStepResult, stepResults);
+                    _frame.Snapshot, stepResults);
             }
             else
             {

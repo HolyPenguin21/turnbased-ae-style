@@ -22,23 +22,18 @@ namespace Game.Ai.V2
     //  is NOT atomic on its own — the wrapper captures and restores the full pre-transaction state
     //  (AP, resources, facility slot, hero move points, a half-registered new site) on a throw.
     // ===========================================================================================
-    public sealed class BuildingPlayResult : IV2ActionResult
+    public sealed class BuildingPlayResult
     {
         public bool Built;
         public float ApSpent;
-        public ResourceCost ResourcesSpent;   // the founding card's resource cost on a success (null = none / n/a)
         public bool StateChanged;
         public int StateVersionAfter = -1;
-        public bool CardConsumed;
         public int AdditionalCardsConsumed;   // a synchronous founding defender, if any
+        // The Base level bought for the slot stays bought even when the Facility placement then fails.
+        public bool BaseLevelBought;
         public string FailReason;
 
         public static BuildingPlayResult Fail(string why) => new BuildingPlayResult { FailReason = why };
-
-        public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
-            played: CardConsumed, generated: false, attached: false, moved: false, created: Built,
-            needsReplan: false, stateVersionAfter: StateVersionAfter, failReason: Built ? null : FailReason);
     }
 
     public static class BuildingPlayExecutor
@@ -89,9 +84,8 @@ namespace Game.Ai.V2
             if (!root.CanSpendActionPoints(totalAp) || !totalCost.CanAfford(root))
                 return BuildingPlayResult.Fail("base and immediate garrison are not jointly affordable");
 
-            // 2026-11-19 (owner, FoundingSiteDefence) — on a site the known enemy reaches, the
-            // whole escort stays as the new garrison (the builder took its whole roster for that,
-            // EconomyBuilderSelection); elsewhere one body stays, as before.
+            // On a site the known enemy reaches the whole escort stays as the new garrison (the
+            // builder took its whole roster for that, EconomyBuilderSelection); elsewhere one body.
             bool threatenedSite = AiArmyRoles.FoundingSiteThreat(player, hex, out _) > AiConfigV2.allocatorSliceEpsilon;
             using var mutation = WorldDeltaLifecycle.BeginTransaction();
             InfrastructureBuildOutcome outcome = InfrastructureActions.TryFoundBase(
@@ -126,9 +120,8 @@ namespace Game.Ai.V2
             }
             return new BuildingPlayResult
             {
-                Built = true, CardConsumed = true, AdditionalCardsConsumed = defender == null ? 0 : 1,
-                StateChanged = true, ApSpent = totalAp,
-                ResourcesSpent = totalCost,
+                Built = true, AdditionalCardsConsumed = defender == null ? 0 : 1,
+                StateChanged = true, ApSpent = outcome.ApSpent,
                 StateVersionAfter = mutation.Commit(player, ctx.TurnNumber,
                     new WorldDelta(true, StrategicInvalidationReason.None)),
             };
@@ -199,18 +192,9 @@ namespace Game.Ai.V2
             };
         }
 
-        // Project owner, 2026-10-02: a freshly founded Base is not left empty. The builder's
-        // army (the hero and whatever it brought) stands on the hex; one ground body stays as the
-        // new garrison so the base is not taken on the same or the next turn by anything that walks
-        // past. The builder keeps the rest and may stay or go on. Free (the
-        // garrison never activates); the enclosing founding transaction verifies the result.
-        // Nothing happens when the builder brought no body, the base
-        // already has a ground defender, or the hero would be left with nothing to travel with.
-        // The body that costs the builder most to carry (highest activation AP, then lowest power)
-        // is the one that stays.
-        // 2026-11-19 (owner) — a threatened new Base keeps the builder's whole escort: every ground
-        // body of the builder that fits the new garrison and joins it free stays; the hero walks
-        // on alone. Same builder identification and free-transfer rule as LeaveGarrisonBody.
+        // A threatened new Base keeps the builder's whole escort: every ground body that fits the
+        // new garrison and joins it free stays; the hero walks on alone. Same builder and
+        // free-transfer rule as LeaveGarrisonBody.
         private static void LeaveEscortAsGarrison(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
             int? builderArmyId)
         {
@@ -240,6 +224,10 @@ namespace Game.Ai.V2
             }
         }
 
+        // A freshly founded Base is not left empty: one ground body of the builder stays as its free
+        // garrison - the one that costs the builder most to carry (highest activation AP, then lowest
+        // power). Nothing stays when the builder brought no body or the base already has a ground
+        // defender.
         private static void LeaveGarrisonBody(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
             int? builderArmyId = null)
         {
@@ -302,8 +290,7 @@ namespace Game.Ai.V2
             hand.RemoveCard(card);
             return new BuildingPlayResult
             {
-                Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
-                ResourcesSpent = card.EffectivePlayResourceCost,
+                Built = true, StateChanged = true, ApSpent = outcome.ApSpent,
                 StateVersionAfter = WorldDeltaLifecycle.CommitMutation(),
             };
         }
@@ -323,9 +310,6 @@ namespace Game.Ai.V2
                 Built = outcome.Ok,
                 StateChanged = outcome.Ok,
                 ApSpent = outcome.ApSpent,
-                // The site charges the facility definition's resourceCost (same figure
-                // InfrastructureFulfillment admits the build against). No hand card is consumed.
-                ResourcesSpent = outcome.Ok ? facilityDef.resourceCost : null,
                 StateVersionAfter = outcome.Ok ? WorldDeltaLifecycle.CommitMutation() : -1,
                 FailReason = outcome.Ok ? null : outcome.FailReason,
             };

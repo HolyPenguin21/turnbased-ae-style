@@ -15,12 +15,10 @@ namespace Game.Ai.V2
     //  demands, BEFORE the Unit/Hero MaterializationCandidateBuilder loop.
     //
     //  ADMISSION ORDER (spec §1): build a candidate WITHOUT touching game state -> compute its
-    //  complete cost -> check the live Phase A AP budget -> check live
-    //  gameplay affordability -> ONLY THEN hand the admitted InfraBuildAction to
-    //  Execution/InfrastructureBuildExecutor (the authoritative BuildingPlayExecutor transaction)
-    //  -> the caller debits the actual confirmed AP. A budget or affordability shortfall means the
-    //  demand stays OPEN (nothing played, nothing spent) — Debit() is never used as after-the-fact
-    //  permission.
+    //  complete cost -> check the live Phase A AP budget -> check live gameplay affordability ->
+    //  ONLY THEN return the admitted InfraBuildAction; Phase A hands it to
+    //  Execution/InfrastructureBuildExecutor. A budget or affordability shortfall means the demand
+    //  stays OPEN (nothing played, nothing spent).
     //
     //  CAPABILITY IDENTITY (spec §3, §4). "Built" means the demanded capability really exists:
     //    · ECO(resourceType) -> an extraction facility on a KNOWN, unbuilt, SAME-type resource
@@ -32,42 +30,8 @@ namespace Game.Ai.V2
     //
     //  GAME-RULE PRECONDITION: founding a Base and building an extraction facility both need one
     //  of the player's own HERO-LED armies on the target hex. EconomyMissionPlanner delivers a
-    //  mobile hero when needed; this owner performs only the final, already-local transaction.
+    //  mobile hero when needed; this owner admits only the final, already-local transaction.
     // ===========================================================================================
-    internal sealed class InfraFulfillResult : IV2ActionResult
-    {
-        public bool ResourceConverted;
-        public bool Built;
-        // A paid stand-alone Base-level step (Development CapacityUnlock): a real, successful action that
-        // is NOT a facility, a played card or a new building. It never satisfies a "facility is ready" demand.
-        public bool CapacityUnlocked;
-        public float ApSpent;
-        public ResourceCost ResourcesSpent;   // forwarded from the BuildingPlayResult
-        public bool StateChanged;
-        // DEV path plays a CardType.Facility card out of hand; the ECO extraction path is a
-        // hero-built site with NO hand card — Outcome.Played must reflect that, not "Built".
-        public bool CardPlayed;
-        public int AdditionalCardsConsumed;
-        // An operator may be manufactured by a DIFFERENT already staffed facility.
-        // This is a single Challenge step, not a completed operator deployment.
-        public bool GenerationAttempted;
-        public bool Generated;
-        public GenerationStep Generation;
-        public CardData GeneratedOperatorCard;
-        public int? BuilderArmyId;
-        public int StateVersionAfter = -1;
-        public string Detail;
-
-        public static InfraFulfillResult No(string why) => new InfraFulfillResult { Detail = why };
-
-        public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Built || CapacityUnlocked, stateChanged: StateChanged, apSpent: ApSpent,
-            resourcesSpent: ResourcesSpent,
-            played: CardPlayed, generated: Generated, attached: false, moved: false, created: Built,
-            needsReplan: GenerationAttempted || CapacityUnlocked, stateVersionAfter: StateVersionAfter,
-            failReason: Built || CapacityUnlocked || Generated ? null : Detail);
-    }
-
     internal static class InfrastructureFulfillment
     {
         public static bool Handles(CapabilityKind k) =>
@@ -97,7 +61,7 @@ namespace Game.Ai.V2
                         || ResearchProductionSystem.FindActor(player, site, mode) != null
                         || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, site, card.Definition))
                         return false;
-                    // 2026-11-20 - the garrison or a hero-only bench on the hex (one list).
+                    // The garrison or a hero-only bench on the hex (one list).
                     return PlacementSelector.FacilityOperatorPlacements(player, site, card.Definition).Count > 0;
                 });
             reservation.ReconcileDevelopmentOperatorCards(cards);
@@ -113,17 +77,12 @@ namespace Game.Ai.V2
             public HexCoord TargetHex;
             public int? BuilderArmyId;
             public string Explain;
-            public GenerationStep Generation;
             // The admitted action; InfrastructureBuildExecutor runs it.
             public InfraBuildAction Action;
-            // CapacityUnlock: buy exactly this Base level (re-confirmed by the gameplay primitive).
-            public BuildingData CapacityBuilding;
-            public BaseUpgradeTier CapacityTier;
-            public int CapacityExpectedLevel;
         }
 
         // What Phase A's arbiter reads before choosing between this build lane and the materialization
-        // portfolio: the intrinsic card score of the exact action TryFulfill would run NOW and
+        // portfolio: the intrinsic card score of the exact action Admit would return NOW and
         // whether every admission gate (shared AP pool, spendable resources, live affordability)
         // passes. Pure: nothing is reserved, spent or mutated here.
         internal readonly struct InfraProposal
@@ -202,98 +161,36 @@ namespace Game.Ai.V2
             return null;
         }
 
-        public static InfraFulfillResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
+        // The infrastructure action Phase A runs NOW for `demand` (InfrastructureBuildExecutor.Execute),
+        // or null and why not. Every admission gate passes before it is returned; nothing is spent.
+        internal static InfraBuildAction Admit(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            PhaseAApBudget apBudget, MaterializationReservation reservation = null,
+            PhaseAApBudget apBudget, out string refusal, MaterializationReservation reservation = null,
             IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null,
             float? witnessedUsefulApDemand = null)
         {
+            refusal = null;
             if (demand == null || ctx == null || root == null || player == null)
-                return InfraFulfillResult.No("missing args");
+            { refusal = "missing args"; return null; }
 
             InfraCandidate cand = BuildCandidate(snap, player, root, hand, ctx, demand, apBudget,
                 reservation, activeIntents, commitments, witnessedUsefulApDemand);
             if (cand == null)
-                return InfraFulfillResult.No($"{demand.Capability}: no legal authoritative build available now");
-            SpendAuthority authority = SpendAuthorityFor(demand);
-            string economyOwner = authority.Owner;
-            string refusal = AdmissionRefusal(player, root, ctx, demand, cand, apBudget);
+            { refusal = $"{demand.Capability}: no legal authoritative build available now"; return null; }
+            refusal = AdmissionRefusal(player, root, ctx, demand, cand, apBudget);
             if (refusal != null)
-                return InfraFulfillResult.No(refusal);
+                return null;
 
-            // A promised operator from the catalog is not yet a card in hand. Mint it via
-            // the existing gameplay Challenge as ONE atomic stage. Phase A owns retry/AP
-            // accounting and reruns the ordinary hand-operator path on the refreshed snapshot.
-            if (cand.Generation != null)
-            {
-                GenerationStep g = cand.Generation;
-                // Reconfirm source identity and affordability immediately before mutation.
-                if (reservation == null || !reservation.CanGenerateMore
+            // A promised operator from the catalog is not yet a card in hand: its Challenge is ONE
+            // atomic stage. Reconfirm source identity and affordability immediately before it.
+            GenerationStep g = cand.Action.Generation;
+            if (g != null && (reservation == null || !reservation.CanGenerateMore
                     || !GenerationSource.Enumerate(player, root, ctx, hand,
                         reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards)
-                        .Any(x => x.CardKey == g.CardKey && x.Hero == g.Hero
-                            && x.CardDef == g.CardDef))
-                    return InfraFulfillResult.No("operator generator unavailable or already attempted");
-                int beforeAp = root.ActionPoints;
-                int beforeRate = root.TradeRate;
-                int beforeH = root.GetResource(ResourceType.Human);
-                int beforeE = root.GetResource(ResourceType.Energy);
-                int beforeM = root.GetResource(ResourceType.Materials);
-                int beforeT = root.GetResource(ResourceType.Tech);
-                MaterializationExecutor.GenerationOutcome generated =
-                    MaterializationExecutor.TryGenerate(g, player, root, hand, ctx);
-                var paid = new ResourceCost
-                {
-                    human = beforeH - root.GetResource(ResourceType.Human),
-                    energy = beforeE - root.GetResource(ResourceType.Energy),
-                    materials = beforeM - root.GetResource(ResourceType.Materials),
-                    tech = beforeT - root.GetResource(ResourceType.Tech),
-                };
-                int version = WorldDeltaLifecycle.StampAction(generated.StateChanged && generated.Attempted);
-                return new InfraFulfillResult
-                {
-                    ResourceConverted = root.TradeRate != beforeRate,
-                    Built = false, GenerationAttempted = generated.Attempted,
-                    Generated = generated.Success, Generation = g,
-                    GeneratedOperatorCard = generated.Success ? generated.Minted : null,
-                    ApSpent = beforeAp - root.ActionPoints, ResourcesSpent = paid,
-                    StateChanged = generated.StateChanged, StateVersionAfter = version,
-                    Detail = generated.Success
-                        ? $"operator {g.CardDef.displayName} generated into hand; deploy next pass"
-                        : generated.FailReason,
-                };
-            }
+                        .Any(x => x.CardKey == g.CardKey && x.Hero == g.Hero && x.CardDef == g.CardDef)))
+            { refusal = "operator generator unavailable or already attempted"; return null; }
 
-            // A stand-alone Base level: one payment + one mutation by the gameplay primitive, then ONE
-            // world receipt. No card is played, no facility exists yet - the placement is a later action.
-            if (cand.CapacityTier != null)
-                return ExecuteCapacityUnlock(player, root, ctx, cand);
-
-            int rateBeforeFunding = root.TradeRate;
-            if (!TradeFunding.Fund(player, root, ctx, cand.ResCost, authority))
-                return new InfraFulfillResult { Detail = "infrastructure funding changed",
-                    ResourceConverted = root.TradeRate != rateBeforeFunding,
-                    StateChanged = root.TradeRate != rateBeforeFunding,
-                    StateVersionAfter = root.TradeRate != rateBeforeFunding ? WorldDeltaLifecycle.Current : -1 };
-            // --- authoritative transaction (Execution) ---
-            BuildingPlayResult r = InfrastructureBuildExecutor.Run(cand.Action, player, root, hand, ctx);
-            bool converted = root.TradeRate != rateBeforeFunding;
-            if (converted) { r.StateChanged = true; r.StateVersionAfter = WorldDeltaLifecycle.Current; }
-            if (r.Built && economyOwner != null)
-                MissionLeaseBook.ReleaseByOwner(player, ctx.TurnNumber,
-                    economyOwner);
-            if (!r.Built)
-            {
-                AiDebugLog.Write($"[AI][V2]   infra - {demand.Capability} action rejected: {r.FailReason} ({cand.Explain})");
-                return new InfraFulfillResult { ResourceConverted = converted, Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
-                    ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
-                    StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
-            }
-            return new InfraFulfillResult { ResourceConverted = converted, Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
-                ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
-                AdditionalCardsConsumed = r.AdditionalCardsConsumed,
-                BuilderArmyId = cand.BuilderArmyId,
-                StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
+            return cand.Action.Admitted(cand.ResCost, cand.Explain, cand.BuilderArmyId);
         }
 
         internal static string EconomyReservationOwner(AxisDemand demand) => EconomyReservationIdentity(demand);
@@ -329,14 +226,9 @@ namespace Game.Ai.V2
                 && (demand.Capability == CapabilityKind.GlobalResourceFacility
                     || demand.Capability == CapabilityKind.GlobalResourceCarrier))
                 return new SpendAuthority(null, economyCompletesNow: true);
-            // 2026-10-02 playtest (Rurik/Kryll): a Collector's unit costs 1 Human, but a deferred
-            // Base build held ALL the Human (stock 1-3, hold 2-3) for turns, so ~600 collector
-            // attempts failed "resources need H=1 have=0" - and the collector is the only thing
-            // that raises the very income the build waits for. A Collector of a SCARCE resource (any of
-            // the four, never a surplus one - EconomyResourceScarce) is one unit and pays off by
-            // income, so like a build that completes now it may draw on OTHER builds' deferred holds (they shield
-            // H/E/M/T from non-Economy spending; this IS Economy spending). Every other hold -
-            // Attack continuation, its own build - still counts.
+            // A Collector of a scarce resource (EconomyResourceScarce) raises the income the deferred
+            // builds wait for, so like a build that completes now it may draw on OTHER builds'
+            // deferred holds; every other hold (Attack continuation, its own build) still counts.
             if (demand != null && demand.RequestingAxis == DesireAxis.Economy
                 && demand.Capability == CapabilityKind.CollectorCapability
                 && demand.EconomyResourceScarce)
@@ -344,7 +236,7 @@ namespace Game.Ai.V2
             string heroBuildOwner = EconomyHeroPrerequisiteOwner(demand);
             if (heroBuildOwner != null)
                 return new SpendAuthority(heroBuildOwner, economyCompletesNow: false);
-            // 2026-10-01 (user decision): a card that builds the Attack's own strike force may use
+            // A card that builds the Attack's own strike force may use
             // the AP held for the Attack's next step (the derived operation-continuation claim);
             // every other card plays around it.
             return demand != null && demand.UsesAttackContinuationAp
@@ -495,30 +387,6 @@ namespace Game.Ai.V2
                 yield return h;
         }
 
-        private static InfraFulfillResult ExecuteCapacityUnlock(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, InfraCandidate cand)
-        {
-            int apBefore = root.ActionPoints;
-            int rateBefore = root.TradeRate;
-            BaseUpgradeOutcome outcome = InfrastructureBuildExecutor.UnlockCapacity(player, root, ctx,
-                cand.CapacityBuilding, cand.CapacityExpectedLevel, cand.TargetHex, out int version);
-            if (!outcome.Ok)
-            {
-                // The upgrade refused; preserve any conversion already committed before it.
-                AiDebugLog.Write($"[AI][V2]   infra - CapacityUnlock refused: {outcome.FailReason} ({cand.Explain})");
-                return new InfraFulfillResult { Detail = outcome.FailReason,
-                    ResourceConverted = root.TradeRate != rateBefore, StateChanged = root.TradeRate != rateBefore,
-                    StateVersionAfter = root.TradeRate != rateBefore ? WorldDeltaLifecycle.Current : -1 };
-            }
-            return new InfraFulfillResult
-            {
-                Built = false, CapacityUnlocked = true, CardPlayed = false,
-                ApSpent = apBefore - root.ActionPoints, ResourcesSpent = outcome.ResourcesSpent,
-                StateChanged = true, StateVersionAfter = version,
-                Detail = $"{cand.Explain} -> level {outcome.LevelAfter}, facility slots {outcome.UnlockedSlotsAfter}",
-            };
-        }
-
         // DEV CapacityUnlock - buy the next Base level so the confirmed hand Facility can be placed
         // later. The ADMITTED opportunity is a plan; everything it assumed is re-derived from the live
         // world here and a mismatch yields no candidate (a stale plan is never re-targeted at another
@@ -547,7 +415,7 @@ namespace Game.Ai.V2
                 ResCost = tier.cost,
                 DecisionScore = score,
                 TargetHex = hex,
-                CapacityBuilding = b, CapacityTier = tier, CapacityExpectedLevel = b.Level,
+                Action = InfraBuildAction.CapacityUnlock(b, b.Level, hex),
                 Explain = $"CapacityUnlock {b.Name}@({hex.Q},{hex.R}) level {b.Level}->{b.Level + 1} "
                     + $"for {witness.displayName} ({mode})",
             };
@@ -757,8 +625,8 @@ namespace Game.Ai.V2
                         || abilities == null || !abilities.Contains(role))
                         continue;
 
-                    // 2026-11-20 (owner) - the garrison, or a hero-only bench on the hex when the
-                    // garrison cannot take it (the same first placement the preparation facts chose).
+                    // The garrison, or a hero-only bench on the hex when the garrison cannot take it
+                    // (the same first placement the preparation facts chose).
                     PlacementOption? chosen = DevelopmentOpportunityEvaluator.FirstOperatorPlacement(
                         player, root, hand, ctx, fac.Hex, card, null);
                     if (!chosen.HasValue)
@@ -809,7 +677,7 @@ namespace Game.Ai.V2
                     .Contains(ResearchProductionSystem.RoleAbility(demand.DevelopmentOperatorMode.Value)))
                 return null;
             BuildingData destination = OwnWorld.Of(player).BuildingAt(demand.TargetHex.Value);
-            // 2026-11-20 - the minted card's first facility-hex place: garrison or hero-only bench.
+            // The minted card's first facility-hex place: garrison or hero-only bench.
             List<PlacementOption> destinations = PlacementSelector.FacilityOperatorPlacements(
                 player, demand.TargetHex.Value, proposed.CardDef);
             if (destination == null || destination.Owner != player
@@ -830,7 +698,7 @@ namespace Game.Ai.V2
                 return null;
             return new InfraCandidate
             {
-                Generation = live,
+                Action = InfraBuildAction.OperatorGeneration(live),
                 ApCost = ResearchProductionSystem.AttemptApCost(live.ChallengeCard),
                 ResCost = live.GenerationResourceCost,
                 DecisionScore = generatedScore, TargetHex = demand.TargetHex.Value,

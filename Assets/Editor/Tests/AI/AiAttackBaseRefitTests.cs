@@ -153,18 +153,6 @@ namespace Game.EditorTests
             finally { UnityEngine.Object.DestroyImmediate(obj); }
         }
         [Test]
-        public void PartialHandoff_ReportsPhysicalCardPlayAndRequiresReplan()
-        {
-            var result = new MaterializationResult { CardDeployed = true, Deployed = false,
-                StateChanged = true, PlacementStale = true, ApSpent = 2,
-                FailReason = "handoff rejected" };
-            Assert.That(result.Outcome.Played, Is.True);
-            Assert.That(result.Outcome.Succeeded, Is.False);
-            Assert.That(result.Outcome.NeedsReplan, Is.True);
-            Assert.That(result.Outcome.ApSpent, Is.EqualTo(2));
-        }
-
-        [Test]
         public void RepeatedRefits_ReplaceOneActorsFollowupPromise()
         {
             var budget = PhaseAApBudget.Create(null);

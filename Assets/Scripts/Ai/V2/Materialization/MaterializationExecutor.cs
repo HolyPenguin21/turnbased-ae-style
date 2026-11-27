@@ -7,33 +7,26 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  MATERIALIZATION EXECUTOR  (Strategy V2 — Strategic Manager, Step 8B)
+    //  MATERIALIZATION EXECUTOR
     // ===========================================================================================
-    //  Runs one MaterializationPlan through the CANONICAL gameplay APIs, step by step, on the live
-    //  world — never fabricating a card, mutating the hand outside the one boundary here, or
-    //  simulating an Equipment/generation effect. Order: generate -> attach -> deploy.
+    //  Runs one MaterializationPlan through the canonical gameplay APIs on the live world, in the
+    //  order generate -> attach -> deploy, and a stand-alone Challenge (ExecuteGeneration).
     //
-    //  LOGICAL ATOMICITY, NOT a transaction. The chain was fully preflighted and its whole cost
-    //  reserved before this call. Each real action is then taken against the LIVE state: after a
-    //  step, its actual result is used and the next step is re-checked. There is NO rollback of a
-    //  gameplay action that already succeeded:
-    //    · Challenge lost            -> AP/resources stay spent, chain stops, StateChanged if the
-    //                                   world actually moved, generator use is reported as
-    //                                   attempted so the pass never retries it.
-    //    · attach fails after a win  -> the generated card stays in hand, chain stops.
-    //    · deploy fails              -> whatever exists, exists; CardPlayExecutor already keeps a
-    //                                   created empty army as a reusable asset.
-    //  The real AP delta measured on PlayerRoot is reported, so the axis ledger stays honest even
-    //  on a partial failure.
+    //  Each step is taken against the live state and the next one is re-checked; a step that
+    //  succeeded is never rolled back:
+    //    · Challenge lost            -> AP/resources stay spent, the chain stops, the generator use
+    //                                   is reported as attempted so the pass never retries it.
+    //    · attach fails after a win  -> the generated card stays in hand, the chain stops.
+    //    · deploy fails              -> whatever exists, exists; CardPlayExecutor keeps a created
+    //                                   empty army as a reusable asset.
+    //  ApSpent is the AP really spent (V2ActionOutcome.ApSpentSince), partial failures included.
     // ===========================================================================================
     public static class MaterializationExecutor
     {
-        // The Research/Production mint step, shared so the Phase-B non-combat lane can
-        // generate → deploy an Aviation / Base / Facility card too
-        // (NonCombatCardPlayer owns that deploy; MaterializationExecutor only bodies Unit/Hero
-        // chains). Same rules: eligibility re-check, full AP/resource affordability, Research
-        // reveal, probabilistic Challenge, and cap-exempt mint into hand on a win.
-        public readonly struct GenerationOutcome
+        // The Research/Production mint step, shared by the chains here, the non-combat plays
+        // (NonCombatPlayExecutor) and ExecuteGeneration: eligibility re-check, affordability,
+        // Research reveal, the Challenge roll and a cap-exempt mint into hand on a win.
+        internal readonly struct GenerationOutcome
         {
             public readonly bool Attempted;
             public readonly bool Success;
@@ -111,6 +104,28 @@ namespace Game.Ai.V2
             return new GenerationOutcome(true, true, minted, true, null);
         }
 
+        // A Challenge as a whole action of its own (a Development upgrade's equipment, a missing
+        // operator): the minted card stays in hand for a later play. One world receipt for a paid
+        // attempt, won or lost.
+        internal static MaterializationResult ExecuteGeneration(GenerationStep g, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, SpendAuthority authority = default)
+        {
+            int apBefore = root != null ? root.ActionPoints : 0;
+            GenerationOutcome go = TryGenerate(g, player, root, hand, ctx, authority);
+            var res = new MaterializationResult
+            {
+                GenerationAttempted = go.Attempted,
+                Generated = go.Success,
+                GeneratedCard = go.Minted,
+                StateChanged = go.StateChanged,
+                ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root),
+                AttemptedGenerationUseKey = go.Attempted ? g.UseKey : null,
+                FailReason = go.Success ? null : go.FailReason,
+            };
+            res.StateVersionAfter = WorldDeltaLifecycle.StampAction(go.Attempted && go.StateChanged);
+            return res;
+        }
+
         public static MaterializationResult Execute(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, MaterializationPlan plan, ActorCommitments commitments,
             SpendAuthority authority = default)
@@ -164,10 +179,8 @@ namespace Game.Ai.V2
             if (root.TradeRate != rateBeforeFunding)
             { res.StateChanged = true; res.StateVersionAfter = WorldDeltaLifecycle.Current; }
             if (!funded) { res.FailReason = "chain funding changed"; return res; }
-            // The candidate was admitted against a previous snapshot. Check the whole canonical
-            // chain again BEFORE its first irreversible step so a mid-turn resource change cannot
-            // make this executor spend another axis's newly protected resources. No substitute
-            // budget model: the same ReservesOkAfterChain is used by feasibility.
+            // Admitted against an earlier snapshot: re-check the whole chain with the feasibility
+            // rule (ReservesOkAfterChain) before the first irreversible step.
             if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player, authority))
             {
                 res.FailReason = "chain no longer fits AP/spendable reserves";
@@ -176,20 +189,10 @@ namespace Game.Ai.V2
 
             bool chainChanged = false;
             int apStart = root.ActionPoints;
-            int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
-                m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
-            // A standalone CardPlayExecutor.Play already stamps a deployment (including a partial
-            // failed deploy that changed AP/resources or created an army). An enclosing chain must
-            // stamp only when no child has done so, while still stamping generate/attach-only
-            // partial failures. Both execution paths report the same current version.
-            void StampResources(bool childAlreadyStamped = false)
-            {
-                int dh = h0 - root.GetResource(ResourceType.Human), de = e0 - root.GetResource(ResourceType.Energy),
-                    dm = m0 - root.GetResource(ResourceType.Materials), dt = t0 - root.GetResource(ResourceType.Tech);
-                res.ResourcesSpent = (dh | de | dm | dt) == 0
-                    ? null : new ResourceCost { human = dh, energy = de, materials = dm, tech = dt };
+            // One receipt per chain: CardPlayExecutor.Play stamps its own deployment (a partial one
+            // included); the chain stamps only what no child stamped (generate/attach failures).
+            void StampVersion(bool childAlreadyStamped = false) =>
                 res.StateVersionAfter = WorldDeltaLifecycle.StampAction(chainChanged, childAlreadyStamped);
-            }
 
             // ---------------------------------------------------------------- 1. generate ----
             CardData generated = null;
@@ -202,13 +205,14 @@ namespace Game.Ai.V2
                 if (go.StateChanged) { res.StateChanged = true; chainChanged |= go.Attempted; }
                 if (!go.Success)
                 {
-                    res.ApSpent = apStart - root.ActionPoints;
-                    StampResources();
+                    res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
+                    StampVersion();
                     res.FailReason = go.FailReason;
                     return res;
                 }
                 generated = go.Minted;
                 res.Generated = true;
+                res.GeneratedCard = generated;
             }
 
             // ----------------------------------------------- 2. resolve base + equipment ----
@@ -217,8 +221,8 @@ namespace Game.Ai.V2
 
             if (baseCard == null || !hand.Hand.Contains(baseCard))
             {
-                res.ApSpent = apStart - root.ActionPoints;
-                StampResources();
+                res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
+                StampVersion();
                 res.FailReason = "base card missing after generation";
                 return res;
             }
@@ -228,15 +232,15 @@ namespace Game.Ai.V2
             {
                 if (equipmentCard == null || equipmentCard == baseCard || !hand.Hand.Contains(equipmentCard))
                 {
-                    res.ApSpent = apStart - root.ActionPoints;
-                    StampResources();
+                    res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
+                    StampVersion();
                     res.FailReason = "equipment card missing";
                     return res;
                 }
                 if (!EquipmentSystem.TryAttach(equipmentCard, baseCard, root, out string attachFail))
                 {
-                    res.ApSpent = apStart - root.ActionPoints;
-                    StampResources();
+                    res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
+                    StampVersion();
                     res.FailReason = $"attach failed ({attachFail})";
                     return res;
                 }
@@ -250,15 +254,14 @@ namespace Game.Ai.V2
             }
 
             // ---------------------------------------------------------------- 4. deploy ----
-            // ARCH-02 §35 — the executor takes the plan's placement verbatim. If it no longer
-            // preflights (a generate step just minted, or an earlier chain this pass consumed the
-            // slot), that is a STALE PLAN: report it and let the caller refresh + replan. The
-            // executor never enumerates a replacement placement of its own.
+            // The plan's placement is taken verbatim. If it no longer preflights (a mint just
+            // happened, or an earlier chain took the slot) the plan is stale: report it for a
+            // refresh + replan; never pick another placement here.
             CardPlayPlan deployPlan = plan.Deploy.Bind(baseCard);
             if (!CardPlayExecutor.Preflight(player, root, hand, ctx, deployPlan, out string preflightFail))
             {
-                res.ApSpent = apStart - root.ActionPoints;
-                StampResources();
+                res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
+                StampVersion();
                 res.PlacementStale = true;
                 res.FailReason = $"deploy placement stale after chain ({preflightFail ?? "preflight failed"}); "
                     + "caller must refresh and replan";
@@ -267,25 +270,22 @@ namespace Game.Ai.V2
 
             CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, deployPlan);
             res.CardDeployed = play.Deployed;
-            res.ApSpent = apStart - root.ActionPoints;
+            res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
             if (play.StateChanged)
             { res.StateChanged = true; chainChanged = true; }
-            // CardPlayExecutor has already bumped for any deployment-side mutation. Do not bump
-            // twice for the same chain; generation/attachment-only failures still bump above.
-            StampResources(childAlreadyStamped: play.StateChanged);
+            // CardPlayExecutor already stamped any deployment-side mutation.
+            StampVersion(childAlreadyStamped: play.StateChanged);
             if (play.Deployed && plan.AttackRefitPrimaryId.HasValue)
             {
                 bool handed = GroundCombatReinforcementTransaction.ApplyLocalRefit(plan, player, root, ctx, hand, play.ArmyShell, authority,
                     snap?.Intents);
-                res.ApSpent = apStart - root.ActionPoints;
+                res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
                 res.Deployed = handed;
                 res.PlacementStale = !handed;
                 res.FailReason = handed ? null : "refit handoff rejected; deployed card remains at base";
-                StampResources(childAlreadyStamped: true);
-                res.ArmyCreated = play.ArmyCreated;
+                StampVersion(childAlreadyStamped: true);
                 return res;
             }
-            res.ArmyCreated = play.ArmyCreated;
             res.Deployed = play.Deployed;
             if (!play.Deployed)
                 res.FailReason = play.FailReason ?? "deploy failed";
