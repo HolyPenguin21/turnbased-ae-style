@@ -132,7 +132,7 @@ namespace Game.Ai.V2
         // pending-fact owner. Canonical mutation freshness is StateVersionAfter above.
         internal IReadOnlyList<WorldDelta> WorldDeltas = System.Array.Empty<WorldDelta>();
 
-        // ARCH-02 §36 — the common lifecycle projection. StateChanged is the honest floor:
+        // The step's lifecycle facts. StateChanged is the honest floor:
         // movement, stealth transition, or infrastructure ownership/destruction. Reaching a goal
         // that was already satisfied (StaleNoOp) is a success but NOT a state change.
         public V2ActionOutcome Outcome

@@ -33,9 +33,6 @@ namespace Game.Ai.V2
         public bool BaseLevelBought;
         public float ApSpent;
         public bool StateChanged;
-        // DEV path plays a CardType.Facility card out of hand; the ECO extraction path is a
-        // hero-built site with NO hand card.
-        public bool CardPlayed;
         public int AdditionalCardsConsumed;
         // An operator may be manufactured by a DIFFERENT already staffed facility.
         // This is a single Challenge step, not a completed operator deployment.
@@ -95,8 +92,7 @@ namespace Game.Ai.V2
     }
 
     // ===========================================================================================
-    //  INFRASTRUCTURE EXECUTION (2026-10-15: moved out of Strategy's InfrastructureFulfillment and
-    //  StrategicMaintenancePolicy). Runs exactly the admitted action through the canonical gameplay
+    //  INFRASTRUCTURE EXECUTION. Runs exactly the admitted action through the canonical gameplay
     //  primitives and reports what really happened; it never re-selects a card, hex or tier.
     // ===========================================================================================
     internal static class InfrastructureBuildExecutor
@@ -138,14 +134,11 @@ namespace Game.Ai.V2
             bool converted = root.TradeRate != rateBeforeFunding;
             if (converted) { r.StateChanged = true; r.StateVersionAfter = WorldDeltaLifecycle.Current; }
             if (!r.Built)
-            {
-                AiDebugLog.Write($"[AI][V2]   infra - action rejected: {r.FailReason} ({a.Label})");
                 return new InfraFulfillResult { ResourceConverted = converted, Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
-                    CardPlayed = r.CardConsumed, BaseLevelBought = r.BaseLevelBought,
+                    BaseLevelBought = r.BaseLevelBought,
                     StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
-            }
             return new InfraFulfillResult { ResourceConverted = converted, Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
-                CardPlayed = r.CardConsumed, BaseLevelBought = r.BaseLevelBought,
+                BaseLevelBought = r.BaseLevelBought,
                 AdditionalCardsConsumed = r.AdditionalCardsConsumed,
                 BuilderArmyId = a.BuilderArmyId,
                 StateVersionAfter = r.StateVersionAfter, Detail = a.Label };
@@ -167,7 +160,7 @@ namespace Game.Ai.V2
             }
             return new InfraFulfillResult
             {
-                Built = false, CapacityUnlocked = true, CardPlayed = false,
+                Built = false, CapacityUnlocked = true,
                 ApSpent = outcome.ApSpent,
                 StateChanged = true, StateVersionAfter = version,
                 Detail = $"{a.Label} -> level {outcome.LevelAfter}, facility slots {outcome.UnlockedSlotsAfter}",
@@ -197,7 +190,6 @@ namespace Game.Ai.V2
                         Built = r.Deployed,
                         ApSpent = r.ApSpent,
                         StateChanged = r.StateChanged,
-                        CardConsumed = r.Deployed,
                         StateVersionAfter = r.StateVersionAfter,
                         FailReason = r.FailReason,
                     };

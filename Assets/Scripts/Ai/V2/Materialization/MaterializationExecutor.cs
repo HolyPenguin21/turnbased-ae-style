@@ -223,6 +223,7 @@ namespace Game.Ai.V2
                 }
                 generated = go.Minted;
                 res.Generated = true;
+                res.GeneratedCard = generated;
             }
 
             // ----------------------------------------------- 2. resolve base + equipment ----
@@ -296,10 +297,8 @@ namespace Game.Ai.V2
                 res.PlacementStale = !handed;
                 res.FailReason = handed ? null : "refit handoff rejected; deployed card remains at base";
                 StampVersion(childAlreadyStamped: true);
-                res.ArmyCreated = play.ArmyCreated;
                 return res;
             }
-            res.ArmyCreated = play.ArmyCreated;
             res.Deployed = play.Deployed;
             if (!play.Deployed)
                 res.FailReason = play.FailReason ?? "deploy failed";

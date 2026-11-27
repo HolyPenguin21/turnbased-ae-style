@@ -142,6 +142,9 @@ namespace Game.Ai.V2
                 infra = action == null ? InfraFulfillResult.No(refusal)
                     : InfrastructureBuildExecutor.Execute(action, demand.SpendAuthority,
                         pass.Player, pass.Root, pass.Hand, pass.Ctx);
+                if (action != null && !infra.Built && action.Kind != InfraBuildKind.OperatorGeneration
+                    && action.Kind != InfraBuildKind.CapacityUnlock)
+                    AiDebugLog.Write($"[AI][V2]   infra - {demand.Capability} action rejected: {infra.Detail} ({action.Label})");
             }
             // A completed Economy build ends the lease its demand held.
             if (infra.Built && demand.SpendAuthority.Owner != null)

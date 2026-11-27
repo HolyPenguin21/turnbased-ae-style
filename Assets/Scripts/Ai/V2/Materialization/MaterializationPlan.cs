@@ -159,7 +159,6 @@ namespace Game.Ai.V2
         public CardData GeneratedCard;            // the card a won Challenge put into the hand
         public bool GenerationAttempted;
         public bool Attached;
-        public bool ArmyCreated;                  // a new army shell was founded by this chain
         public float ApSpent;                     // real PlayerRoot AP delta across the whole chain
         // ARCH-02 §35 — set when plan.Deploy no longer preflights at execution time. The chain did
         // NOT deploy and the executor did NOT substitute a placement; the caller must refresh the

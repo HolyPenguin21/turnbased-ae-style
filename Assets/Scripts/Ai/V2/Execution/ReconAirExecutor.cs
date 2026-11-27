@@ -18,15 +18,13 @@ namespace Game.Ai.V2
     internal sealed class AirReconExecutionResult
     {
         public bool AnyMoved;
-        public bool AnyLaunched;
         public bool AnyStruck;
         public bool ResourceConverted;
 
         public void RecordMove() { AnyMoved = true; }
-        public void RecordLaunch() { AnyLaunched = true; }
         public void RecordStrike() { AnyStruck = true; }
 
-        public bool Mutated => AnyMoved || AnyLaunched || AnyStruck || ResourceConverted;
+        public bool Mutated => AnyMoved || AnyStruck || ResourceConverted;
     }
 
     // ARCH-02 §35 — EXECUTION ONLY. It receives an AirReconPlan (actor/airfield/subset WHO is
@@ -53,7 +51,7 @@ namespace Game.Ai.V2
         }
 
         private static bool PrepareStoredMissions(AirReconPlan plan, PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result)
+            AiTurnContext ctx, WorldSnapshot snapshot)
         {
             bool changed = false;
             foreach (ProvisionedMission pm in plan.StoredMissions.ToList())
@@ -88,7 +86,6 @@ namespace Game.Ai.V2
                 plan.MaterializedActorIds.Add(wing.Id);
                 plan.ReadyActorIds.Add(wing.Id);
                 plan.ReadyMissionByActorId[wing.Id] = pm;
-                result.RecordLaunch();
                 changed = true;
                 WorldDeltaLifecycle.CommitMutation();
             }
@@ -153,14 +150,13 @@ namespace Game.Ai.V2
         // in AirReconPlanner; launch/actor validation and result construction stay in this executor.
         internal static IEnumerator ExecutePlanStep(AirReconPlan plan, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
-            AirReconExecutionResult result, List<ExecutionResult> perMissionResults)
+            List<ExecutionResult> perMissionResults)
         {
-            result ??= new AirReconExecutionResult();
             if (plan == null || player == null || root == null || ctx?.Map == null
                 || snapshot?.Self == null || perMissionResults == null)
                 yield break;
 
-            if (PrepareStoredMissions(plan, player, root, ctx, snapshot, result))
+            if (PrepareStoredMissions(plan, player, root, ctx, snapshot))
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, AiHandRegistry.Peek(player), ctx);
             AirReconSkippedMission skipped = plan.SkippedMissions.FirstOrDefault();
             if (skipped?.Mission != null)
@@ -197,7 +193,7 @@ namespace Game.Ai.V2
                     air?.Hex ?? pm.ExecutionHex, air?.Id ?? -1);
                 perMission.ActorMaterialized = plan.MaterializedActorIds.Contains(id);
                 int apBefore = root.ActionPoints;
-                yield return RunActorStep(player, root, ctx, snapshot, air, result, apBefore,
+                yield return RunActorStep(player, root, ctx, snapshot, air, null, apBefore,
                     pm.FocusHex, perMission);
                 perMissionResults.Add(perMission);
                 yield break;

@@ -28,7 +28,6 @@ namespace Game.Ai.V2
         public float ApSpent;
         public bool StateChanged;
         public int StateVersionAfter = -1;
-        public bool CardConsumed;
         public int AdditionalCardsConsumed;   // a synchronous founding defender, if any
         // The Base level bought for the slot stays bought even when the Facility placement then fails.
         public bool BaseLevelBought;
@@ -122,7 +121,7 @@ namespace Game.Ai.V2
             }
             return new BuildingPlayResult
             {
-                Built = true, CardConsumed = true, AdditionalCardsConsumed = defender == null ? 0 : 1,
+                Built = true, AdditionalCardsConsumed = defender == null ? 0 : 1,
                 StateChanged = true, ApSpent = outcome.ApSpent,
                 StateVersionAfter = mutation.Commit(player, ctx.TurnNumber,
                     new WorldDelta(true, StrategicInvalidationReason.None)),
@@ -297,7 +296,7 @@ namespace Game.Ai.V2
             hand.RemoveCard(card);
             return new BuildingPlayResult
             {
-                Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
+                Built = true, StateChanged = true, ApSpent = outcome.ApSpent,
                 StateVersionAfter = WorldDeltaLifecycle.CommitMutation(),
             };
         }

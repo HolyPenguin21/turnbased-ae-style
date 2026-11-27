@@ -343,7 +343,6 @@ namespace Game.EditorTests
 
             Assert.That(unlock.CapacityUnlocked, Is.True, unlock.Detail);
             Assert.That(unlock.Built, Is.False, "no facility exists yet");
-            Assert.That(unlock.CardPlayed, Is.False);
             Assert.That(unlock.AdditionalCardsConsumed, Is.Zero);
             Assert.That(unlock.Generated || unlock.GenerationAttempted, Is.False);
             Assert.That(_base.Level, Is.EqualTo(levelBefore + 1));
