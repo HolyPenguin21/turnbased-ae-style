@@ -71,10 +71,7 @@ namespace Game.Ai.V2
             if (army == null || ctx?.Map == null || pm == null || result == null)
             {
                 if (result != null)
-                {
                     result.StopReason = ExecutionStopReason.MoverLost;
-                    result.ApSpent = 0f;
-                }
                 return false;
             }
 
@@ -86,7 +83,6 @@ namespace Game.Ai.V2
             if (!ReconScoutKinds.IsGround(pm.ScoutKind))
             {
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.ApSpent = 0f;
                 AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm.Mission?.AttemptId}] actor=#{army.Id} "
                     + $"unknown Scout kind {(int)pm.ScoutKind}; fail closed before movement");
                 return false;
@@ -99,14 +95,12 @@ namespace Game.Ai.V2
                 || (ReconScoutKinds.IsDisruption(pm.ScoutKind) && !DisruptionRules.HasCarrier(army)))
             {
                 result.StopReason = ExecutionStopReason.MoverLost;
-                result.ApSpent = 0f;
                 ReconPatrolStateRegistry.Retire(player, army.Id, "actor no longer solo Recce");
                 return false;
             }
             if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
             {
                 result.StopReason = ExecutionStopReason.BattleStarted;
-                result.ApSpent = 0f;
                 if (result.StepsMoved == 0 && !result.EnteredStealth)
                     result.BlockedBeforeMovement = true;
                 return false;

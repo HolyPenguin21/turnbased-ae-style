@@ -60,21 +60,15 @@ namespace Game.Ai.V2
             (RequiresCreateArmy ? ArmyActions.CreateArmyApCost : 0) + CardCostRules.PlayAp(Card);
     }
 
-    public sealed class CardPlayResult : IV2ActionResult
+    public sealed class CardPlayResult
     {
         public bool Deployed;
         public bool ArmyCreated;
         public ArmyData ArmyShell;   // reused/created/target; a retained reusable asset if deploy failed
         public float ApSpent;        // REAL AP delta measured on PlayerRoot
-        public ResourceCost ResourcesSpent;  // REAL H/E/M/T delta (null = none)
         public bool StateChanged;
         public int StateVersionAfter = -1;
         public string FailReason;
-
-        public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Deployed, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
-            played: Deployed, generated: false, attached: false, moved: false, created: ArmyCreated,
-            needsReplan: false, stateVersionAfter: StateVersionAfter, failReason: Deployed ? null : FailReason);
     }
 
     public static class CardPlayExecutor
@@ -247,7 +241,7 @@ namespace Game.Ai.V2
             if (!deployed)
             {
                 result.FailReason = deployFail ?? "DeployUnitFromCard failed";
-                Stamp(result, resStart, root);
+                Stamp(result);
                 return result;
             }
 
@@ -257,7 +251,7 @@ namespace Game.Ai.V2
             // A successful deploy ALWAYS changed the world: a new unit exists, the target army
             // grew, capability supply moved; the hand is consumed here or by the enclosing commit — even for a 0-AP / 0-resource card.
             result.StateChanged = true;
-            Stamp(result, resStart, root);
+            Stamp(result);
             return result;
         }
 
@@ -276,18 +270,7 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Res == { Human, Energy, Materials, Tech }.
-        private static ResourceCost DeltaCost(int[] start, int[] end)
-        {
-            int h = start[0] - end[0], e = start[1] - end[1], m = start[2] - end[2], t = start[3] - end[3];
-            return (h | e | m | t) == 0 ? null
-                : new ResourceCost { human = h, energy = e, materials = m, tech = t };
-        }
-
-        private static void Stamp(CardPlayResult r, int[] resStart, PlayerRoot root)
-        {
-            r.ResourcesSpent = DeltaCost(resStart, Snapshot(root));
+        private static void Stamp(CardPlayResult r) =>
             r.StateVersionAfter = WorldDeltaLifecycle.StampAction(r.StateChanged);
-        }
     }
 }

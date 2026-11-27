@@ -305,10 +305,6 @@ namespace Game.EditorTests
             Assert.That(unlock.CardPlayed, Is.False);
             Assert.That(unlock.AdditionalCardsConsumed, Is.Zero);
             Assert.That(unlock.Generated || unlock.GenerationAttempted, Is.False);
-            Assert.That(unlock.Outcome.Succeeded, Is.True);
-            Assert.That(unlock.Outcome.Created, Is.False, "a level is not a new building");
-            Assert.That(unlock.Outcome.Played, Is.False);
-            Assert.That(unlock.Outcome.NeedsReplan, Is.True);
             Assert.That(_base.Level, Is.EqualTo(levelBefore + 1));
             Assert.That(_base.UnlockedFacilitySlots, Is.EqualTo(unlockedBefore + 1));
             Assert.That(_base.Defense, Is.EqualTo(defenseBefore + 1));
@@ -427,8 +423,6 @@ namespace Game.EditorTests
             Assert.That(r.CapacityUnlocked, Is.True, r.Detail);
             int[] after = Bank();
             ResourceCost bill = _config.baseUpgradeTiers[0].cost;
-            Assert.That(r.ResourcesSpent.human, Is.EqualTo(before[1] - after[1]));
-            Assert.That(r.ResourcesSpent.tech, Is.EqualTo(before[4] - after[4]));
             Assert.That(before[4] - after[4], Is.EqualTo(bill.tech));
             Assert.That(StrategicResourceReservationLedger.DebugLine(_player, _ctx.TurnNumber), Is.EqualTo(rows));
         }

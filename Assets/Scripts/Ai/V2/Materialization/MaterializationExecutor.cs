@@ -176,20 +176,12 @@ namespace Game.Ai.V2
 
             bool chainChanged = false;
             int apStart = root.ActionPoints;
-            int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
-                m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
             // A standalone CardPlayExecutor.Play already stamps a deployment (including a partial
             // failed deploy that changed AP/resources or created an army). An enclosing chain must
             // stamp only when no child has done so, while still stamping generate/attach-only
             // partial failures. Both execution paths report the same current version.
-            void StampResources(bool childAlreadyStamped = false)
-            {
-                int dh = h0 - root.GetResource(ResourceType.Human), de = e0 - root.GetResource(ResourceType.Energy),
-                    dm = m0 - root.GetResource(ResourceType.Materials), dt = t0 - root.GetResource(ResourceType.Tech);
-                res.ResourcesSpent = (dh | de | dm | dt) == 0
-                    ? null : new ResourceCost { human = dh, energy = de, materials = dm, tech = dt };
+            void StampVersion(bool childAlreadyStamped = false) =>
                 res.StateVersionAfter = WorldDeltaLifecycle.StampAction(chainChanged, childAlreadyStamped);
-            }
 
             // ---------------------------------------------------------------- 1. generate ----
             CardData generated = null;
@@ -203,7 +195,7 @@ namespace Game.Ai.V2
                 if (!go.Success)
                 {
                     res.ApSpent = apStart - root.ActionPoints;
-                    StampResources();
+                    StampVersion();
                     res.FailReason = go.FailReason;
                     return res;
                 }
@@ -218,7 +210,7 @@ namespace Game.Ai.V2
             if (baseCard == null || !hand.Hand.Contains(baseCard))
             {
                 res.ApSpent = apStart - root.ActionPoints;
-                StampResources();
+                StampVersion();
                 res.FailReason = "base card missing after generation";
                 return res;
             }
@@ -229,14 +221,14 @@ namespace Game.Ai.V2
                 if (equipmentCard == null || equipmentCard == baseCard || !hand.Hand.Contains(equipmentCard))
                 {
                     res.ApSpent = apStart - root.ActionPoints;
-                    StampResources();
+                    StampVersion();
                     res.FailReason = "equipment card missing";
                     return res;
                 }
                 if (!EquipmentSystem.TryAttach(equipmentCard, baseCard, root, out string attachFail))
                 {
                     res.ApSpent = apStart - root.ActionPoints;
-                    StampResources();
+                    StampVersion();
                     res.FailReason = $"attach failed ({attachFail})";
                     return res;
                 }
@@ -258,7 +250,7 @@ namespace Game.Ai.V2
             if (!CardPlayExecutor.Preflight(player, root, hand, ctx, deployPlan, out string preflightFail))
             {
                 res.ApSpent = apStart - root.ActionPoints;
-                StampResources();
+                StampVersion();
                 res.PlacementStale = true;
                 res.FailReason = $"deploy placement stale after chain ({preflightFail ?? "preflight failed"}); "
                     + "caller must refresh and replan";
@@ -272,7 +264,7 @@ namespace Game.Ai.V2
             { res.StateChanged = true; chainChanged = true; }
             // CardPlayExecutor has already bumped for any deployment-side mutation. Do not bump
             // twice for the same chain; generation/attachment-only failures still bump above.
-            StampResources(childAlreadyStamped: play.StateChanged);
+            StampVersion(childAlreadyStamped: play.StateChanged);
             if (play.Deployed && plan.AttackRefitPrimaryId.HasValue)
             {
                 bool handed = GroundCombatReinforcementTransaction.ApplyLocalRefit(plan, player, root, ctx, hand, play.ArmyShell, authority,
@@ -281,7 +273,7 @@ namespace Game.Ai.V2
                 res.Deployed = handed;
                 res.PlacementStale = !handed;
                 res.FailReason = handed ? null : "refit handoff rejected; deployed card remains at base";
-                StampResources(childAlreadyStamped: true);
+                StampVersion(childAlreadyStamped: true);
                 res.ArmyCreated = play.ArmyCreated;
                 return res;
             }

@@ -34,7 +34,7 @@ namespace Game.Ai.V2
     //  of the player's own HERO-LED armies on the target hex. EconomyMissionPlanner delivers a
     //  mobile hero when needed; this owner performs only the final, already-local transaction.
     // ===========================================================================================
-    internal sealed class InfraFulfillResult : IV2ActionResult
+    internal sealed class InfraFulfillResult
     {
         public bool ResourceConverted;
         public bool Built;
@@ -42,10 +42,9 @@ namespace Game.Ai.V2
         // is NOT a facility, a played card or a new building. It never satisfies a "facility is ready" demand.
         public bool CapacityUnlocked;
         public float ApSpent;
-        public ResourceCost ResourcesSpent;   // forwarded from the BuildingPlayResult
         public bool StateChanged;
         // DEV path plays a CardType.Facility card out of hand; the ECO extraction path is a
-        // hero-built site with NO hand card — Outcome.Played must reflect that, not "Built".
+        // hero-built site with NO hand card.
         public bool CardPlayed;
         public int AdditionalCardsConsumed;
         // An operator may be manufactured by a DIFFERENT already staffed facility.
@@ -59,13 +58,6 @@ namespace Game.Ai.V2
         public string Detail;
 
         public static InfraFulfillResult No(string why) => new InfraFulfillResult { Detail = why };
-
-        public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Built || CapacityUnlocked, stateChanged: StateChanged, apSpent: ApSpent,
-            resourcesSpent: ResourcesSpent,
-            played: CardPlayed, generated: Generated, attached: false, moved: false, created: Built,
-            needsReplan: GenerationAttempted || CapacityUnlocked, stateVersionAfter: StateVersionAfter,
-            failReason: Built || CapacityUnlocked || Generated ? null : Detail);
     }
 
     internal static class InfrastructureFulfillment
@@ -236,19 +228,8 @@ namespace Game.Ai.V2
                     return InfraFulfillResult.No("operator generator unavailable or already attempted");
                 int beforeAp = root.ActionPoints;
                 int beforeRate = root.TradeRate;
-                int beforeH = root.GetResource(ResourceType.Human);
-                int beforeE = root.GetResource(ResourceType.Energy);
-                int beforeM = root.GetResource(ResourceType.Materials);
-                int beforeT = root.GetResource(ResourceType.Tech);
                 MaterializationExecutor.GenerationOutcome generated =
                     MaterializationExecutor.TryGenerate(g, player, root, hand, ctx);
-                var paid = new ResourceCost
-                {
-                    human = beforeH - root.GetResource(ResourceType.Human),
-                    energy = beforeE - root.GetResource(ResourceType.Energy),
-                    materials = beforeM - root.GetResource(ResourceType.Materials),
-                    tech = beforeT - root.GetResource(ResourceType.Tech),
-                };
                 int version = WorldDeltaLifecycle.StampAction(generated.StateChanged && generated.Attempted);
                 return new InfraFulfillResult
                 {
@@ -256,7 +237,7 @@ namespace Game.Ai.V2
                     Built = false, GenerationAttempted = generated.Attempted,
                     Generated = generated.Success, Generation = g,
                     GeneratedOperatorCard = generated.Success ? generated.Minted : null,
-                    ApSpent = beforeAp - root.ActionPoints, ResourcesSpent = paid,
+                    ApSpent = beforeAp - root.ActionPoints,
                     StateChanged = generated.StateChanged, StateVersionAfter = version,
                     Detail = generated.Success
                         ? $"operator {g.CardDef.displayName} generated into hand; deploy next pass"
@@ -286,11 +267,11 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2]   infra - {demand.Capability} action rejected: {r.FailReason} ({cand.Explain})");
                 return new InfraFulfillResult { ResourceConverted = converted, Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
-                    ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
+                    CardPlayed = r.CardConsumed,
                     StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
             }
             return new InfraFulfillResult { ResourceConverted = converted, Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
-                ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
+                CardPlayed = r.CardConsumed,
                 AdditionalCardsConsumed = r.AdditionalCardsConsumed,
                 BuilderArmyId = cand.BuilderArmyId,
                 StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
@@ -513,7 +494,7 @@ namespace Game.Ai.V2
             return new InfraFulfillResult
             {
                 Built = false, CapacityUnlocked = true, CardPlayed = false,
-                ApSpent = apBefore - root.ActionPoints, ResourcesSpent = outcome.ResourcesSpent,
+                ApSpent = apBefore - root.ActionPoints,
                 StateChanged = true, StateVersionAfter = version,
                 Detail = $"{cand.Explain} -> level {outcome.LevelAfter}, facility slots {outcome.UnlockedSlotsAfter}",
             };

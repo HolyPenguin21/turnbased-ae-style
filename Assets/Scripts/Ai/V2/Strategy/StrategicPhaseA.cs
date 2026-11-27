@@ -297,14 +297,13 @@ namespace Game.Ai.V2
         {
             var armyIdsBefore = new HashSet<int>(pass.Snap.Self?.Armies?
                 .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
-            int chainApBefore = pass.Root.ActionPoints;
             if (selected.Plan.Kind == MaterializationChainKind.GenerateAttachUpgrade)
-                ExecuteDevelopmentUpgrade(pass, selected, chainApBefore);
+                ExecuteDevelopmentUpgrade(pass, selected);
             else
-                ExecuteMaterialization(pass, round, selected, armyIdsBefore, chainApBefore);
+                ExecuteMaterialization(pass, round, selected, armyIdsBefore);
         }
 
-        private static void ExecuteDevelopmentUpgrade(PhaseAPass pass, PhaseACandidate selected, int chainApBefore)
+        private static void ExecuteDevelopmentUpgrade(PhaseAPass pass, PhaseACandidate selected)
         {
             StrategicPhaseResult result = pass.Result;
             AxisDemand chosenDemand = selected.State.Demand;
@@ -324,24 +323,11 @@ namespace Game.Ai.V2
             }
             DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
                 pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, chosenDemand, plan, pass.ApBudget);
-            int upgradeApAfter = pass.Root.ActionPoints;
             pass.ChainAttempts++;
             result.MaterializationAttempts++;
 
-            if (up.ApSpent > 0f)
-                AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
-                    chainApBefore - upgradeApAfter, up.ApSpent);
-
             if (up.Executed)
-                result.RecordGenerationAttempt(pass.Player, pass.Turn, plan.Generation,
-                    new MaterializationResult
-                    {
-                        StateChanged = up.StateChanged,
-                        GenerationAttempted = true,
-                        Generated = up.ChallengeWon,
-                        ApSpent = up.ApSpent,
-                        AttemptedGenerationUseKey = plan.Generation?.UseKey,
-                    }, up.ChallengeWon);
+                result.RecordGenerationAttempt(pass.Player, pass.Turn, plan.Generation, null, up.ChallengeWon);
             // Executed or not, the upgrade demand is done for this pass: creation is complete and
             // the capability is delivered by the hand-card lane.
             selected.State.Blocked = true;
@@ -362,7 +348,7 @@ namespace Game.Ai.V2
         }
 
         private static void ExecuteMaterialization(PhaseAPass pass, PhaseACandidateRound round,
-            PhaseACandidate selected, HashSet<int> armyIdsBefore, int chainApBefore)
+            PhaseACandidate selected, HashSet<int> armyIdsBefore)
         {
             StrategicPhaseResult result = pass.Result;
             AxisDemand chosenDemand = selected.State.Demand;
@@ -382,16 +368,11 @@ namespace Game.Ai.V2
                 play = MaterializationExecutor.Execute(
                     pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, plan, pass.Commitments,
                     chosenDemand.SpendAuthority);
-            int chainApAfter = pass.Root.ActionPoints;
             pass.ChainAttempts++;
 
             // Production telemetry (spec §12) — attempts/successes per chain stage. Derived
             // from the plan shape + MaterializationResult; no scoring change.
             result.RecordMaterialization(pass.Player, pass.Turn, plan, play);
-
-            // §2.3 — the physical AP drop must match the chain's reported ApSpent.
-            AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
-                chainApBefore - chainApAfter, play.ApSpent);
 
             if (!play.Deployed)
             {

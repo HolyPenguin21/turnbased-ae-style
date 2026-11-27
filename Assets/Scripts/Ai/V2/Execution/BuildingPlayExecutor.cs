@@ -22,11 +22,10 @@ namespace Game.Ai.V2
     //  is NOT atomic on its own — the wrapper captures and restores the full pre-transaction state
     //  (AP, resources, facility slot, hero move points, a half-registered new site) on a throw.
     // ===========================================================================================
-    public sealed class BuildingPlayResult : IV2ActionResult
+    public sealed class BuildingPlayResult
     {
         public bool Built;
         public float ApSpent;
-        public ResourceCost ResourcesSpent;   // the founding card's resource cost on a success (null = none / n/a)
         public bool StateChanged;
         public int StateVersionAfter = -1;
         public bool CardConsumed;
@@ -34,11 +33,6 @@ namespace Game.Ai.V2
         public string FailReason;
 
         public static BuildingPlayResult Fail(string why) => new BuildingPlayResult { FailReason = why };
-
-        public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
-            played: CardConsumed, generated: false, attached: false, moved: false, created: Built,
-            needsReplan: false, stateVersionAfter: StateVersionAfter, failReason: Built ? null : FailReason);
     }
 
     public static class BuildingPlayExecutor
@@ -128,7 +122,6 @@ namespace Game.Ai.V2
             {
                 Built = true, CardConsumed = true, AdditionalCardsConsumed = defender == null ? 0 : 1,
                 StateChanged = true, ApSpent = totalAp,
-                ResourcesSpent = totalCost,
                 StateVersionAfter = mutation.Commit(player, ctx.TurnNumber,
                     new WorldDelta(true, StrategicInvalidationReason.None)),
             };
@@ -303,7 +296,6 @@ namespace Game.Ai.V2
             return new BuildingPlayResult
             {
                 Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
-                ResourcesSpent = card.EffectivePlayResourceCost,
                 StateVersionAfter = WorldDeltaLifecycle.CommitMutation(),
             };
         }
@@ -323,9 +315,6 @@ namespace Game.Ai.V2
                 Built = outcome.Ok,
                 StateChanged = outcome.Ok,
                 ApSpent = outcome.ApSpent,
-                // The site charges the facility definition's resourceCost (same figure
-                // InfrastructureFulfillment admits the build against). No hand card is consumed.
-                ResourcesSpent = outcome.Ok ? facilityDef.resourceCost : null,
                 StateVersionAfter = outcome.Ok ? WorldDeltaLifecycle.CommitMutation() : -1,
                 FailReason = outcome.Ok ? null : outcome.FailReason,
             };

@@ -80,7 +80,6 @@ namespace Game.Ai.V2
                     {
                         Built = r.Deployed,
                         ApSpent = r.ApSpent,
-                        ResourcesSpent = r.ResourcesSpent,
                         StateChanged = r.StateChanged,
                         CardConsumed = r.Deployed,
                         StateVersionAfter = r.StateVersionAfter,
@@ -113,8 +112,6 @@ namespace Game.Ai.V2
             // The upgrade is a real mutation even if the placement then fails.
             placed.StateChanged = true;
             placed.ApSpent = apBefore - root.ActionPoints;
-            placed.ResourcesSpent = StrategicCardEvaluator.AddResourceCosts(
-                placed.ResourcesSpent, tier.cost);
             if (placed.StateVersionAfter < upgradeVersion)
                 placed.StateVersionAfter = upgradeVersion;
             return placed;

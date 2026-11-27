@@ -35,7 +35,7 @@ namespace Game.Ai.V2
         StepCompleted,
     }
 
-    public sealed class ExecutionResult : IV2ActionResult
+    public sealed class ExecutionResult
     {
         // The AP a step spent is the turn pool's physical loss across it (never negative).
         // TaskExecutor.FinishStep settles it for every step; a lane whose own log line reports
@@ -71,7 +71,6 @@ namespace Game.Ai.V2
         public bool AttackCaptureHadBattle;
         public bool AirSupportStrikeSucceeded;
         public bool RaidRefitSucceeded;
-        public ResourceVector ResourcesSpent;
 
         // Set when an Economy builder reaches its BuildExtraction/FoundBase target this step but
         // the infrastructure itself is not up yet (that's Phase A's job next admission). Nothing in
@@ -128,13 +127,10 @@ namespace Game.Ai.V2
             NeedsReplan = true;
         }
         public int PlannedAtStateVersion = -1;
-        public int StateVersionBefore = -1;
         public int StateVersionAfter = -1;
         // Observation boundary supplies immutable receipts; the registry remains the sole
         // pending-fact owner. Canonical mutation freshness is StateVersionAfter above.
         internal IReadOnlyList<WorldDelta> WorldDeltas = System.Array.Empty<WorldDelta>();
-        public V2ResourceStamp ResourcesBefore;
-        public V2ResourceStamp ResourcesAfter;
 
         // ARCH-02 §36 — the common lifecycle projection. StateChanged is the honest floor:
         // movement, stealth transition, or infrastructure ownership/destruction. Reaching a goal
@@ -152,13 +148,7 @@ namespace Game.Ai.V2
                 bool changed = moved || EnteredStealth || StealthChanged
                     || InfrastructureChanged || CombatChanged || ActorMaterialized || EconomyPrepared || ResourceConverted;
                 // ReachedGoal alone remains a stale no-op; capture/ownership mutation is explicit.
-                return new V2ActionOutcome(
-                    succeeded: succeeded, stateChanged: changed, apSpent: ApSpent,
-                    resourcesSpent: null, played: false, generated: false, attached: false,
-                    moved: moved, created: false, needsReplan: NeedsReplan,
-                    stateVersionAfter: StateVersionAfter,
-                    failReason: succeeded ? (StaleNoOp && !moved ? "goal already satisfied (no-op)" : null)
-                                          : StopReason.ToString());
+                return new V2ActionOutcome(succeeded, changed);
             }
         }
     }
@@ -178,10 +168,9 @@ namespace Game.Ai.V2
             result.StartHex = pm.ExecutionHex;
             result.FinalHex = pm.ExecutionHex;
             result.StopForReplan(ExecutionStopReason.TargetInvalidated);
-            result.ApSpent = 0f;
             WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
                 StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
             return true;
@@ -204,9 +193,8 @@ namespace Game.Ai.V2
             result.StartHex = pm.ExecutionHex;
             result.FinalHex = pm.ExecutionHex;
             result.StopReason = ExecutionStopReason.MoverLost;
-            result.ApSpent = 0f;
             result.NeedsReplan = true;
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
             ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover gone before atomic execution");
@@ -222,7 +210,6 @@ namespace Game.Ai.V2
                 return false;
 
             result.FinalHex = army.Hex;
-            result.ApSpent = 0f;
             result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
             result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
             result.DurableRoleContinues = result.ReachedGoal
@@ -237,7 +224,7 @@ namespace Game.Ai.V2
                     ? ExecutionStopReason.ReachedGoal
                     : ExecutionStopReason.TargetInvalidated;
             result.NeedsReplan = validity != MissionValidity.StaleGoalMet;
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
             if (validity == MissionValidity.StaleMoverLost)
@@ -351,8 +338,7 @@ namespace Game.Ai.V2
             // an unknown mission as Scout or let it mutate the world through a fallback path.
             result.StopReason = ExecutionStopReason.TargetInvalidated;
             result.NeedsReplan = true;
-            result.ApSpent = 0f;
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
             EconomyExecutor.ReleaseReservation(player, ctx, pm);
         }
@@ -372,24 +358,19 @@ namespace Game.Ai.V2
                 Key = pm.Key,
                 Source = pm,
                 PlannedAtStateVersion = pm.PlannedAtStateVersion,
-                StateVersionBefore = WorldDeltaLifecycle.Current,
-                ResourcesBefore = AiV2Trace.Stamp(root),
             };
             yield return ExecuteMissionCore(player, root, ctx, pm, result, results,
                 enforceFreshPlan, snapshot);
         }
 
-        // §2.1 — the real AP the turn's pool lost while this mission executed must equal the AP the
-        // ExecutionResult reports it spent. Both executors derive ApSpent from the same physical
-        // turn-pool delta; this catches any action path that reports less/more than it really used.
-        // The settled-step tail of every executor branch: AP audit, state version, completion,
-        // and the result handed to the caller.
+        // The settled-step tail of every executor branch: the AP the step spent, state version,
+        // completion, and the result handed to the caller.
         private static void FinishStep(ProvisionedMission pm, int apBefore, PlayerRoot root,
             ExecutionResult result, List<ExecutionResult> results)
         {
             result.SettleAp(apBefore, root);
             StampVersion(result);
-            CompleteResult(result, root);
+            CompleteResult(result);
             results.Add(result);
         }
 
@@ -411,12 +392,11 @@ namespace Game.Ai.V2
                 childAlreadyCommitted: result.StateVersionAfter >= 0);
         }
 
-        private static void CompleteResult(ExecutionResult result, PlayerRoot root)
+        private static void CompleteResult(ExecutionResult result)
         {
             if (result == null) return;
             if (result.StateVersionAfter < 0)
                 result.StateVersionAfter = WorldDeltaLifecycle.Current;
-            result.ResourcesAfter = AiV2Trace.Stamp(root);
         }
     }
 }

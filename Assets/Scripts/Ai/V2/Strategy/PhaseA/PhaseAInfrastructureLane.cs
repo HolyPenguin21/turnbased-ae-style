@@ -180,9 +180,6 @@ namespace Game.Ai.V2
                     $"[AI][V2]   strat.A infra - {demand}: not built ({infra.Detail})");
                 return;
             }
-            // §2.3 — the physical AP drop must match what the transaction reports.
-            AiV2Trace.CheckPhaseAAp(demand.TraceId, demand.RequestingAxis,
-                infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent);
             if (infra.Built)
             {
                 istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
