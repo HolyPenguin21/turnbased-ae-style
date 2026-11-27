@@ -111,6 +111,28 @@ namespace Game.Ai.V2
             return new GenerationOutcome(true, true, minted, true, null);
         }
 
+        // A Challenge as a whole action of its own (a Development upgrade's equipment, a missing
+        // operator): the minted card stays in hand for a later play. One world receipt for a paid
+        // attempt, won or lost.
+        internal static MaterializationResult ExecuteGeneration(GenerationStep g, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, SpendAuthority authority = default)
+        {
+            int apBefore = root != null ? root.ActionPoints : 0;
+            GenerationOutcome go = TryGenerate(g, player, root, hand, ctx, authority);
+            var res = new MaterializationResult
+            {
+                GenerationAttempted = go.Attempted,
+                Generated = go.Success,
+                GeneratedCard = go.Minted,
+                StateChanged = go.StateChanged,
+                ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root),
+                AttemptedGenerationUseKey = go.Attempted ? g.UseKey : null,
+                FailReason = go.Success ? null : go.FailReason,
+            };
+            res.StateVersionAfter = WorldDeltaLifecycle.StampAction(go.Attempted && go.StateChanged);
+            return res;
+        }
+
         public static MaterializationResult Execute(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, MaterializationPlan plan, ActorCommitments commitments,
             SpendAuthority authority = default)

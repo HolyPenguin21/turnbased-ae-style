@@ -17,6 +17,35 @@ namespace Game.Ai.V2
         // An operator card onto its facility hex: the garrison, or a hero-only bench there
         // (2026-11-20, PlacementSelector.FacilityOperatorPlacements).
         OperatorOnFacilityHex,
+        OperatorGeneration,   // mint a missing operator through a staffed generator's Challenge
+        CapacityUnlock,       // buy one Base level on its own; the Facility is a later action
+    }
+
+    // What one infrastructure action really did.
+    internal sealed class InfraFulfillResult
+    {
+        public bool ResourceConverted;
+        public bool Built;
+        // A paid stand-alone Base-level step (Development CapacityUnlock): a real, successful action that
+        // is NOT a facility, a played card or a new building. It never satisfies a "facility is ready" demand.
+        public bool CapacityUnlocked;
+        public float ApSpent;
+        public bool StateChanged;
+        // DEV path plays a CardType.Facility card out of hand; the ECO extraction path is a
+        // hero-built site with NO hand card.
+        public bool CardPlayed;
+        public int AdditionalCardsConsumed;
+        // An operator may be manufactured by a DIFFERENT already staffed facility.
+        // This is a single Challenge step, not a completed operator deployment.
+        public bool GenerationAttempted;
+        public bool Generated;
+        public GenerationStep Generation;
+        public CardData GeneratedOperatorCard;
+        public int? BuilderArmyId;
+        public int StateVersionAfter = -1;
+        public string Detail;
+
+        public static InfraFulfillResult No(string why) => new InfraFulfillResult { Detail = why };
     }
 
     internal sealed class InfraBuildAction
@@ -30,6 +59,11 @@ namespace Game.Ai.V2
         internal BuildingData UpgradeBuilding;
         internal BaseUpgradeTier UpgradeTier;
         internal PlacementOption Placement;
+        internal GenerationStep Generation;
+        internal int CapacityExpectedLevel;
+        // Set at admission: what a build funds through Trade first and how the log names the action.
+        internal ResourceCost FundingCost;
+        internal string Label;
 
         internal static InfraBuildAction BaseCard(CardData card, HexCoord hex, int? builderArmyId, CardData defender) =>
             new InfraBuildAction { Kind = InfraBuildKind.BaseCard, Card = card, Hex = hex,
@@ -49,6 +83,13 @@ namespace Game.Ai.V2
         internal static InfraBuildAction OperatorOnFacilityHex(CardData card, PlacementOption placement) =>
             new InfraBuildAction { Kind = InfraBuildKind.OperatorOnFacilityHex, Card = card,
                 Hex = placement.Hex, Placement = placement };
+
+        internal static InfraBuildAction OperatorGeneration(GenerationStep generation) =>
+            new InfraBuildAction { Kind = InfraBuildKind.OperatorGeneration, Generation = generation };
+
+        internal static InfraBuildAction CapacityUnlock(BuildingData building, int expectedLevel, HexCoord hex) =>
+            new InfraBuildAction { Kind = InfraBuildKind.CapacityUnlock, UpgradeBuilding = building,
+                CapacityExpectedLevel = expectedLevel, Hex = hex };
     }
 
     // ===========================================================================================
@@ -58,7 +99,80 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static class InfrastructureBuildExecutor
     {
-        internal static BuildingPlayResult Run(InfraBuildAction a, PlayerSetupData player, PlayerRoot root,
+        // One admitted infrastructure action (Phase A's infrastructure lane): a Challenge for a
+        // missing operator, a stand-alone Base level, or a build funded through Trade first.
+        internal static InfraFulfillResult Execute(InfraBuildAction a, SpendAuthority authority,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            if (a == null || player == null || root == null || ctx == null)
+                return InfraFulfillResult.No("no infrastructure action");
+            if (a.Kind == InfraBuildKind.OperatorGeneration)
+            {
+                int rateBefore = root.TradeRate;
+                MaterializationResult g = MaterializationExecutor.ExecuteGeneration(a.Generation, player, root, hand, ctx);
+                return new InfraFulfillResult
+                {
+                    ResourceConverted = root.TradeRate != rateBefore,
+                    GenerationAttempted = g.GenerationAttempted, Generated = g.Generated,
+                    Generation = a.Generation, GeneratedOperatorCard = g.GeneratedCard,
+                    ApSpent = g.ApSpent, StateChanged = g.StateChanged, StateVersionAfter = g.StateVersionAfter,
+                    Detail = g.Generated
+                        ? $"operator {a.Generation.CardDef.displayName} generated into hand; deploy next pass"
+                        : g.FailReason,
+                };
+            }
+            // One payment + one mutation by the gameplay primitive, then ONE world receipt. No card
+            // is played, no facility exists yet - the placement is a later action.
+            if (a.Kind == InfraBuildKind.CapacityUnlock)
+                return ExecuteCapacityUnlock(a, player, root, ctx);
+
+            int rateBeforeFunding = root.TradeRate;
+            if (!TradeFunding.Fund(player, root, ctx, a.FundingCost, authority))
+                return new InfraFulfillResult { Detail = "infrastructure funding changed",
+                    ResourceConverted = root.TradeRate != rateBeforeFunding,
+                    StateChanged = root.TradeRate != rateBeforeFunding,
+                    StateVersionAfter = root.TradeRate != rateBeforeFunding ? WorldDeltaLifecycle.Current : -1 };
+            BuildingPlayResult r = Run(a, player, root, hand, ctx);
+            bool converted = root.TradeRate != rateBeforeFunding;
+            if (converted) { r.StateChanged = true; r.StateVersionAfter = WorldDeltaLifecycle.Current; }
+            if (!r.Built)
+            {
+                AiDebugLog.Write($"[AI][V2]   infra - action rejected: {r.FailReason} ({a.Label})");
+                return new InfraFulfillResult { ResourceConverted = converted, Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
+                    CardPlayed = r.CardConsumed,
+                    StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
+            }
+            return new InfraFulfillResult { ResourceConverted = converted, Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
+                CardPlayed = r.CardConsumed,
+                AdditionalCardsConsumed = r.AdditionalCardsConsumed,
+                BuilderArmyId = a.BuilderArmyId,
+                StateVersionAfter = r.StateVersionAfter, Detail = a.Label };
+        }
+
+        private static InfraFulfillResult ExecuteCapacityUnlock(InfraBuildAction a, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx)
+        {
+            int rateBefore = root.TradeRate;
+            BaseUpgradeOutcome outcome = UnlockCapacity(player, root, ctx,
+                a.UpgradeBuilding, a.CapacityExpectedLevel, a.Hex, out int version);
+            if (!outcome.Ok)
+            {
+                // The upgrade refused; preserve any conversion already committed before it.
+                AiDebugLog.Write($"[AI][V2]   infra - CapacityUnlock refused: {outcome.FailReason} ({a.Label})");
+                return new InfraFulfillResult { Detail = outcome.FailReason,
+                    ResourceConverted = root.TradeRate != rateBefore, StateChanged = root.TradeRate != rateBefore,
+                    StateVersionAfter = root.TradeRate != rateBefore ? WorldDeltaLifecycle.Current : -1 };
+            }
+            return new InfraFulfillResult
+            {
+                Built = false, CapacityUnlocked = true, CardPlayed = false,
+                ApSpent = outcome.ApSpent,
+                StateChanged = true, StateVersionAfter = version,
+                Detail = $"{a.Label} -> level {outcome.LevelAfter}, facility slots {outcome.UnlockedSlotsAfter}",
+            };
+        }
+
+        private static BuildingPlayResult Run(InfraBuildAction a, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx)
         {
             switch (a?.Kind)
@@ -120,7 +234,7 @@ namespace Game.Ai.V2
         // A stand-alone Base level (Development CapacityUnlock): one payment + one mutation by the
         // gameplay primitive, then ONE world receipt. No authority: the payment may not reach into
         // anyone else's hold. A prior conversion remains committed when the upgrade refuses.
-        internal static BaseUpgradeOutcome UnlockCapacity(PlayerSetupData player, PlayerRoot root,
+        private static BaseUpgradeOutcome UnlockCapacity(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, BuildingData building, int expectedLevel, HexCoord hex, out int stateVersionAfter)
         {
             ReservationInvariants.SpendProbe probe = ReservationInvariants.BeginSpend(

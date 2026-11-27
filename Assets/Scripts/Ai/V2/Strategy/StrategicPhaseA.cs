@@ -321,13 +321,23 @@ namespace Game.Ai.V2
                     + $":: {strikeWhy}");
                 return;
             }
-            DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
-                pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, chosenDemand, plan, pass.ApBudget);
+            string skip = DevelopmentUpgradeFulfillment.Admit(pass.Snap, pass.Player, pass.Root, pass.Hand,
+                pass.Ctx, chosenDemand, plan, pass.ApBudget, out GenerationStep generation);
+            bool wasHiddenHero = skip == null && generation.Mode == ResearchProductionMode.Research
+                && generation.Hero != null && generation.Hero.IsHidden;
+            // A won Challenge leaves the card in hand; the hand-card lane attaches it later.
+            MaterializationResult up = skip != null ? new MaterializationResult { FailReason = skip }
+                : MaterializationExecutor.ExecuteGeneration(generation, pass.Player, pass.Root, pass.Hand,
+                    pass.Ctx, chosenDemand.SpendAuthority);
+            string detail = up.Generated
+                ? $"Challenge won, '{up.GeneratedCard?.Definition?.displayName}' retained in hand; attachment pending"
+                    + (wasHiddenHero ? " [hero revealed]" : "")
+                : up.FailReason;
             pass.ChainAttempts++;
             result.MaterializationAttempts++;
 
-            if (up.Executed)
-                result.RecordGenerationAttempt(pass.Player, pass.Turn, plan.Generation, null, up.ChallengeWon);
+            if (up.GenerationAttempted)
+                result.RecordGenerationAttempt(pass.Player, pass.Turn, plan.Generation, up, up.Generated);
             // Executed or not, the upgrade demand is done for this pass: creation is complete and
             // the capability is delivered by the hand-card lane.
             selected.State.Blocked = true;
@@ -337,14 +347,14 @@ namespace Game.Ai.V2
                 result.StateChanged = true;
                 pass.RefreshKnowledge();
             }
-            DevelopmentOutcomeTelemetry.RecordUpgrade(pass.Player, pass.Turn, up.Executed, up.ChallengeWon);
-            AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} - "
+            DevelopmentOutcomeTelemetry.RecordUpgrade(pass.Player, pass.Turn, up.GenerationAttempted, up.Generated);
+            AiDebugLog.Write($"[AI][V2][Dev] {(up.GenerationAttempted ? "EXEC" : "SKIP")} - "
                 + $"{plan.DevelopmentUpgrade?.Mode} '{plan.DevelopmentUpgrade?.Card?.displayName}' "
                 + $"-> {plan.DevelopmentUpgrade?.RecipientLabel} "
                 + $"p={F(plan.DevelopmentUpgrade?.SuccessChance ?? 0f)} "
                 + $"gain={F(plan.DevelopmentUpgrade?.ExpectedGain ?? 0f)} "
                 + $"policy={plan.DevelopmentUpgrade?.Explain} "
-                + $":: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
+                + $":: {detail} (ap {F(up.ApSpent)} -> DEV)");
         }
 
         private static void ExecuteMaterialization(PhaseAPass pass, PhaseACandidateRound round,

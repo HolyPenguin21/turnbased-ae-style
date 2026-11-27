@@ -140,8 +140,15 @@ namespace Game.EditorTests
             _root.GetResource(ResourceType.Materials), _root.GetResource(ResourceType.Tech),
         };
 
-        private InfraFulfillResult Fulfill(DevelopmentOpportunity op) => InfrastructureFulfillment.TryFulfill(
-            _snapshot, _player, _root, _hand, _ctx, DemandFor(op), PhaseAApBudget.Create(_root));
+        // Phase A's infrastructure lane: admission, then the executor.
+        private InfraFulfillResult Fulfill(DevelopmentOpportunity op)
+        {
+            AxisDemand demand = DemandFor(op);
+            InfraBuildAction action = InfrastructureFulfillment.Admit(_snapshot, _player, _root, _hand, _ctx,
+                demand, PhaseAApBudget.Create(_root), out string refusal);
+            return action == null ? InfraFulfillResult.No(refusal)
+                : InfrastructureBuildExecutor.Execute(action, demand.SpendAuthority, _player, _root, _hand, _ctx);
+        }
 
         [TestCase(false)]
         [TestCase(true)]

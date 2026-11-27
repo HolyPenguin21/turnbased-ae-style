@@ -127,18 +127,25 @@ namespace Game.Ai.V2
                     $"[AI][V2]   strat.A infra - {demand}: held :: {reserveWhy}");
                 return;
             }
-            // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
-            // checks the shared AP pool and live affordability, and
-            // only then runs the authoritative build. A shortfall => nothing spent, not built.
+            // Admission (shared AP pool, live affordability) passes BEFORE any gameplay mutation;
+            // only then the executor runs the action. A shortfall => nothing spent, not built.
             // §2.4 — independent controlled-state snapshot around the op (building count,
             // filled facility slots, army movement, resources), NOT derived from the op's own
             // result. A failed build that changed any of these is a rollback leak.
             V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(pass.Player, pass.Root);
             InfraFulfillResult infra;
             using (new Game.Core.ProfileScope("AI/PhaseA.InfraFulfill"))
-                infra = InfrastructureFulfillment.TryFulfill(
-                    pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, demand, pass.ApBudget,
-                    pass.Reservation, pass.ActiveIntents, pass.Commitments, pass.WitnessedUsefulApDemand);
+            {
+                InfraBuildAction action = InfrastructureFulfillment.Admit(pass.Snap, pass.Player, pass.Root,
+                    pass.Hand, pass.Ctx, demand, pass.ApBudget, out string refusal, pass.Reservation,
+                    pass.ActiveIntents, pass.Commitments, pass.WitnessedUsefulApDemand);
+                infra = action == null ? InfraFulfillResult.No(refusal)
+                    : InfrastructureBuildExecutor.Execute(action, demand.SpendAuthority,
+                        pass.Player, pass.Root, pass.Hand, pass.Ctx);
+            }
+            // A completed Economy build ends the lease its demand held.
+            if (infra.Built && demand.SpendAuthority.Owner != null)
+                MissionLeaseBook.ReleaseByOwner(pass.Player, pass.Turn, demand.SpendAuthority.Owner);
             V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(pass.Player, pass.Root);
             if (infra.StateChanged)
                 result.StateChanged = true;

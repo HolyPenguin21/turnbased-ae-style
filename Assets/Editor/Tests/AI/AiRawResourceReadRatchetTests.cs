@@ -57,8 +57,9 @@ namespace Game.EditorTests
             ["Execution/TaskExecutor.cs"] = 1,
             ["Housekeeping/HousekeepingManager.cs"] = 3,
             ["Initiative/PreTurnCapacityAnalysis.cs"] = 1,
-            // Physical before/after accounting, including AP spent by the local-refit handoff.
-            ["Materialization/MaterializationExecutor.cs"] = 11,
+            // Physical before/after accounting, including AP spent by the local-refit handoff and
+            // a stand-alone Challenge (moved, not new: it left the Strategy/Demand fulfillments).
+            ["Materialization/MaterializationExecutor.cs"] = 12,
             ["Missions/Raid/RaidRecoveryPlanner.cs"] = 1,
             // Pipeline.cs 6 -> 2: the admission-key reads moved with their owners (see the two files below).
             ["Orchestration/AiStrategyV2Pipeline.cs"] = 1,
@@ -92,10 +93,7 @@ namespace Game.EditorTests
             ["State/StrategicResourceReservation.cs"] = 2,
             ["State/StrategicSpendability.cs"] = 3,
             ["State/TurnResourceBook.cs"] = 8,
-            ["Strategy/Demand/DevelopmentUpgradeFulfillment.cs"] = 1,
-            ["Strategy/Demand/InfrastructureFulfillment.cs"] = 1,
-            // Moved, not new: the one read of the Economy reservation transitions
-            // (was in InfrastructureFulfillment, 16 -> 15).
+            // The one read of the Economy reservation transitions.
             ["Strategy/Demand/EconomyReservationLifecycle.cs"] = 1,
             ["Strategy/PhaseA/MaterializationPortfolioSolver.cs"] = 1,
             ["Strategy/PhaseB/HoldEvaluator.cs"] = 1,

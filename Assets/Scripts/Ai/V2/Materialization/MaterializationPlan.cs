@@ -156,6 +156,7 @@ namespace Game.Ai.V2
         public bool Deployed;
         public bool CardDeployed;                 // physical play can succeed before a refit handoff fails
         public bool Generated;
+        public CardData GeneratedCard;            // the card a won Challenge put into the hand
         public bool GenerationAttempted;
         public bool Attached;
         public bool ArmyCreated;                  // a new army shell was founded by this chain
