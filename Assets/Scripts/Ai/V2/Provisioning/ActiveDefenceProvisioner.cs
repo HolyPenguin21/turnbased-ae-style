@@ -248,21 +248,28 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         "safe_withdrawal_released_or_home_unsafe"));
             }
-            if (SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.ReturnHex.Value,
-                    profile: SafeRouteProfile.Combat) == null)
-                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                    "active defence responder has no safe return step"));
-            int ap = actor.HasActivatedThisTurn ? 0 : actor.ActivationApCost;
-            if (ap > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
-                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
-                    "active defence return AP envelope is stale"));
+            return WalkHome(player, root, ctx, session, funded, target, actor.Id, "responder");
+        }
+
+        // The walk of one army to its pinned Base: the shared walk-home leg check (movement, a safe
+        // first step, the activation AP against the envelope and the turn's AP).
+        private static ProvisioningResult WalkHome(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            ActiveDefenceMissionTarget target, int moverArmyId, string roleLabel)
+        {
+            StableMissionKey key = StableMissionKey.For(funded.Mission);
+            GroundCombatLegCheck check = GroundCombatLegChecks.ValidateWalkHome(player, root, ctx,
+                session, funded, key, AiConfigV2.allocatorSliceEpsilon, moverArmyId,
+                target.ReturnHex.Value, "active-defence", roleLabel);
+            if (!check.Ok)
+                return check.Failure;
             return ProvisioningResult.Ok(new ProvisionedMission
             {
-                Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
-                Kind = MissionKind.ActiveDefence, MoverArmyId = actor.Id,
+                Mission = funded.Mission, Key = key,
+                Kind = MissionKind.ActiveDefence, MoverArmyId = check.Mover.Id,
                 FocusHex = target.ReturnHex.Value, ExecutionHex = target.ReturnHex.Value,
                 ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
-                ClaimedAp = ap,
+                ClaimedAp = check.ActivationAp,
             });
         }
 
@@ -318,22 +325,7 @@ namespace Game.Ai.V2
 
             if (shell.Members.Count == 0)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("relief detachment is empty"));
-            if (shell.Hex.Equals(home))
-                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied("relief detachment is already there"));
-            if (SafeStepPathing.FindNextSafeStep(ctx.Map, shell, home, profile: SafeRouteProfile.Combat) == null)
-                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep("relief detachment has no safe step"));
-            int ap = shell.HasActivatedThisTurn ? 0 : shell.ActivationApCost;
-            if (ap > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
-                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
-                    "relief detachment AP envelope is stale"));
-            return ProvisioningResult.Ok(new ProvisionedMission
-            {
-                Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
-                Kind = MissionKind.ActiveDefence, MoverArmyId = shell.Id,
-                FocusHex = home, ExecutionHex = home,
-                ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
-                ClaimedAp = ap,
-            });
+            return WalkHome(player, root, ctx, session, funded, target, shell.Id, "relief detachment");
         }
 
         // Muster. A Detach is the GarrisonRelief extraction (same pinned donor, bodies
@@ -373,22 +365,7 @@ namespace Game.Ai.V2
             }
             if (mover.Members.Count == 0)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("muster mover is empty"));
-            if (mover.Hex.Equals(home))
-                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied("muster mover already on the staging Base"));
-            if (SafeStepPathing.FindNextSafeStep(ctx.Map, mover, home, profile: SafeRouteProfile.Combat) == null)
-                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep("muster mover has no safe step"));
-            int ap = mover.HasActivatedThisTurn ? 0 : mover.ActivationApCost;
-            if (ap > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
-                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
-                    "muster AP envelope is stale"));
-            return ProvisioningResult.Ok(new ProvisionedMission
-            {
-                Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
-                Kind = MissionKind.ActiveDefence, MoverArmyId = mover.Id,
-                FocusHex = home, ExecutionHex = home,
-                ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
-                ClaimedAp = ap,
-            });
+            return WalkHome(player, root, ctx, session, funded, target, mover.Id, "muster mover");
         }
 
         // THE live check of a pinned muster intake, read by Provisioning and by the executor right

@@ -3032,6 +3032,67 @@ namespace Game.EditorTests
                 ActiveDefenceInterceptPurpose.StrategicDefence), Is.Null);
         }
 
+
+        // A Return walk of ActiveDefence is the shared walk-home leg: it is refused at provisioning
+        // when the turn's AP is already claimed by earlier missions of the pass, and when the
+        // walker has no movement left (both reached the executor before, which then made no step).
+        [TestCase(true, 3, "turn AP exhausted")]
+        [TestCase(false, 0, "has no movement left")]
+        public void ReturnWalk_RefusedWhenTurnApClaimedOrNoMovement(bool turnApClaimed, int moveCurrent,
+            string detail)
+        {
+            var owner = new PlayerSetupData { Nickname = "walker" };
+            var go = new UnityEngine.GameObject("ReturnWalkProvisioning");
+            Game.Map.PlayerRoot root = Game.Map.PlayerRoot.Create(owner, "walker root");
+            try
+            {
+                var map = go.AddComponent<Game.Map.HexMap>();
+                var terrain = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+                foreach (HexCoord hex in HexGridMath.HexesInRange(new HexCoord(0, 0), 3))
+                    terrain[hex] = new Game.Terrain.TerrainTypeEntry { terrainName = "plain", moveCost = 1 };
+                map.SetData(3, 1f, terrain);
+                root.ActionPoints = 3;
+                Game.Map.PlayerRootRegistry.Register(owner, root);
+                var home = new HexCoord(0, 0);
+                Game.Map.BuildingRegistry.Register(home,
+                    new Game.Map.BuildingData { Hex = home, Owner = owner, IsBase = true, Defense = 1 });
+                var army = new Game.Map.ArmyData { Owner = owner, Hex = new HexCoord(2, 0) };
+                army.Members.Add(new Game.Units.UnitData { Owner = owner, Name = "walker", MoveMax = 3,
+                    MoveCurrent = moveCurrent, ActivationApCost = 1, HitPointsCurrent = 5, HitPointsMax = 5,
+                    Attack = 2, Defense = 2, Initiative = 1 });
+                Game.Map.ArmyRegistry.Register(army);
+                var snap = new WorldSnapshot { Observer = owner, TurnNumber = 1, Map = map,
+                    Self = new SelfSnapshot { BaseHexes = new[] { home }, Citadel = home,
+                        Armies = new[] { WorldAnalysis.ToArmySnapshot(army, owner, true, 0, null) } } };
+                var target = new ActiveDefenceMissionTarget { Phase = ActiveDefencePhase.Return,
+                    ReturnPurpose = ActiveDefenceReturnPurpose.RecoveryWalk, PrimaryArmyId = army.Id,
+                    ReturnHex = home, EnemyArmyId = -1 };
+                var proposal = new MissionProposal { Kind = MissionKind.ActiveDefence, Target = target,
+                    PreferredMoverArmyId = army.Id };
+                using var session = new ProvisioningSession(snap);
+                if (turnApClaimed)
+                {
+                    var earlier = new MissionProposal { Kind = MissionKind.Scout,
+                        Target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(1, -1) } };
+                    session.RegisterSuccess(StableMissionKey.For(earlier), new ProvisionedMission {
+                        Mission = earlier, Kind = MissionKind.Scout, MoverArmyId = 99, ClaimedAp = 3f });
+                }
+                ProvisioningResult result = ActiveDefenceProvisioner.Provision(owner, root,
+                    new AiTurnContext { Map = map, TurnNumber = 1 }, session,
+                    new FundedEntry { Mission = proposal, Tentative = new ResourceVector(2f) });
+                Assert.That(result.Success, Is.False);
+                Assert.That(result.Failure.Detail, Does.Contain(detail));
+                Assert.That(result.Failure.Disposition, Is.EqualTo(ProvisionDisposition.RetryNextTurn));
+            }
+            finally
+            {
+                Game.Map.ArmyRegistry.Clear();
+                Game.Map.BuildingRegistry.Clear();
+                Game.Map.PlayerRootRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
     }
 }
 #endif
