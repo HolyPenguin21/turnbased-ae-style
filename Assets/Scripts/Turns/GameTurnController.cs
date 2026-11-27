@@ -726,6 +726,8 @@ namespace Game.Turns
             CurrentTurnOrder = order;
 
             StrategicTurnEffects.ApplyTurnOrder(order, GameSession.Players);
+            if (TurnNumber == 1)
+                GameSession.CampaignContext?.GrantStartingSupply(GameSession.Players);
             BeginPlayerTurn(0);
         }
 

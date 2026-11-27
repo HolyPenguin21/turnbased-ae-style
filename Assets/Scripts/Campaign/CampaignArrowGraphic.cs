@@ -6,15 +6,17 @@ using UnityEngine.UI;
 
 namespace Game.Campaign
 {
-    // Presentation only. Cached tactical geometry is adapted from XZ to the existing Canvas.
+    // Campaign profile in canvas pixels, tessellated once by the shared arrow mesh builder.
     public sealed class CampaignArrowGraphic : MaskableGraphic
     {
         [Header("Timing (unscaled seconds)")]
         [SerializeField, Min(0)] private float drawSeconds = .35f;
-        [SerializeField, Min(0)] private float holdSeconds = .8f;
+        [SerializeField, Min(0)] private float holdSeconds = 1.3f;
         [SerializeField, Min(0)] private float fadeSeconds = .35f;
         [Header("Map units (Canvas reference pixels)")]
-        [SerializeField, Min(1)] private float visualScale = 28;
+        [SerializeField, Min(1)] private float headLength = 22;
+        [SerializeField, Min(1)] private float headWidth = 34;
+        [SerializeField, Min(1)] private float tailWidth = 63;
         [SerializeField, Min(7)] private float markerClearance = 24;
         [SerializeField, Range(0, .5f)] private float regionInsetFraction = .25f;
         [Header("Tint")]
@@ -23,39 +25,54 @@ namespace Game.Campaign
         [SerializeField, Range(0, .2f)] private float pulseAmount = .06f;
         [SerializeField, Min(0)] private float pulseFrequency = 1.5f;
 
-        private struct Shape { public Vector3[] vertices; public Color[] colors; public int[] triangles; public Color tint; }
+        private const float OutlineThickness = 1.25f;
+        private static readonly Color OutlineTint = new Color(.05f, .04f, .06f, 1f);
+        private struct Shape { public Vector3[] vertices; public Color[] colors; public int[] triangles; }
         private Shape fill, outline;
-        private float templateLength, headLength, maxHalfWidth, elapsed, reveal, opacity;
+        private float elapsed, reveal, opacity;
         private Vector2 source, target;
         private float sourceExtent, targetExtent;
         private Color tint;
-        private bool initialized;
         private readonly UIVertex[] clipped = new UIVertex[4];
         public bool IsPlaying { get; private set; }
         public float Duration => Math.Max(0, drawSeconds) + Math.Max(0, holdSeconds) + Math.Max(0, fadeSeconds);
+        private float NeckHalfWidth => headWidth / 12f;
 
-        public void Initialize(MoveArrowStyle style)
+        protected override void Awake()
         {
-            if (initialized) return;
-            initialized = true; raycastTarget = false;
-            style = style ?? new MoveArrowStyle();
-            if (style.headProfile != null)
-                foreach (var point in style.headProfile) { headLength = Math.Max(headLength, point.distanceFromTip); maxHalfWidth = Math.Max(maxHalfWidth, point.halfWidth); }
-            maxHalfWidth = Math.Max(maxHalfWidth, style.tailWidth * .5f) + style.outlineThickness;
-            templateLength = Math.Max(2, headLength * 2);
-            var geometry = new ArrowMeshGeometry(style);
-            var curve = geometry.BuildCurve(new[] { Vector3.zero, new Vector3(templateLength, 0, 0) });
-            fill = Sample(geometry.BuildArrowMesh(curve, 0, false), Color.white);
-            outline = Sample(geometry.BuildArrowMesh(curve, style.outlineThickness, true), style.outlineColor);
+            base.Awake();
+            raycastTarget = false;
         }
-        private Shape Sample(Mesh mesh, Color meshTint)
+
+        private void BuildShapes()
         {
-            var shape = new Shape { vertices = mesh.vertices, colors = mesh.colors, triangles = mesh.triangles, tint = meshTint };
+            var style = new MoveArrowStyle
+            {
+                segmentsPerLeg = 20,
+                tailWidth = tailWidth,
+                tailAlpha = .08f,
+                gradientStart = .2f,
+                headProfile = new[]
+                {
+                    new ArrowHeadPoint { distanceFromTip = 0, halfWidth = 0 },
+                    new ArrowHeadPoint { distanceFromTip = headLength * .99f, halfWidth = headWidth * .5f },
+                    new ArrowHeadPoint { distanceFromTip = headLength * .77f, halfWidth = NeckHalfWidth },
+                    new ArrowHeadPoint { distanceFromTip = headLength, halfWidth = NeckHalfWidth }
+                }
+            };
+            var geometry = new ArrowMeshGeometry(style);
+            var curve = geometry.BuildCurve(new[] { Vector3.zero, new Vector3(headLength * 2, 0, 0) });
+            fill = Sample(geometry.BuildArrowMesh(curve, 0, false));
+            outline = Sample(geometry.BuildArrowMesh(curve, OutlineThickness, true));
+        }
+        private static Shape Sample(Mesh mesh)
+        {
+            var shape = new Shape { vertices = mesh.vertices, colors = mesh.colors, triangles = mesh.triangles };
             Game.Core.UnityObjectLifetime.Destroy(mesh); return shape;
         }
         public void Play(Vector2 projectedSource, Vector2 projectedTarget, float fromExtent, float toExtent, Color factionColor)
         {
-            if (!initialized) Initialize(null);
+            if (fill.vertices == null) BuildShapes();
             Hide(); source = projectedSource; target = projectedTarget;
             sourceExtent = fromExtent; targetExtent = toExtent;
             tint = Color.Lerp(attackTint, factionColor, factionTintWeight); tint.a = attackTint.a;
@@ -101,33 +118,55 @@ namespace Game.Campaign
         }
         protected override void OnPopulateMesh(VertexHelper vh)
         {
-            vh.Clear(); if (!initialized || reveal <= 0 || opacity <= 0) return;
+            vh.Clear(); if (fill.vertices == null || reveal <= 0 || opacity <= 0) return;
             var rect = rectTransform.rect;
             if (rect.width <= 0 || rect.height <= 0) return;
-            var centers = CampaignMapView.ToPixel(rect, target) - CampaignMapView.ToPixel(rect, source);
-            float centerDistance = centers.magnitude;
-            float scale = Math.Min(Math.Max(1, visualScale), centerDistance / Math.Max(.001f, headLength * 4));
-            if (!Endpoints(rect, source, target, Math.Max(markerClearance, centerDistance * sourceExtent * regionInsetFraction),
-                Math.Max(markerClearance, centerDistance * targetExtent * regionInsetFraction), maxHalfWidth * scale + 2, out var a, out var b)) return;
-            var direction = (b - a).normalized; var normal = new Vector2(-direction.y, direction.x);
-            float length = (b - a).magnitude;
-            scale = Math.Min(scale, length / Math.Max(.001f, headLength * 2));
-            Emit(vh, outline, outline.tint, a, direction, normal, length, scale);
-            Emit(vh, fill, tint, a, direction, normal, length, scale);
+            float centerDistance = Vector2.Distance(CampaignMapView.ToPixel(rect, source), CampaignMapView.ToPixel(rect, target));
+            float sourceDepth = centerDistance * sourceExtent;
+            float targetDepth = centerDistance * targetExtent;
+            float fittingLength = Math.Max(2 * headLength, 1.25f * tailWidth);
+            float centerScale = Mathf.Clamp01(centerDistance / fittingLength);
+            float headScale = Math.Min(centerScale, targetDepth / Math.Max(headLength, headWidth * .5f));
+            float tailScale = Math.Min(centerScale, sourceDepth / (tailWidth * .5f));
+
+            float padding = Math.Max((headWidth * .5f + OutlineThickness) * headScale,
+                (tailWidth * .5f + OutlineThickness) * tailScale) + 2;
+            // Keep close markers distinct when both are near the same corner of the map.
+            padding = Math.Min(padding, centerDistance * .4f);
+            if (!Endpoints(rect, source, target, MarkerGap(sourceDepth), MarkerGap(targetDepth), padding, out var a, out var b)) return;
+
+            Vector2 delta = b - a;
+            float length = delta.magnitude;
+            Vector2 direction = delta / length;
+            float pathScale = length / fittingLength;
+            headScale = Math.Min(headScale, pathScale);
+            tailScale = Math.Min(tailScale, pathScale);
+            Emit(vh, outline, OutlineTint, a, direction, length, headScale, tailScale);
+            Emit(vh, fill, tint, a, direction, length, headScale, tailScale);
         }
-        private void Emit(VertexHelper vh, Shape shape, Color baseColor, Vector2 origin, Vector2 direction, Vector2 normal, float length, float scale)
+
+        // Small regions can have less room than the standard marker clearance.
+        private float MarkerGap(float depth) => Math.Min(Math.Max(markerClearance, depth * regionInsetFraction), depth * .65f);
+
+        private void Emit(VertexHelper vh, Shape shape, Color baseColor, Vector2 origin, Vector2 direction, float length, float headScale, float tailScale)
         {
-            float neck = templateLength - headLength, shaftLength = length - headLength * scale;
+            var normal = new Vector2(-direction.y, direction.x);
+            float shaftLength = length - headLength * headScale;
+            float tailHalfWidth = tailWidth * .5f;
+            float neckHalfWidth = NeckHalfWidth;
             UIVertex Vertex(int index)
             {
                 var p = shape.vertices[index];
-                float distance = p.x <= neck ? p.x / neck * shaftLength : shaftLength + (p.x - neck) * scale;
+                float alongShaft = Mathf.Clamp01(p.x / headLength);
+                float distance = alongShaft * shaftLength + Math.Max(0, p.x - headLength) * headScale;
+                float fittedHalfWidth = Mathf.Lerp(tailHalfWidth * tailScale, neckHalfWidth * headScale, alongShaft);
+                float widthScale = fittedHalfWidth / Mathf.Lerp(tailHalfWidth, neckHalfWidth, alongShaft);
                 var vertex = UIVertex.simpleVert;
-                vertex.position = origin + direction * distance + normal * (p.z * scale);
+                vertex.position = origin + direction * distance + normal * (p.z * widthScale);
                 var c = baseColor; c.a *= shape.colors[index].a * opacity;
                 vertex.color = c; vertex.uv0 = new Vector2(distance, 0); return vertex;
             }
-            float front = reveal >= 1 ? length + maxHalfWidth * scale : length * reveal;
+            float front = reveal >= 1 ? length + OutlineThickness * headScale : length * reveal;
             for (int i = 0; i < shape.triangles.Length; i += 3)
             {
                 var v0 = Vertex(shape.triangles[i]); var v1 = Vertex(shape.triangles[i + 1]); var v2 = Vertex(shape.triangles[i + 2]);
