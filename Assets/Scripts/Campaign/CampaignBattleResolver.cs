@@ -82,7 +82,9 @@ namespace Game.Campaign
     public sealed class CampaignBattleResolver
     {
         public const double SecondArmyWeight = .35, AviationWeight = .45, CommanderWeight = 1.5,
-            StrategicWeight = 4, AttachmentReadiness = .5, ProbabilitySlope = 4, MatchupWeight = .08;
+            StrategicWeight = 4, AttachmentReadiness = .5, ProbabilitySlope = 4, MatchupWeight = .08,
+            // Per resource point of starting-supply edge: a small economic tempo bonus.
+            SupplyTempoWeight = .01;
         private sealed class Host
         {
             public CardDefinition Card, Equipment, Mutator;
@@ -224,18 +226,19 @@ namespace Game.Campaign
             if (scores.Count >= 128) scores.Clear(); scores[signature] = Copy(score);
             return score;
         }
-        public CampaignBattleEstimate Compare(CampaignDeck attacker, CampaignDeck defender)
+        // tempoEdge: attacker's starting supply minus the defender's, in resource points.
+        public CampaignBattleEstimate Compare(CampaignDeck attacker, CampaignDeck defender, int tempoEdge = 0)
         {
             var a = Evaluate(attacker); var d = Evaluate(defender);
             double difference = (a.Total - d.Total) / Math.Max(1, (a.Total + d.Total) / 2);
             // Only the existing AA tag is used. No counter-effect registry or combat RNG.
             double airMatch = (a.AirPower * (1 - d.AntiAirCoverage) - d.AirPower * (1 - a.AntiAirCoverage)) / Math.Max(1, a.Total + d.Total);
-            double probability = 1 / (1 + Math.Exp(-ProbabilitySlope * (difference + MatchupWeight * airMatch)));
+            double probability = 1 / (1 + Math.Exp(-ProbabilitySlope * (difference + MatchupWeight * airMatch + SupplyTempoWeight * tempoEdge)));
             return new CampaignBattleEstimate { Attacker = a, Defender = d, WinChance = Math.Max(.1, Math.Min(.9, probability)) };
         }
-        public CampaignBattleEstimate Resolve(CampaignDeck attacker, CampaignDeck defender, int seed)
+        public CampaignBattleEstimate Resolve(CampaignDeck attacker, CampaignDeck defender, int seed, int tempoEdge = 0)
         {
-            var result = Compare(attacker, defender); result.Roll = new CampaignRandom(seed).Value();
+            var result = Compare(attacker, defender, tempoEdge); result.Roll = new CampaignRandom(seed).Value();
             result.Outcome = result.Roll < result.WinChance ? CampaignOutcome.AttackerVictory : CampaignOutcome.DefenderVictory;
             return result;
         }

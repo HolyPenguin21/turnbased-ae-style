@@ -3,6 +3,7 @@ using Game.Map;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Core;
+using Game.Economy;
 using Game.Players;
 using Game.Progression;
 using Game.UI;
@@ -17,13 +18,15 @@ namespace Game.Campaign
     // Runtime controller for the Campaign scene. Every panel, plaque, button and modal window is an
     // ordinary scene object, authored and edited in the
     // editor; this class only binds listeners, fills text/sprites and toggles which parts are visible.
-    // The map, per-row prefabs, and resource readouts populate the scene's authored containers.
+    // Only the region meshes (CampaignMapView) and the per-row prefabs are created at run time.
     public sealed class CampaignUI : MonoBehaviour
     {
         [Serializable]
         private sealed class FactionRowRefs { public GameObject root; public Image logo, bar; public TMP_Text factionName, count; }
         [Serializable]
         private sealed class HistoryRowRefs { public GameObject root; public Image attackerLogo; public TMP_Text round, attacker, region, outcome; }
+        [Serializable]
+        private sealed class SupplyColumnRefs { public TMP_Text human, energy, materials, regions; }
 
         [SerializeField] private GameConfig gameConfig;
         [SerializeField] private bool enableHumanTestAutoResolve;
@@ -67,7 +70,7 @@ namespace Game.Campaign
         [SerializeField] private GameObject confirmWindow, deckWindow, resultWindow, errorWindow;
         [SerializeField] private TMP_Text confirmText, deckInfo, deckEmptyLabel, resultText, errorText;
         [SerializeField] private TMP_Text confirmTargetText, confirmConditionsText;
-        [SerializeField] private RectTransform confirmSupplyHeader;
+        [SerializeField] private SupplyColumnRefs confirmSupplyAttacker, confirmSupplyDefender;
         [SerializeField] private ScrollRect confirmSupplyScroll;
         [SerializeField] private Button confirmChooseDeck, confirmCancel, deckStart, deckCancel, deckAutoResolve, resultContinue, errorRetry, errorMenu;
         [SerializeField] private RectTransform deckListContent;
@@ -76,7 +79,6 @@ namespace Game.Campaign
         private Material cloudMaterial, consoleMaterial, surfacePanelMaterial, regionPreviewMaterial;
         private readonly List<Material> attackPreviewMaterials = new List<Material>();
         private RectTransform modalContent;
-        private CampaignAttackSupplyView attackSupplyView;
         private int? selected, hovered;
         private int confirmFrom, confirmTarget;
         private string selectedDeckId;
@@ -440,10 +442,19 @@ namespace Game.Campaign
             confirmText.text = source.Name + "\n" + FactionName(source.OwnerFaction);
             confirmTargetText.text = battlefield.Name + "\n" + FactionName(battlefield.OwnerFaction);
             confirmConditionsText.text = "Battle conditions" + BattleConditions(battlefield);
-            attackSupplyView ??= new CampaignAttackSupplyView(confirmSupplyHeader, confirmSupplyScroll,
-                gameConfig.resourceIconPrefab != null ? gameConfig.resourceIconPrefab.Icon : null,
-                confirmConditionsText.font, confirmConditionsText.color);
-            attackSupplyView.Show(supply, battlefield.RegionId);
+            ShowSupply(confirmSupplyAttacker, supply.Attacker, battlefield.RegionId);
+            ShowSupply(confirmSupplyDefender, supply.Defender, battlefield.RegionId);
+            confirmSupplyScroll.StopMovement();
+            confirmSupplyScroll.verticalNormalizedPosition = 1;
+        }
+        private static void ShowSupply(SupplyColumnRefs column, CampaignAttackSupply.Side side, int battlefieldId)
+        {
+            string Amount(int amount, ResourceType type) => (amount == 0 ? "0 " : "+" + amount + " ") + type;
+            column.human.text = Amount(side.Total.human, ResourceType.Human);
+            column.energy.text = Amount(side.Total.energy, ResourceType.Energy);
+            column.materials.text = Amount(side.Total.materials, ResourceType.Materials);
+            column.regions.text = side.Sources.Count == 0 ? "No supplying regions" : string.Join("\n", side.Sources.Select(source =>
+                source.Region.Name + (source.Region.RegionId == battlefieldId ? " (Battlefield)" : "") + " · " + CampaignAttackSupply.Describe(source.Bonus)));
         }
         private void OpenDeckSelection()
         {
@@ -456,8 +467,8 @@ namespace Game.Campaign
             string message = (attack ? "ATTACK" : "DEFENCE") + " · " + battlefield.Name
                 + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  Defender: " + FactionName(op.DefenderFaction);
             message += BattleConditions(battlefield, op.Weather)
-                + "\nStarting supply · Attacker: " + CampaignAttackSupplyView.Describe(supply.Attacker.Total)
-                + "\nDefender: " + CampaignAttackSupplyView.Describe(supply.Defender.Total);
+                + "\nStarting supply · Attacker: " + CampaignAttackSupply.Describe(supply.Attacker.Total)
+                + "\nDefender: " + CampaignAttackSupply.Describe(supply.Defender.Total);
             if (s.Phase == CampaignPhase.BattleInProgress) message += "\nInterrupted battle: restart with a fresh tactical map. Territory unchanged.";
             deckInfo.text = message;
             ClearChildren(deckListContent);

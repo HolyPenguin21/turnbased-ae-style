@@ -94,7 +94,8 @@ namespace Game.Campaign
         {
             var op = state.PendingOperation;
             if (op == null || (op.Manual && !op.TestAutoResolve) || state.Phase != CampaignPhase.PreparingBattle || op.ResultRecorded) throw new InvalidOperationException("No battle is ready to resolve automatically.");
-            var result = resolver.Resolve(attacker, defender, op.RandomSeed);
+            int tempoEdge = CampaignAttackSupply.Calculate(View, View.FindRegion(op.TargetRegionId), op.AttackerFaction).TempoEdge;
+            var result = resolver.Resolve(attacker, defender, op.RandomSeed, tempoEdge);
             Transact(s =>
             {
                 var p = s.PendingOperation; p.ResultRecorded = true; p.Outcome = result.Outcome;
@@ -145,7 +146,8 @@ namespace Game.Campaign
             var selected = attacks.Select(pair =>
             {
                 var target = state.Regions.Find(r => r.RegionId == pair.Target);
-                double chance = resolver.Compare(attacker, CampaignDeck.Standard(target.OwnerFaction, rules, state.Factions.Find(f => f.Faction == target.OwnerFaction).ActiveDeckReference)).WinChance;
+                int tempoEdge = CampaignAttackSupply.Calculate(View, View.FindRegion(pair.Target), state.CurrentFaction).TempoEdge;
+                double chance = resolver.Compare(attacker, CampaignDeck.Standard(target.OwnerFaction, rules, state.Factions.Find(f => f.Faction == target.OwnerFaction).ActiveDeckReference), tempoEdge).WinChance;
                 double elimination = state.Regions.Count(r => r.OwnerFaction == target.OwnerFaction) == 1 ? .08 : 0;
                 return (Pair: pair, Score: chance + elimination + rng.Value() * .06);
             }).OrderByDescending(a => a.Score).First().Pair;

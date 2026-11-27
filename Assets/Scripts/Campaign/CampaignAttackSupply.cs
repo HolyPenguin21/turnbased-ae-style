@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Game.Economy;
 using Game.Players;
 using Game.Terrain;
@@ -18,6 +19,7 @@ namespace Game.Campaign
 
             internal IReadOnlyList<(CampaignRegionView Region, ResourceYields Bonus)> Sources => sources;
             internal ResourceYields Total { get; private set; } = new ResourceYields();
+            internal int Points => Total.human + Total.energy + Total.materials;
 
             internal void Add(CampaignRegionView region)
             {
@@ -36,6 +38,12 @@ namespace Game.Campaign
 
         internal Side Attacker { get; } = new Side();
         internal Side Defender { get; } = new Side();
+        // Attacker's head start over the defender, in resource points.
+        internal int TempoEdge => Attacker.Points - Defender.Points;
+
+        internal static string Describe(ResourceYields resources) => resources.HasAnyYield
+            ? string.Join(" · ", Types.Where(type => resources.Get(type) > 0).Select(type => $"+{resources.Get(type)} {type}"))
+            : "None";
 
         internal static CampaignAttackSupply Calculate(CampaignReadModel state, CampaignRegionView battlefield, Faction attacker)
         {

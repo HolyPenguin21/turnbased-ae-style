@@ -19,14 +19,14 @@ namespace Game.Campaign
         [SerializeField, Min(1)] private float tailWidth = 63;
         [SerializeField, Min(7)] private float markerClearance = 24;
         [SerializeField, Range(0, .5f)] private float regionInsetFraction = .25f;
+        [SerializeField, Min(0)] private float outlineThickness = 1.25f;
         [Header("Tint")]
         [SerializeField] private Color attackTint = new Color(.85f, .16f, .10f, 1f);
+        [SerializeField] private Color outlineTint = new Color(.05f, .04f, .06f, 1f);
         [SerializeField, Range(0, 1)] private float factionTintWeight = 0;
         [SerializeField, Range(0, .2f)] private float pulseAmount = .06f;
         [SerializeField, Min(0)] private float pulseFrequency = 1.5f;
 
-        private const float OutlineThickness = 1.25f;
-        private static readonly Color OutlineTint = new Color(.05f, .04f, .06f, 1f);
         private struct Shape { public Vector3[] vertices; public Color[] colors; public int[] triangles; }
         private Shape fill, outline;
         private float elapsed, reveal, opacity;
@@ -63,7 +63,7 @@ namespace Game.Campaign
             var geometry = new ArrowMeshGeometry(style);
             var curve = geometry.BuildCurve(new[] { Vector3.zero, new Vector3(headLength * 2, 0, 0) });
             fill = Sample(geometry.BuildArrowMesh(curve, 0, false));
-            outline = Sample(geometry.BuildArrowMesh(curve, OutlineThickness, true));
+            outline = Sample(geometry.BuildArrowMesh(curve, outlineThickness, true));
         }
         private static Shape Sample(Mesh mesh)
         {
@@ -129,8 +129,8 @@ namespace Game.Campaign
             float headScale = Math.Min(centerScale, targetDepth / Math.Max(headLength, headWidth * .5f));
             float tailScale = Math.Min(centerScale, sourceDepth / (tailWidth * .5f));
 
-            float padding = Math.Max((headWidth * .5f + OutlineThickness) * headScale,
-                (tailWidth * .5f + OutlineThickness) * tailScale) + 2;
+            float padding = Math.Max((headWidth * .5f + outlineThickness) * headScale,
+                (tailWidth * .5f + outlineThickness) * tailScale) + 2;
             // Keep close markers distinct when both are near the same corner of the map.
             padding = Math.Min(padding, centerDistance * .4f);
             if (!Endpoints(rect, source, target, MarkerGap(sourceDepth), MarkerGap(targetDepth), padding, out var a, out var b)) return;
@@ -141,7 +141,7 @@ namespace Game.Campaign
             float pathScale = length / fittingLength;
             headScale = Math.Min(headScale, pathScale);
             tailScale = Math.Min(tailScale, pathScale);
-            Emit(vh, outline, OutlineTint, a, direction, length, headScale, tailScale);
+            Emit(vh, outline, outlineTint, a, direction, length, headScale, tailScale);
             Emit(vh, fill, tint, a, direction, length, headScale, tailScale);
         }
 
@@ -166,7 +166,7 @@ namespace Game.Campaign
                 var c = baseColor; c.a *= shape.colors[index].a * opacity;
                 vertex.color = c; vertex.uv0 = new Vector2(distance, 0); return vertex;
             }
-            float front = reveal >= 1 ? length + OutlineThickness * headScale : length * reveal;
+            float front = reveal >= 1 ? length + outlineThickness * headScale : length * reveal;
             for (int i = 0; i < shape.triangles.Length; i += 3)
             {
                 var v0 = Vertex(shape.triangles[i]); var v1 = Vertex(shape.triangles[i + 1]); var v2 = Vertex(shape.triangles[i + 2]);

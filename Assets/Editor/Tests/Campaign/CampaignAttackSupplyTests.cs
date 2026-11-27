@@ -47,5 +47,18 @@ public sealed class CampaignAttackSupplyTests
         }
         Assert.That(checkedBattles, Is.GreaterThan(0));
     }
+
+    [Test]
+    public void TempoEdge_ShiftsAutoResolveChanceSlightly()
+    {
+        var resolver = new CampaignBattleResolver();
+        var deck = new CampaignDeck("Empty", new Game.Cards.CardDefinition[0]);
+        double even = resolver.Compare(deck, deck).WinChance;
+        double ahead = resolver.Compare(deck, deck, 6).WinChance;
+        double behind = resolver.Compare(deck, deck, -6).WinChance;
+        Assert.That(even, Is.EqualTo(.5).Within(1e-9));
+        Assert.That(ahead, Is.GreaterThan(even).And.LessThan(.6));
+        Assert.That(ahead - even, Is.EqualTo(even - behind).Within(1e-9));
+    }
 }
 #endif

@@ -590,6 +590,8 @@ namespace Game.Turns
             // The match's weather is fixed before the first tick and any AI reasoning.
             if (!SandstormState.IsInitialized)
                 SandstormState.Initialize(GameSession.ResolveWeather(), map);
+            // Before round 1's income and initiative: the supply is spendable from the first purchase.
+            GameSession.CampaignContext?.GrantStartingSupply(GameSession.Players);
             BeginNewTurn();
         }
 
@@ -726,8 +728,6 @@ namespace Game.Turns
             CurrentTurnOrder = order;
 
             StrategicTurnEffects.ApplyTurnOrder(order, GameSession.Players);
-            if (TurnNumber == 1)
-                GameSession.CampaignContext?.GrantStartingSupply(GameSession.Players);
             BeginPlayerTurn(0);
         }
 
