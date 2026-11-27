@@ -2,6 +2,7 @@ using System;
 using Game.Map;
 using System.Collections.Generic;
 using Game.Core;
+using Game.Economy;
 using Game.Players;
 using Game.Progression;
 using UnityEngine;
@@ -18,6 +19,32 @@ namespace Game.Campaign
         public MatchWeatherProfile Weather;
         public long WeatherSeed;
         public MatchWeatherConditions WeatherConditions => new MatchWeatherConditions(Weather, WeatherSeed);
+
+        // Fresh launches carry a one-time grant. Match saves store the resulting PlayerRoot balances.
+        internal (ResourceYields Attacker, ResourceYields Defender)? StartingSupply { get; set; }
+
+        internal void GrantStartingSupply(List<PlayerSetupData> players)
+        {
+            if (!StartingSupply.HasValue) return;
+            var attacker = PlayerRootRegistry.FindFor(players.Find(player => player.Faction == AttackerFaction));
+            var defender = PlayerRootRegistry.FindFor(players.Find(player => player.Faction == DefenderFaction));
+            if (attacker == null || defender == null)
+            {
+                Debug.LogError("Could not grant campaign starting supply. Both battle participants must have a player root.");
+                return;
+            }
+
+            var supply = StartingSupply.Value;
+            StartingSupply = null;
+            using (VisionSystem.BeginMutation())
+            {
+                foreach (ResourceType type in CampaignAttackSupply.Types)
+                {
+                    attacker.AddResource(type, supply.Attacker.Get(type));
+                    defender.AddResource(type, supply.Defender.Get(type));
+                }
+            }
+        }
     }
     // Authoritative whole-match result, produced only at GameTurnController's game-over boundary.
     public readonly struct CompletedMatchResult
@@ -86,12 +113,16 @@ namespace Game.Campaign
                 var s = Controller.View; var op = s.PendingOperation;
                 if (op == null || !op.Manual || op.TestAutoResolve || op.ResultRecorded)
                 { error = "No battle is ready to play."; return false; }
+                var target = s.FindRegion(op.TargetRegionId);
+                if (target == null || target.OwnerFaction != op.DefenderFaction || target.Weather != op.Weather)
+                    throw new InvalidOperationException("Battle defender or weather does not match its region.");
                 if (!ProgressionContext.Initialize(config)) { error = ProgressionContext.Error; return false; }
                 var collection = ProgressionContext.Collection;
                 var deck = collection.GetDeck(deckId, s.HumanFaction);
                 if (deck == null) { error = "Select a saved deck of your faction."; return false; }
                 var validation = collection.Rules.Validate(deck, collection.Owned);
                 if (!validation.IsValid) { error = "Deck needs changes. Open Collection & Decks."; return false; }
+                var supply = CampaignAttackSupply.Calculate(s, target, op.AttackerFaction);
                 var enemy = op.AttackerFaction == s.HumanFaction ? op.DefenderFaction : op.AttackerFaction;
                 var players = new List<PlayerSetupData>();
                 foreach (var faction in new[] { op.AttackerFaction, op.DefenderFaction })
@@ -105,9 +136,7 @@ namespace Game.Campaign
                 GameSession.SetCampaignContext(new CampaignMatchContext { CampaignId = s.CampaignId, OperationId = op.OperationId,
                     MatchId = op.MatchId, AttackerFaction = op.AttackerFaction, DefenderFaction = op.DefenderFaction, HumanFaction = s.HumanFaction,
                     SourceRegionId = op.SourceRegionId, TargetRegionId = op.TargetRegionId, SelectedHumanDeckId = deckId,
-                    Weather = op.Weather, WeatherSeed = op.WeatherConditions.Seed });
-                var target = s.FindRegion(op.TargetRegionId);
-                if (target.Weather != op.Weather) throw new InvalidOperationException("Battle weather does not match its region.");
+                    Weather = op.Weather, WeatherSeed = op.WeatherConditions.Seed, StartingSupply = (supply.Attacker.Total, supply.Defender.Total) });
                 // After TryPrepareMatch: its CommitNewLaunch clears every previous map condition.
                 GameSession.SelectedMapSize = null;
                 GameSession.SelectedBiome = target.Biome;

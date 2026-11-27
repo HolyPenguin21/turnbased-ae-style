@@ -52,7 +52,7 @@ namespace Game.Campaign
             if (backgroundId < 0 || backgroundId > CampaignMapGenerator.BackgroundCount) throw new ArgumentOutOfRangeException(nameof(backgroundId));
             return backgroundId == 0 ? "Campaign/Backgrounds/WastelandSurface" : "Campaign/Backgrounds/WastelandSurface_" + backgroundId.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
         }
-        public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered, int backgroundId = 0, Game.Styles.MoveArrowStyle arrowStyle = null)
+        public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered, int backgroundId = 0)
         {
             CancelCapture(); CancelAttackAnimation();
             foreach (Transform child in transform) { if (arrow != null && child == arrow.transform) continue; child.gameObject.SetActive(false); Destroy(child.gameObject); }
@@ -100,7 +100,7 @@ namespace Game.Campaign
                 var rt = (RectTransform)ar.transform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
                 arrow = ar.AddComponent<CampaignArrowGraphic>();
             }
-            arrow.Initialize(arrowStyle); arrow.transform.SetAsLastSibling();
+            arrow.transform.SetAsLastSibling();
             var labelRect = Game.UI.CollectionUIElements.Rect(transform, "SelectedRegionName");
             // Dark plate keeps the name readable over the bright selection glow.
             var plate = labelRect.gameObject.AddComponent<Image>(); plate.raycastTarget = false; plate.color = new Color(.05f, .042f, .032f, .6f);
