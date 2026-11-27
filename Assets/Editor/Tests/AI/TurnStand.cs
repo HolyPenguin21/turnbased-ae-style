@@ -547,6 +547,7 @@ namespace Game.EditorTests
         }
     }
 
+#if UNITY_6000_3_OR_NEWER
     // The execution mode: one PlayMode test over every case (one domain reload for the whole run).
     public sealed class TurnStandPlayTests
     {
@@ -610,5 +611,6 @@ namespace Game.EditorTests
             Assert.That(report, Is.Empty, string.Join("\n", report));
         }
     }
+#endif
 }
 #endif
