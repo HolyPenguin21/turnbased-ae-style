@@ -17,7 +17,7 @@ namespace Game.Campaign
     // Runtime controller for the Campaign scene. Every panel, plaque, button and modal window is an
     // ordinary scene object, authored and edited in the
     // editor; this class only binds listeners, fills text/sprites and toggles which parts are visible.
-    // Only the region meshes (CampaignMapView) and the per-row prefabs are created at run time.
+    // The map, per-row prefabs, and resource readouts populate the scene's authored containers.
     public sealed class CampaignUI : MonoBehaviour
     {
         [Serializable]
@@ -66,6 +66,9 @@ namespace Game.Campaign
         [SerializeField] private GameObject modalBackdrop;
         [SerializeField] private GameObject confirmWindow, deckWindow, resultWindow, errorWindow;
         [SerializeField] private TMP_Text confirmText, deckInfo, deckEmptyLabel, resultText, errorText;
+        [SerializeField] private TMP_Text confirmTargetText, confirmConditionsText;
+        [SerializeField] private RectTransform confirmSupplyHeader;
+        [SerializeField] private ScrollRect confirmSupplyScroll;
         [SerializeField] private Button confirmChooseDeck, confirmCancel, deckStart, deckCancel, deckAutoResolve, resultContinue, errorRetry, errorMenu;
         [SerializeField] private RectTransform deckListContent;
         [SerializeField] private CampaignDeckRowView deckRowPrefab;
@@ -73,6 +76,7 @@ namespace Game.Campaign
         private Material cloudMaterial, consoleMaterial, surfacePanelMaterial, regionPreviewMaterial;
         private readonly List<Material> attackPreviewMaterials = new List<Material>();
         private RectTransform modalContent;
+        private CampaignAttackSupplyView attackSupplyView;
         private int? selected, hovered;
         private int confirmFrom, confirmTarget;
         private string selectedDeckId;
@@ -92,7 +96,7 @@ namespace Game.Campaign
             SetupMaterials();
             if (!CampaignMatchBridge.Load(out string error)) { Failure(error ?? "No saved campaign.", () => SceneManager.LoadScene(SceneNames.MainMenu)); return; }
             map.EmblemFor = LogoFor;
-            try { var state = Controller.View; map.Build(state.CopyMapRegions(), ClickRegion, HoverRegion, state.BackgroundId, gameConfig.moveArrowStyle); }
+            try { var state = Controller.View; map.Build(state.CopyMapRegions(), ClickRegion, HoverRegion, state.BackgroundId); }
             catch (Exception ex)
             {
                 Debug.LogWarning(ex);
@@ -415,7 +419,8 @@ namespace Game.Campaign
             CloseModal();
             cancelModal = onCancel;
             modalBackdrop.SetActive(true); window.SetActive(true); modalContent = (RectTransform)window.transform;
-            UIFocusUtility.SetModal(this, window, ModalBlock.Full); RefreshMap();
+            UIFocusUtility.SetModal(this, window, ModalBlock.Full, window == confirmWindow ? confirmChooseDeck : null);
+            RefreshMap();
         }
         private void CloseModal()
         {
@@ -427,9 +432,18 @@ namespace Game.Campaign
         private void ConfirmAttack(int from, int target)
         {
             var s = Controller.View; if (!s.CanAttack(s.HumanFaction, from, target)) return;
+            var source = s.FindRegion(from);
+            var battlefield = s.FindRegion(target);
+            var supply = CampaignAttackSupply.Calculate(s, battlefield, source.OwnerFaction);
             confirmFrom = from; confirmTarget = target;
             OpenModal(confirmWindow, CancelAttackConfirmation);
-            confirmText.text = s.FindRegion(from).Name + " > " + s.FindRegion(target).Name + BattleConditions(s.FindRegion(target));
+            confirmText.text = source.Name + "\n" + FactionName(source.OwnerFaction);
+            confirmTargetText.text = battlefield.Name + "\n" + FactionName(battlefield.OwnerFaction);
+            confirmConditionsText.text = "Battle conditions" + BattleConditions(battlefield);
+            attackSupplyView ??= new CampaignAttackSupplyView(confirmSupplyHeader, confirmSupplyScroll,
+                gameConfig.resourceIconPrefab != null ? gameConfig.resourceIconPrefab.Icon : null,
+                confirmConditionsText.font, confirmConditionsText.color);
+            attackSupplyView.Show(supply, battlefield.RegionId);
         }
         private void OpenDeckSelection()
         {
@@ -437,9 +451,13 @@ namespace Game.Campaign
             if (op == null || !op.Manual || op.ResultRecorded) return;
             OpenModal(deckWindow, CancelDeck);
             bool attack = op.AttackerFaction == s.HumanFaction;
-            string message = "Region: " + s.FindRegion(op.TargetRegionId).Name + "\nOperation: " + (attack ? "ATTACK" : "DEFENCE")
+            var battlefield = s.FindRegion(op.TargetRegionId);
+            var supply = CampaignAttackSupply.Calculate(s, battlefield, op.AttackerFaction);
+            string message = (attack ? "ATTACK" : "DEFENCE") + " · " + battlefield.Name
                 + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  Defender: " + FactionName(op.DefenderFaction);
-            message += BattleConditions(s.FindRegion(op.TargetRegionId), op.Weather);
+            message += BattleConditions(battlefield, op.Weather)
+                + "\nStarting supply · Attacker: " + CampaignAttackSupplyView.Describe(supply.Attacker.Total)
+                + "\nDefender: " + CampaignAttackSupplyView.Describe(supply.Defender.Total);
             if (s.Phase == CampaignPhase.BattleInProgress) message += "\nInterrupted battle: restart with a fresh tactical map. Territory unchanged.";
             deckInfo.text = message;
             ClearChildren(deckListContent);
