@@ -56,7 +56,7 @@ namespace Game.EditorTests
         NoFieldArmyThreat,  // only the garrison and a scout against a strong army: the garrison asks for power
         ZeroApThreat,       // the strong army with 0 AP: nothing spends AP, AP stays 0
         RichThreat,         // the strong army with 40 of every resource: boundaries only
-        FullHand,           // the hand at its capacity: Phase B never draws (decisions mode)
+        FullHand,           // the hand at its capacity: Phase B never draws while it is full
         PendingContactFar,  // a far weak army whose discovery is pending: the loop takes the Contact fact
         GarrisonOnly,       // the garrison alone, no enemy: no defence objective, no mission step moves AP
         // Provisioning cases (actor binding: garrison extraction, same-hex assembly, sortie):
@@ -502,10 +502,16 @@ namespace Game.EditorTests
                     foreach (string l in Lines.Where(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"spent ap [1-9]")))
                         yield return "AP spent with 0 AP: " + l;
                     break;
-                // Decisions only: in execution the played cards leave room to draw.
-                case TurnScenario.FullHand when !_play:
+                // A draw line reports the hand after the draw ("hand N/M ... drawn K"): the hand
+                // before it (N - K) must have had a free slot.
+                case TurnScenario.FullHand:
                     foreach (string l in Lines.Where(l => l.Contains("WINNER Draw")))
-                        yield return "drew into a full hand: " + l;
+                    {
+                        var m = System.Text.RegularExpressions.Regex.Match(l, @"hand (\d+)/(\d+).*drawn (\d+)");
+                        if (!m.Success || int.Parse(m.Groups[1].Value) - int.Parse(m.Groups[3].Value)
+                                >= int.Parse(m.Groups[2].Value))
+                            yield return "drew into a full hand: " + l;
+                    }
                     break;
                 case TurnScenario.PendingContactFar:
                     if (!Lines.Any(l => l.Contains("Triggers=") && l.Contains("Contact")))
