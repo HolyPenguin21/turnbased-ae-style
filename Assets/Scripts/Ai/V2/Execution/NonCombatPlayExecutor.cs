@@ -95,7 +95,7 @@ namespace Game.Ai.V2
                 if (go.StateChanged) { res.StateChanged = true; res.ActionChanged |= go.Attempted; }
                 if (!go.Success)
                 {
-                    res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+                    res.ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root);
                     res.FailReason = go.FailReason ?? "generation failed";
                     StampVersion(ref res, stateVersionBefore);
                     return res;
@@ -112,7 +112,7 @@ namespace Game.Ai.V2
                 // the successful-chain check before generation cannot authorize a new hold.
                 if (fresh == null || fresh.Kind != play.Kind || !FitsBudget(fresh, player, root, ctx))
                 {
-                    res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+                    res.ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root);
                     res.FailReason = "no legal funded placement for the generated non-combat card";
                     StampVersion(ref res, stateVersionBefore);
                     return res;
@@ -122,7 +122,7 @@ namespace Game.Ai.V2
 
             if (!hand.Hand.Contains(play.Card))
             {
-                res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+                res.ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root);
                 res.FailReason = "card no longer in hand";
                 StampVersion(ref res, stateVersionBefore);
                 return res;
@@ -197,7 +197,7 @@ namespace Game.Ai.V2
 
             res.Played = ok;
             if (ok) res.ActionChanged = res.StateChanged = true;
-            res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+            res.ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root);
             if (!ok) res.FailReason = failReason ?? "non-combat play failed";
             StampVersion(ref res, stateVersionBefore);
             return res;

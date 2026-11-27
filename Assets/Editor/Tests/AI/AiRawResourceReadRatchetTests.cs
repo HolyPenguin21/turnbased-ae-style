@@ -41,29 +41,27 @@ namespace Game.EditorTests
             // Moved, not new: the snapshot AP/stockpile reads left StrategicEffectRegistry.cs with
             // the context type they belong to.
             ["Evaluation/Effects/EffectEvaluationContext.cs"] = 2,
-            ["Execution/CardPlayExecutor.cs"] = 3,
-            // Moved, not new (2026-10-15): the executions that left Evaluation / Strategy with
-            // their physical before/after reads (NonCombatCardPlayer 5 -> 0;
-            // InfrastructureFulfillment 15 -> 13 and StrategicMaintenancePolicy 3 -> 0 -> 4 here).
-            ["Execution/NonCombatPlayExecutor.cs"] = 5,
-            ["Execution/InfrastructureBuildExecutor.cs"] = 4,
+            ["Execution/CardPlayExecutor.cs"] = 2,
+            // Physical before-reads and live preflights of the executions.
+            ["Execution/NonCombatPlayExecutor.cs"] = 1,
+            ["Execution/InfrastructureBuildExecutor.cs"] = 3,
             // Physical aggregate preflight in the canonical executor. Strategic admission
             // checks the same base + immediate defender against owner-aware spendability first.
             ["Execution/BuildingPlayExecutor.cs"] = 2,
-            ["Execution/ReconAirExecutor.cs"] = 10,
+            ["Execution/ReconAirExecutor.cs"] = 1,
             ["Execution/ReconGroundExecutor.cs"] = 1,
             // The physical AP after-read in the step's log line (the delta is ExecutionResult.SettleAp).
             ["Execution/ActiveDefenceExecutor.cs"] = 1,
-            // The Economy / Development step bodies left TaskExecutor; one AP rule (ExecutionResult.SettleAp).
-            ["Execution/TaskExecutor.cs"] = 2,
-            ["Execution/EconomyExecutor.cs"] = 2,
+            // The one AP rule of every execution result (V2ActionOutcome.ApSpentSince).
+            ["Execution/V2ActionOutcome.cs"] = 1,
+            ["Execution/TaskExecutor.cs"] = 1,
             ["Housekeeping/HousekeepingManager.cs"] = 3,
             ["Initiative/PreTurnCapacityAnalysis.cs"] = 1,
             // Physical before/after accounting, including AP spent by the local-refit handoff.
-            ["Materialization/MaterializationExecutor.cs"] = 26,
+            ["Materialization/MaterializationExecutor.cs"] = 11,
             ["Missions/Raid/RaidRecoveryPlanner.cs"] = 1,
             // Pipeline.cs 6 -> 2: the admission-key reads moved with their owners (see the two files below).
-            ["Orchestration/AiStrategyV2Pipeline.cs"] = 2,
+            ["Orchestration/AiStrategyV2Pipeline.cs"] = 1,
             // Admission-key digest (ece0211c): the snapshot AP is one input of the Development key.
             ["Orchestration/DevelopmentAdmission.cs"] = 1,
             // Moved, not new: the Economy key reads the physical AP (it was inline in RunTurn).
@@ -94,16 +92,15 @@ namespace Game.EditorTests
             ["State/StrategicResourceReservation.cs"] = 2,
             ["State/StrategicSpendability.cs"] = 3,
             ["State/TurnResourceBook.cs"] = 8,
-            ["Strategy/Demand/DevelopmentUpgradeFulfillment.cs"] = 3,
-            ["Strategy/Demand/InfrastructureFulfillment.cs"] = 13,
+            ["Strategy/Demand/DevelopmentUpgradeFulfillment.cs"] = 1,
+            ["Strategy/Demand/InfrastructureFulfillment.cs"] = 1,
             // Moved, not new: the one read of the Economy reservation transitions
             // (was in InfrastructureFulfillment, 16 -> 15).
             ["Strategy/Demand/EconomyReservationLifecycle.cs"] = 1,
             ["Strategy/PhaseA/MaterializationPortfolioSolver.cs"] = 1,
             ["Strategy/PhaseB/HoldEvaluator.cs"] = 1,
             ["Strategy/PhaseB/TempoCandidateProvider.cs"] = 1,
-            ["Strategy/StrategicPhaseA.cs"] = 4,
-            ["Strategy/StrategicPhaseB.cs"] = 16,
+            ["Strategy/StrategicPhaseB.cs"] = 14,
         };
 
         [Test]

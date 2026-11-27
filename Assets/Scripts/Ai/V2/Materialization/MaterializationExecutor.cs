@@ -194,7 +194,7 @@ namespace Game.Ai.V2
                 if (go.StateChanged) { res.StateChanged = true; chainChanged |= go.Attempted; }
                 if (!go.Success)
                 {
-                    res.ApSpent = apStart - root.ActionPoints;
+                    res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
                     StampVersion();
                     res.FailReason = go.FailReason;
                     return res;
@@ -209,7 +209,7 @@ namespace Game.Ai.V2
 
             if (baseCard == null || !hand.Hand.Contains(baseCard))
             {
-                res.ApSpent = apStart - root.ActionPoints;
+                res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
                 StampVersion();
                 res.FailReason = "base card missing after generation";
                 return res;
@@ -220,14 +220,14 @@ namespace Game.Ai.V2
             {
                 if (equipmentCard == null || equipmentCard == baseCard || !hand.Hand.Contains(equipmentCard))
                 {
-                    res.ApSpent = apStart - root.ActionPoints;
+                    res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
                     StampVersion();
                     res.FailReason = "equipment card missing";
                     return res;
                 }
                 if (!EquipmentSystem.TryAttach(equipmentCard, baseCard, root, out string attachFail))
                 {
-                    res.ApSpent = apStart - root.ActionPoints;
+                    res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
                     StampVersion();
                     res.FailReason = $"attach failed ({attachFail})";
                     return res;
@@ -249,7 +249,7 @@ namespace Game.Ai.V2
             CardPlayPlan deployPlan = plan.Deploy.Bind(baseCard);
             if (!CardPlayExecutor.Preflight(player, root, hand, ctx, deployPlan, out string preflightFail))
             {
-                res.ApSpent = apStart - root.ActionPoints;
+                res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
                 StampVersion();
                 res.PlacementStale = true;
                 res.FailReason = $"deploy placement stale after chain ({preflightFail ?? "preflight failed"}); "
@@ -259,7 +259,7 @@ namespace Game.Ai.V2
 
             CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, deployPlan);
             res.CardDeployed = play.Deployed;
-            res.ApSpent = apStart - root.ActionPoints;
+            res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
             if (play.StateChanged)
             { res.StateChanged = true; chainChanged = true; }
             // CardPlayExecutor has already bumped for any deployment-side mutation. Do not bump
@@ -269,7 +269,7 @@ namespace Game.Ai.V2
             {
                 bool handed = GroundCombatReinforcementTransaction.ApplyLocalRefit(plan, player, root, ctx, hand, play.ArmyShell, authority,
                     snap?.Intents);
-                res.ApSpent = apStart - root.ActionPoints;
+                res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
                 res.Deployed = handed;
                 res.PlacementStale = !handed;
                 res.FailReason = handed ? null : "refit handoff rejected; deployed card remains at base";

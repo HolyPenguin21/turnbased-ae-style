@@ -141,7 +141,7 @@ namespace Game.Ai.V2
             // The envelope is what Provisioning actually funded THIS mission (pm.ClaimedAp, the
             // AUTHORITATIVE PlanEconomyCompletion figure), minus whatever the hero extraction
             // itself just spent — never the player's entire current AP pool.
-            float spentSoFar = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            float spentSoFar = V2ActionOutcome.ApSpentSince(apBefore, root);
             float remainingEnvelope = Mathf.Max(0f, pm.ClaimedAp - spentSoFar);
             if (prep.RealAp > remainingEnvelope + eps
                 || !root.CanSpendActionPoints(Mathf.CeilToInt(prep.RealAp)))
@@ -203,8 +203,7 @@ namespace Game.Ai.V2
                 added: null, unloadTarget: null,
                 travelNeeded: prep.TravelNeeded,
                 completionThisTurn: prep.CompletionThisTurn);
-            float spentAfterComposition = Mathf.Max(0f,
-                apBefore - (root != null ? root.ActionPoints : apBefore));
+            float spentAfterComposition = V2ActionOutcome.ApSpentSince(apBefore, root);
             float envelopeAfterComposition = Mathf.Max(0f, pm.ClaimedAp - spentAfterComposition);
             if (realAp > envelopeAfterComposition + eps)
             {

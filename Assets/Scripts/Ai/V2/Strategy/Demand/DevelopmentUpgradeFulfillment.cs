@@ -104,7 +104,7 @@ namespace Game.Ai.V2
                     Executed = true,
                     ChallengeWon = false,
                     StateChanged = generated.StateChanged,
-                    ApSpent = apBefore - root.ActionPoints,
+                    ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root),
                     Detail = generated.FailReason ?? "Challenge lost",
                 };
             }
@@ -116,7 +116,7 @@ namespace Game.Ai.V2
             return new DevUpgradeResult
             {
                 Executed = true, ChallengeWon = true, StateChanged = generated.StateChanged,
-                ApSpent = apBefore - root.ActionPoints,
+                ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root),
                 Detail = $"Challenge won, '{generated.Minted?.Definition?.displayName}' retained in hand; attachment pending"
                     + (wasHiddenHero ? " [hero revealed]" : ""),
             };

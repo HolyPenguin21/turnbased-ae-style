@@ -121,7 +121,7 @@ namespace Game.Ai.V2
             return new BuildingPlayResult
             {
                 Built = true, CardConsumed = true, AdditionalCardsConsumed = defender == null ? 0 : 1,
-                StateChanged = true, ApSpent = totalAp,
+                StateChanged = true, ApSpent = outcome.ApSpent,
                 StateVersionAfter = mutation.Commit(player, ctx.TurnNumber,
                     new WorldDelta(true, StrategicInvalidationReason.None)),
             };

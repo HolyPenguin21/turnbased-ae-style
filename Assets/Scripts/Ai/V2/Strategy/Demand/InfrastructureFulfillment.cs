@@ -237,7 +237,7 @@ namespace Game.Ai.V2
                     Built = false, GenerationAttempted = generated.Attempted,
                     Generated = generated.Success, Generation = g,
                     GeneratedOperatorCard = generated.Success ? generated.Minted : null,
-                    ApSpent = beforeAp - root.ActionPoints,
+                    ApSpent = V2ActionOutcome.ApSpentSince(beforeAp, root),
                     StateChanged = generated.StateChanged, StateVersionAfter = version,
                     Detail = generated.Success
                         ? $"operator {g.CardDef.displayName} generated into hand; deploy next pass"
@@ -479,7 +479,6 @@ namespace Game.Ai.V2
         private static InfraFulfillResult ExecuteCapacityUnlock(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, InfraCandidate cand)
         {
-            int apBefore = root.ActionPoints;
             int rateBefore = root.TradeRate;
             BaseUpgradeOutcome outcome = InfrastructureBuildExecutor.UnlockCapacity(player, root, ctx,
                 cand.CapacityBuilding, cand.CapacityExpectedLevel, cand.TargetHex, out int version);
@@ -494,7 +493,7 @@ namespace Game.Ai.V2
             return new InfraFulfillResult
             {
                 Built = false, CapacityUnlocked = true, CardPlayed = false,
-                ApSpent = apBefore - root.ActionPoints,
+                ApSpent = outcome.ApSpent,
                 StateChanged = true, StateVersionAfter = version,
                 Detail = $"{cand.Explain} -> level {outcome.LevelAfter}, facility slots {outcome.UnlockedSlotsAfter}",
             };

@@ -234,7 +234,7 @@ namespace Game.Ai.V2
             // The domain transaction is atomic for fresh-army deployment: FALSE means no new army,
             // no AP/resource debit and no published unit. Existing-recipient deployment uses the
             // same validation/payment/spawn core and is measured here for the action ledger.
-            result.ApSpent = apStart - root.ActionPoints;
+            result.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
             bool resChanged = !SameResources(resStart, Snapshot(root));
             result.StateChanged = result.ApSpent > 0f || resChanged || result.ArmyCreated;
 

@@ -41,7 +41,7 @@ namespace Game.Ai.V2
         // TaskExecutor.FinishStep settles it for every step; a lane whose own log line reports
         // the AP settles it there first (the same value).
         internal void SettleAp(int apBefore, PlayerRoot root) =>
-            ApSpent = UnityEngine.Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root);
 
         public StableMissionKey Key;
         public HexCoord StartHex;

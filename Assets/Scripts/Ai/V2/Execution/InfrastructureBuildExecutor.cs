@@ -111,7 +111,7 @@ namespace Game.Ai.V2
                 player, root, hand, ctx, card, hex);
             // The upgrade is a real mutation even if the placement then fails.
             placed.StateChanged = true;
-            placed.ApSpent = apBefore - root.ActionPoints;
+            placed.ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root);
             if (placed.StateVersionAfter < upgradeVersion)
                 placed.StateVersionAfter = upgradeVersion;
             return placed;
