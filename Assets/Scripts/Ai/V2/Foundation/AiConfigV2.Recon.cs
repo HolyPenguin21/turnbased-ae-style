@@ -217,6 +217,7 @@
         public const int reconAssignmentModeHoldTurns = 1;         // ReconPatrolStateRegistry — min turns between Explore<->Refresh mode switches for one actor
         public const int reconAssignmentReassignHoldTurns = 1;     // ...min turns between strategic anchor/sector reassignments
         public const int reconAssignmentStallTurns = 2;            // ...no-progress turns after which an anchor reassignment is allowed early
+        public const int reconNoApproachRetireTurns = 3;           // ground Explore/Refresh retired after this many turns without coming nearer its focus
         // Lane value uses DemandUrgencyPolicy.NormalizedWorldValue (the canonical TaskScore band).
         public const float reconConcurrencySecondLaneMinRelValue = 0.80f;
         public const float reconConcurrencySecondLaneMinDarkFrac = 0.35f;

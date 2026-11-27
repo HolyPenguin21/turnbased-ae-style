@@ -26,6 +26,7 @@ namespace Game.Ai.V2
         EconomyDeferred,        // a build still being delivered: shields H/E/M/T, never AP
         EconomyCompletion,      // a build Provisioning proved can finish this turn
         OperationContinuation,  // unpaid activation of a continuing Hard operation's next leg
+        GroundCombatDeparture,  // activation of a fresh ground-combat mission departing this turn
     }
 
     internal readonly struct ResourceClaim
@@ -54,9 +55,12 @@ namespace Game.Ai.V2
         // carrying it is an Attack strike-force demand (InfrastructureFulfillment.SpendAuthorityFor).
         internal const string OperationContinuationOwner = "derived:operation-continuation";
 
-        internal static ResourceClaimKind KindOf(StrategicReservationReason reason) =>
-            reason == StrategicReservationReason.EconomyDeferredBuild
-                ? ResourceClaimKind.EconomyDeferred : ResourceClaimKind.EconomyCompletion;
+        internal static ResourceClaimKind KindOf(StrategicReservationReason reason) => reason switch
+        {
+            StrategicReservationReason.EconomyDeferredBuild => ResourceClaimKind.EconomyDeferred,
+            StrategicReservationReason.GroundCombatDeparture => ResourceClaimKind.GroundCombatDeparture,
+            _ => ResourceClaimKind.EconomyCompletion,
+        };
 
         // THE table: which claims a spender may use as if they were free.
         internal static bool MayDrawOn(SpendAuthority authority, ResourceClaim claim)
@@ -67,6 +71,9 @@ namespace Game.Ai.V2
             // A build that completes now is senior to other builds' deferred holds, which by
             // definition cannot complete this turn and only shield H/E/M/T from other spending.
             if (authority.EconomyCompletesNow && claim.Kind == ResourceClaimKind.EconomyDeferred)
+                return true;
+            // Answering a threat to own assets is senior to a fresh departure.
+            if (authority.DefendsHome && claim.Kind == ResourceClaimKind.GroundCombatDeparture)
                 return true;
             return false;
         }

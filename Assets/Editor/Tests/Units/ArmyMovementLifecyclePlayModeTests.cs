@@ -445,7 +445,7 @@ namespace Game.EditorTests
             target.ReturnHex = _last;
             var proposal = new MissionProposal { Kind = MissionKind.ActiveDefence, Target = target,
                 PreferredMoverArmyId = army.Id, BaseValue = 10f, LocalAdmissionScore = 10f,
-                Requirements = GroundCombatLegs.PinnedLegRequirements(actor, _last, out _) };
+                Requirements = GroundCombatLegs.PinnedLegRequirements(null, actor, _last, out _) };
             proposal.Axes.Value[DesireAxis.Aggression] = 1f;
             return (snap, proposal);
         }

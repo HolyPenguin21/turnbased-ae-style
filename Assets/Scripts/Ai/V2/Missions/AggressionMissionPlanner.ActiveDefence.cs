@@ -34,7 +34,7 @@ namespace Game.Ai.V2
                         && a.ArmyId == d.PrimaryArmyId.Value);
                     if (actor == null) continue;
                     MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
-                        actor, d.ReturnHex.Value, out int eta);
+                        snap, actor, d.ReturnHex.Value, out int eta);
                     var target = new ActiveDefenceMissionTarget
                     {
                         Phase = ActiveDefencePhase.Return, EnemyArmyId = d.EnemyArmyId,
@@ -114,7 +114,7 @@ namespace Game.Ai.V2
                             if (!destination.HasValue || mover.Hex.Equals(destination.Value))
                                 continue;
                             pendingHost ??= PendingPreparationHost(snap, activeIntents, committed);
-                            MissionProposal withdrawal = BuildActiveDefenceWithdrawal(objective, mover,
+                            MissionProposal withdrawal = BuildActiveDefenceWithdrawal(snap, objective, mover,
                                 destination.Value, response, pendingHost.Value);
                             proposals.Add(withdrawal);
                             RecordPreparationCharge(preparationCharges, withdrawal, mover.ArmyId,
@@ -153,7 +153,7 @@ namespace Game.Ai.V2
                 {
                     Kind = ActiveDefenceResponseKind.Shortage, Reason = "bench_hero_shelter",
                 };
-                MissionProposal shelterLeg = BuildActiveDefenceWithdrawal(shelter, hero,
+                MissionProposal shelterLeg = BuildActiveDefenceWithdrawal(snap, shelter, hero,
                     destination.Value, response, pendingHost.Value);
                 proposals.Add(shelterLeg);
                 RecordPreparationCharge(preparationCharges, shelterLeg, hero.ArmyId, pendingHost.Value);
@@ -484,12 +484,13 @@ namespace Game.Ai.V2
         // One army's own withdrawal leg: to the Citadel (regroup) or to its home base (shortage).
         // Scored off the threat it answers — the canonical TaskScore with the walk's own price and
         // no fight — so it competes honestly with every other lane for this army's activation.
-        private static MissionProposal BuildActiveDefenceWithdrawal(ActiveDefenceObjective objective,
+        private static MissionProposal BuildActiveDefenceWithdrawal(WorldSnapshot snap,
+            ActiveDefenceObjective objective,
             ArmySnapshot mover, HexCoord destination, ActiveDefenceResponse response,
             (int armyId, float value) pendingPreparationHost)
         {
             MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
-                mover, destination, out int eta);
+                snap, mover, destination, out int eta);
             TaskScore score = ActiveDefenceObjectiveEvaluator.WithResponse(objective, mover,
                 response.HoldWinChance, eta, moverOpportunityCost:
                     mover.ArmyId == pendingPreparationHost.armyId ? pendingPreparationHost.value : 0f);

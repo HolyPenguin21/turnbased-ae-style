@@ -409,7 +409,8 @@ namespace Game.Ai.V2
             {
                 result.StepsMoved++;
                 if (ReconScoutKinds.UsesPatrolLane(pm.ScoutKind))
-                    ReconPatrolStateRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
+                    ReconPatrolStateRegistry.MarkApproach(player, pm.MoverArmyId, beforeHex, endHex,
+                        ctx.TurnNumber);
                 // The turn-wide distinct-scout budget counts scouts that really walked.
                 if (ReconScoutKinds.UsesPatrolLane(pm.ScoutKind))
                     ReconTurnStateStore.For(player, ctx.TurnNumber)

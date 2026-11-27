@@ -692,8 +692,11 @@ namespace Game.Ai.V2
             {
                 foreach (ArmyData army in OwnWorld.Of(player).Armies)
                 {
+                    // An army Phase A materialized this turn for another axis is not taken apart.
                     if (army == null || army.IsPrison || army.Hex.Equals(hex)
-                        || occupied.IsArmyClaimed(army.Id))
+                        || occupied.IsArmyClaimed(army.Id)
+                        || StrategicCapabilityLeaseRegistry.LeasedAxis(player, ctx.TurnNumber, army.Id)
+                            is DesireAxis leased && leased != DesireAxis.Development)
                         continue;
                     UnitData candidate = army.IsGarrison
                         ? AiArmyRoles.BestSparableDevelopmentHero(player, army,

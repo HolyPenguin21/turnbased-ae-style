@@ -62,7 +62,7 @@ namespace Game.Ai.V2
                 gather.ProjectedWinChance, gather.CurrentTurnAp,
                 AiV2Util.CeilDiv(gather.GatherFutureAp, eta), eta,
                 moverOpportunityCost: gather.DisplacedValue);
-            MissionProposal proposal = BuildAttackGatherLeg(objective.Target, host, lead,
+            MissionProposal proposal = BuildAttackGatherLeg(snap, objective.Target, host, lead,
                 gather.SupportArmyIds, hexBonus, objective.DefenderCount, gather.ProjectedWinChance,
                 gather.CoversAllDefenders, 0, score, null);
             proposal.Explain = $"Attack {objective.Target.DiagnosticLabel} Gather (fresh) task "
@@ -146,7 +146,7 @@ namespace Game.Ai.V2
                     && x.ArmyId == a.CommanderArmyId.Value);
                 if (commander != null && (commander.Hex.Equals(host.Hex) || commander.CurrentMovement > 0))
                 {
-                    MissionProposal leg = BuildAttackGatherLeg(a.Target, host, commander,
+                    MissionProposal leg = BuildAttackGatherLeg(snap, a.Target, host, commander,
                         a.GatherSupportArmyIds, hexBonus, defenderCount, a.ProjectedWinChance,
                         a.CoversAllDefenders, a.LastOpportunisticStrikeTurn, default(TaskScore), intent);
                     MarkPreparation(leg, AttackPreparationStep.None);
@@ -163,7 +163,7 @@ namespace Game.Ai.V2
                 // Nothing to do this turn: an idle proposal would only fail NoExecutableStep.
                 if (support == null || (!support.Hex.Equals(host.Hex) && support.CurrentMovement <= 0))
                     continue;
-                MissionProposal leg = BuildAttackGatherLeg(a.Target, host, support, a.GatherSupportArmyIds,
+                MissionProposal leg = BuildAttackGatherLeg(snap, a.Target, host, support, a.GatherSupportArmyIds,
                     hexBonus, defenderCount, a.ProjectedWinChance, a.CoversAllDefenders,
                     a.LastOpportunisticStrikeTurn, default(TaskScore), intent);
                 if (a.Preparation)
@@ -175,13 +175,13 @@ namespace Game.Ai.V2
                 + $"supports=[{string.Join(",", a.GatherSupportArmyIds)}]");
         }
 
-        private static MissionProposal BuildAttackGatherLeg(AttackTargetRef targetRef,
+        private static MissionProposal BuildAttackGatherLeg(WorldSnapshot snap, AttackTargetRef targetRef,
             ArmySnapshot host, ArmySnapshot support, IEnumerable<int> gatherSupportIds,
             float hexBonus, int defenderCount, float win, bool cover, int opportunisticTurn,
             TaskScore score, MissionIntent intent)
         {
             MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
-                support, host.Hex, out int eta);
+                snap, support, host.Hex, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.Gather,

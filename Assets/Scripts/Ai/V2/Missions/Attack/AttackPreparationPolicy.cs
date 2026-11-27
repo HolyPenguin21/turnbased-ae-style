@@ -100,7 +100,7 @@ namespace Game.Ai.V2
                 && !AttackForceReadiness.ForceReady(host.EffectiveArmyPower, snap.Self.AttackPeak))
             {
                 var donor = bases
-                    .Where(h => AiV2Util.CeilDiv(HexGridMath.Distance(host.Hex, h), Mathf.Max(1, host.MaxMovement))
+                    .Where(h => AiV2Util.CeilDiv(AiV2Util.GroundRouteDistance(snap, host, h), Mathf.Max(1, host.MaxMovement))
                         <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
                     .Select(h => (Hex: h, Spare: SpareGarrisonPower(snap, h)))
                     .Where(x => x.Spare > 0f)

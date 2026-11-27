@@ -97,13 +97,11 @@ namespace Game.Ai.V2
                     recurringActivationAp = Mathf.Max(0f, useProjected
                         ? projectedRosterActivationAp.Value : mover.ActivationApCost);
                     currentTurnActivationAp = mover.HasActivatedThisTurn ? 0f : recurringActivationAp;
-                    distance = HexGridMath.Distance(mover.Hex, destination);
-                    // Movement spent earlier THIS turn cannot be spent again. The old full-speed
-                    // ceil(distance / MaxMovement) underpriced a pinned, already-activated mover
-                    // with 0 MP as a same-turn Raid, omitting its next-turn activation from Delivery.
-                    // Match ScoutCostModel.PairCost's remaining-MP ETA without reserving future AP.
                     int moveBudget = Mathf.Max(1, isAssault && projectedMaxMovement.HasValue
                         ? projectedMaxMovement.Value : mover.MaxMovement);
+                    distance = AiV2Util.GroundRouteDistance(snap, mover, destination, moveBudget);
+                    // Movement spent earlier this turn cannot be spent again: the remaining MP
+                    // covers the first part of the route, the full budget every later turn.
                     int currentMove = isAssault && projectedCurrentMovement.HasValue
                         ? projectedCurrentMovement.Value : mover.CurrentMovement;
                     eta = currentMove >= distance ? 1

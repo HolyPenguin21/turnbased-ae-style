@@ -68,6 +68,18 @@ namespace Game.Ai.V2
             return distance <= remaining ? 1 : 1 + (distance - remaining + move - 1) / move;
         }
 
+        // The movement cost a ground army pays to walk to `target`: its terrain route (the movement
+        // rules every ground army follows), or the straight hex distance when no route is known.
+        // Air armies fly straight. Every ground ETA (ceil(cost / move)) reads this.
+        internal static int GroundRouteDistance(WorldSnapshot snap, ArmySnapshot army, HexCoord target,
+            int? maxMovement = null)
+        {
+            if (army == null) return 0;
+            if (army.IsAir) return HexGridMath.Distance(army.Hex, target);
+            int cost = TravelCost(snap, army, target, maxMovement: maxMovement, terrainOnly: true);
+            return cost == int.MaxValue ? HexGridMath.Distance(army.Hex, target) : cost;
+        }
+
         // Route cost for a snapshot actor. Geometric distances are suitable for vision/risk,
         // never as a replacement for an unreachable route on a real map.
         // `terrainOnly` — the offensive army's geometric route (SafeRouteProfile.Attack): only a hex

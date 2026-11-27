@@ -113,6 +113,8 @@ namespace Game.Ai.V2
                     assignment.StrategicAnchor = strategicAnchor;
                     assignment.StrategicSector = requestedSector;
                     assignment.LastStrategicReassignmentTurn = turn;
+                    // A new anchor starts its own approach clock.
+                    assignment.LastProgressTurn = turn;
 
                     string reason = modeChanged ? "mode-change"
                         : oldAnchorReached ? "anchor-reached"
@@ -190,6 +192,25 @@ namespace Game.Ai.V2
             if (TryGet(player, armyId, out ReconPatrolState assignment))
                 assignment.LastProgressTurn = turn;
         }
+
+        // Ground progress is a step that brings the actor nearer its strategic anchor; a step that
+        // only wanders around it is not.
+        public static void MarkApproach(PlayerSetupData player, int armyId, HexCoord from, HexCoord to,
+            int turn)
+        {
+            if (TryGet(player, armyId, out ReconPatrolState assignment)
+                && HexGridMath.Distance(to, assignment.StrategicAnchor)
+                    < HexGridMath.Distance(from, assignment.StrategicAnchor))
+                assignment.LastProgressTurn = turn;
+        }
+
+        // Turns since the actor last came nearer `anchor`; null when it has no patrol state for
+        // that anchor.
+        public static int? TurnsWithoutApproach(PlayerSetupData player, int armyId, HexCoord anchor,
+            int turn) =>
+            TryGet(player, armyId, out ReconPatrolState assignment)
+                && assignment.StrategicAnchor.Equals(anchor)
+                ? turn - assignment.LastProgressTurn : (int?)null;
 
         public static void Retire(PlayerSetupData player, int armyId, string reason)
         {

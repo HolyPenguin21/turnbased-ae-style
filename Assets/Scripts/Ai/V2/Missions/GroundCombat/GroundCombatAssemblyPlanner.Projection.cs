@@ -82,29 +82,40 @@ namespace Game.Ai.V2
             var heroes = members.Where(u => u != null && u.IsHero && !u.IsPrisoner).ToList();
             var leaders = heroes.Count > 0 ? heroes : new List<UnitData> { null };
             GroundCombatAssemblyPlan best = null;
+            // The first gate the strongest candidate failed, for the REJECT reason (diagnostics only).
+            string refusal = null;
+            GroundCombatAssemblyPlan Refuse(string why)
+            {
+                refusal ??= why;
+                return null;
+            }
 
             GroundCombatAssemblyPlan Candidate(UnitData lead, List<UnitData> returning)
             {
                 var roster = members.Where(u => !returning.Contains(u)).ToList();
                 if (lead != null && roster.Remove(lead)) roster.Insert(0, lead);
-                if (!ArmyData.RosterFits(roster, false)) return null;
-                if (roster.Count == 1 && roster[0].IsHero) return null;
+                if (!ArmyData.RosterFits(roster, false)) return Refuse("roster does not fit");
+                if (roster.Count == 1 && roster[0].IsHero) return Refuse("lone hero");
                 // A Transport carrier can matter without adding damage or command. A cheaper
                 // package must not lose the complete roster's present or recurring movement.
                 if (returning.Count > 0 && (ArmyData.ComputeCurrentMovement(roster)
                         < ArmyData.ComputeCurrentMovement(members)
-                    || ArmyData.ComputeMaxMovement(roster) < ArmyData.ComputeMaxMovement(members))) return null;
+                    || ArmyData.ComputeMaxMovement(roster) < ArmyData.ComputeMaxMovement(members)))
+                    return Refuse("hero return slows the army");
                 // Operators are protected by the same domain duty rule as hero donors. Their
                 // on-hex relocation is allowed; leaving a served facility is not.
                 if (roster.Any(u => u != null && u.IsHero
-                    && AiArmyRoles.IsFacilityOperator(host.Owner, host.Hex, u))) return null;
+                    && AiArmyRoles.IsFacilityOperator(host.Owner, host.Hex, u)))
+                    return Refuse("a facility operator would leave");
                 if (returning.Count > 0 && !CanApplyHeroReturn(host, home, lead, returning,
-                    requireReadyThisTurn)) return null;
+                    requireReadyThisTurn)) return Refuse("hero return impossible");
                 float power = AiPower.EffectiveArmyPower(roster);
                 if (!GroundCombatFeasibility.Clears(roster.Select(WorthIt.FromLiveUnit).ToList(),
                     WorthIt.SideCommander.Of(roster), opposition, gate, hexBonus,
-                    out float win, out bool cover, requireCoverage)) return null;
-                if (!AttackForceReadiness.ClearsFloor(power, minimumPower, win, opposition)) return null;
+                    out float win, out bool cover, requireCoverage))
+                    return Refuse($"win {win:0.00} cover {(cover ? 1 : 0)} below gate {gate:0.00}");
+                if (!AttackForceReadiness.ClearsFloor(power, minimumPower, win, opposition))
+                    return Refuse($"power {power:0.#} below floor {minimumPower:0.#}");
                 var plan = new GroundCombatAssemblyPlan
                 {
                     Feasible = true, BaseArmyId = host.Id, NeedsAssembly = transfers.Count > 0,
@@ -174,7 +185,8 @@ namespace Game.Ai.V2
                 if (best == null || BetterDeparture(host, candidate, best)) best = candidate;
             }
             return best ?? GroundCombatAssemblyPlan.Infeasible(
-                $"raid actor #{host.Id} has no legal departure roster clearing the combat gate");
+                $"raid actor #{host.Id} has no legal departure roster clearing the combat gate"
+                + (refusal != null ? $" ({refusal})" : ""));
         }
 
         private static bool BetterDeparture(ArmyData host, GroundCombatAssemblyPlan a,

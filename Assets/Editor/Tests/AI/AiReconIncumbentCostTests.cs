@@ -46,6 +46,42 @@ namespace Game.EditorTests
             Assert.That(afterCoverage.Value, Is.GreaterThan(ruins.Value));
         }
 
+        // Owner rule R1 (2026-11-27, match Thane vs Vex T1/T5): while home still has unexplored
+        // frontier, a far target's ruins / enemy-citadel / threat-direction bonus is capped at its own
+        // proximity to home; once home is explored the bonus is whole again.
+        [Test]
+        public void OpenHomeFrontier_CapsAFarTargetsBonusAtItsOwnProximity()
+        {
+            HexCoord home = new HexCoord(-1, -4);
+            HexCoord near = new HexCoord(0, -5);
+            HexCoord far = new HexCoord(-5, 5);
+            var cells = HexGridMath.HexesInRange(home, 4).ToList();
+            cells.Add(far);
+            var snap = new WorldSnapshot
+            {
+                Self = new SelfSnapshot { Citadel = home, BaseHexes = new[] { home },
+                    Armies = new ArmySnapshot[0] },
+                MapKnowledge = new MapKnowledgeSnapshot { AllHexes = cells,
+                    VisitedHexSet = new HashSet<HexCoord> { home },
+                    ScoutHardBlockedHexes = new HashSet<HexCoord>(),
+                    UnvisitedRuinsHexes = new HashSet<HexCoord> { far },
+                    Frontier = new List<FrontierHexSnapshot> {
+                        new FrontierHexSnapshot { Hex = near, FreshNeighbors = 3, DistanceFromNearestBase = 1 } } },
+            };
+            var cost = new ScoutCostEstimate { ActivationApNow = 0f, RecurringActivationAp = 0f, EtaTurns = 5 };
+
+            TaskScore ruins = ReconObjectiveEvaluator.BuildExploreScore(snap, far, 1f, 9, cost, 0f);
+            Assert.That(ruins.OwnTerritoryProximity, Is.LessThan(0f));
+            Assert.That(ruins.StrategicRelevance + ruins.ThreatDirection, Is.Zero,
+                "a target farther than the home band gets no bonus while home is open");
+
+            snap.MapKnowledge.Frontier = new List<FrontierHexSnapshot>();
+            TaskScore explored = ReconObjectiveEvaluator.BuildExploreScore(snap, far, 1f, 9, cost, 0f);
+            Assert.That(explored.StrategicRelevance,
+                Is.EqualTo(TaskScoreEvaluator.StrategicRelevance(AiConfigV2.reconRuinsRelevance)),
+                "with home explored the ruins keep their whole value");
+        }
+
         // 2026-11-15 (match Brynn vs Grimm, P3, owner option a) — Explore reads the same "toward
         // the enemy" fact as Refresh (ReconObjectiveEvaluator.DirectionalPressure): unvisited
         // ground in the known enemy Citadel's sector earns ThreatDirection, the opposite side none.

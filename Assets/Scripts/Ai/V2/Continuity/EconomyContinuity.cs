@@ -202,8 +202,31 @@ namespace Game.Ai.V2
             };
             CommitmentTier funding = o.EconomyFacts().EconomyBuildCompleted ? CommitmentTier.Hard : CommitmentTier.Soft;
             MissionIntent intent = NewIntent(o, turn, MissionKind.Economy, funding, ei);
+            RetireConflictingEconomyIntents(state, intent.IntentKey, o.MoverArmyId, ei.BuildCard, turn);
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Economy] continuity create {intent.IntentKey} mover=#{o.MoverArmyId}");
+        }
+
+        // Every grant of an Economy task to an actor (materialization handoff or a first executed
+        // step) retires the Economy intents it collides with:
+        //   · the same actor — one army holds one assignment, including its own ReturnBuilder walk;
+        //   · the same objective (IntentKey), unless it is another actor's ReturnBuilder;
+        //   · the same physical build card.
+        // A superseded ReturnBuilder returns its loan; a superseded build's actor stays on Economy work.
+        private static void RetireConflictingEconomyIntents(MissionIntentState state,
+            MissionIntentKey grantKey, int? actorArmyId, CardData buildCard, int turn)
+        {
+            bool Conflicts(MissionIntent i)
+            {
+                if (i == null || i.Kind != MissionKind.Economy) return false;
+                if (actorArmyId.HasValue && i.PreferredMoverArmyId == actorArmyId) return true;
+                if (i.Economy?.Kind == EconomyTaskKind.ReturnBuilder) return false;
+                if (i.IntentKey.Equals(grantKey)) return true;
+                return buildCard != null && i.Economy?.BuildCard == buildCard;
+            }
+            foreach (MissionIntent stale in state.All.Where(Conflicts).ToList())
+                RetireEconomyIntent(state, stale, null, turn,
+                    returnLoan: stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder);
         }
 
         internal static void RepayEconomyLoan(MissionIntentState state, MissionIntent economy,
@@ -794,33 +817,8 @@ namespace Game.Ai.V2
                 return null;
             }
 
-            // This is the ONE place
-            // Economy ownership is granted, so it is the one place that resolves ownership
-            // CONFLICTS. Once the reentry case above has returned, a pre-existing Economy intent is
-            // superseded only when it actually collides with the new grant:
-            //   · same actor (PreferredMoverArmyId) — one army cannot hold two assignments, and a
-            //     fresh delivery supersedes that same actor's own ReturnBuilder recovery walk (a
-            //     ReturnBuilder belonging to a DIFFERENT actor is untouched);
-            //   · same objective identity (IntentKey) — a takeover of this exact objective;
-            //   · same physical build card — one card cannot fund two sites at once.
-            // Any OTHER active Economy intent — a different target run by a different actor with a
-            // different card — is an independent delivery and survives this handoff untouched.
-            bool ConflictsWithGrant(MissionIntent i)
-            {
-                if (i == null || i.Kind != MissionKind.Economy) return false;
-                if (i.PreferredMoverArmyId == builderArmyId) return true;
-                if (i.Economy?.Kind == EconomyTaskKind.ReturnBuilder) return false;
-                if (i.IntentKey.Equals(intent.IntentKey)) return true;
-                return objective.BuildCard != null && i.Economy?.BuildCard == objective.BuildCard;
-            }
-            // A takeover/redirect conflict retires the DISPLACED intent through the ordinary
-            // retirement, releasing its own reservation, so a forced handoff cannot leave this
-            // turn's H/E/M/T hold reserved for an owner key nothing will ever complete or release.
-            // Only a superseded ReturnBuilder returns its loan here: its actor goes back to the
-            // lender's side of the ledger; a superseded build's actor stays on Economy work.
-            foreach (MissionIntent stale in state.All.Where(ConflictsWithGrant).ToList())
-                EconomyContinuity.RetireEconomyIntent(state, stale, null, turn,
-                    returnLoan: stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder);
+            RetireConflictingEconomyIntents(state, intent.IntentKey, builderArmyId,
+                objective.BuildCard, turn);
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Economy] materialization handoff {intent.IntentKey} "
                 + $"actor=#{builderArmyId} funding=Soft");

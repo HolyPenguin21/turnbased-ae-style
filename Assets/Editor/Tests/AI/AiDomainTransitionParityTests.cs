@@ -72,6 +72,44 @@ namespace Game.EditorTests
             Assert.That(session.Leases.For(otherKey).ActorClaims, Is.EqualTo(new[] { 99 }));
         }
 
+        // Match 2026-11-27b T6: Nadia (#18) got BuildExtraction (-2,-2) from its first executed step
+        // while its ReturnBuilder walk home was still active; the return then led it off the site.
+        [Test]
+        public void FirstExecutedBuildStep_RetiresTheSameBuildersReturnBuilder()
+        {
+            var p = new PlayerSetupData(); using var session = AiTurnSession.Begin(p, null, null, null, 6);
+            var home = new HexCoord(-3, -3);
+            var site = new HexCoord(-2, -2);
+            var walkHome = new MissionIntent { Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                CreatedTurn = 5, LastProgressTurn = 5, PreferredMoverArmyId = 18,
+                Objective = new EconomyIntent { Kind = EconomyTaskKind.ReturnBuilder, TargetHex = home,
+                    BuilderArmyId = 18 } };
+            walkHome.IntentKey = MissionIntentKey.For(walkHome);
+            session.PersistentState.Put(walkHome);
+            var otherWalk = new MissionIntent { Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                CreatedTurn = 5, LastProgressTurn = 5, PreferredMoverArmyId = 19,
+                Objective = new EconomyIntent { Kind = EconomyTaskKind.ReturnBuilder, TargetHex = home,
+                    BuilderArmyId = 19 } };
+            otherWalk.IntentKey = MissionIntentKey.For(otherWalk);
+            session.PersistentState.Put(otherWalk);
+            var snapshot = new WorldSnapshot { Observer = p, TurnNumber = 6,
+                Self = new SelfSnapshot { Armies = new[] { new ArmySnapshot { ArmyId = 18, HasHero = true, Hex = site },
+                    new ArmySnapshot { ArmyId = 19, HasHero = true, Hex = home } } } };
+            var buildKey = new MissionIntentKey(MissionKind.Economy, (int)EconomyTaskKind.BuildExtraction, 3, -2, -2);
+
+            session.Settle(new MissionStepResult { IntentKey = buildKey, MissionKind = MissionKind.Economy,
+                Disposition = MissionStepDisposition.Progress, MadeProgress = true, MoverArmyId = 18 }
+                .WithPayload(new EconomyStepPayload { HasEconomyPayload = true,
+                    EconomyTarget = new EconomyMissionTarget { Kind = EconomyTaskKind.BuildExtraction, TargetHex = site } }),
+                snapshot);
+
+            var economy = session.PersistentState.All.Where(i => i.Kind == MissionKind.Economy).ToList();
+            Assert.That(economy.Where(i => i.PreferredMoverArmyId == 18).Select(i => i.Economy.Kind),
+                Is.EqualTo(new[] { EconomyTaskKind.BuildExtraction }), "one army, one assignment");
+            Assert.That(economy.Any(i => i.PreferredMoverArmyId == 19 && i.Economy.Kind == EconomyTaskKind.ReturnBuilder),
+                Is.True, "another builder's walk home is untouched");
+        }
+
         [TestCase(RaidMissionPhase.Reinforcement, false)]
         [TestCase(RaidMissionPhase.Reinforcement, true)]
         [TestCase(RaidMissionPhase.SupportReturn, false)]

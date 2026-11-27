@@ -439,6 +439,27 @@ namespace Game.Ai.V2
                 missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state,
                 player);
         }
+
+        internal static bool IsGroundCombat(MissionProposal m) =>
+            m != null && (m.Kind == MissionKind.Raid || m.Kind == MissionKind.ActiveDefence
+                || m.Kind == MissionKind.Attack);
+
+        // Ledger owner of a ground-combat mission's departure hold (GroundCombatDeparture).
+        internal static string GroundCombatDepartureOwner(MissionProposal m) =>
+            "departure:" + StableMissionKey.For(m);
+
+        // The departure hold follows the funding: a ground-combat mission that is no longer funded
+        // (or was executed) keeps no AP back.
+        internal static void ReleaseUnfundedDepartureHolds(PlayerSetupData player, int turn,
+            IEnumerable<MissionProposal> funded)
+        {
+            var keep = new HashSet<string>((funded ?? Enumerable.Empty<MissionProposal>())
+                .Where(IsGroundCombat).Select(GroundCombatDepartureOwner));
+            foreach (string owner in StrategicResourceReservationLedger.OwnersWithReason(player, turn,
+                    StrategicReservationReason.GroundCombatDeparture))
+                if (!keep.Contains(owner))
+                    StrategicResourceReservationLedger.ReleaseByOwner(player, turn, owner);
+        }
     }
 
     public sealed class AllocationSession
@@ -582,7 +603,7 @@ namespace Game.Ai.V2
                 float allocated = lockedTotal + alloc.Funded.Sum(f => f.Tentative.Ap);
                 float outstanding = TurnResourceBook.Outstanding(apClaims,
                     StrategicReservedResource.ActionPoints, AuthorityFor(candidate),
-                    EconomyDraws(alloc.Funded,
+                    HoldOwnerDraws(alloc.Funded,
                         locked => Mathf.Min(locked.ClaimedAp, locked.GrantedAp),
                         funded => funded.Tentative.Ap));
                 return Mathf.Max(0f, pool.Ap - allocated - outstanding);
@@ -1002,19 +1023,26 @@ namespace Game.Ai.V2
             m?.Kind == MissionKind.Economy
                 ? new SpendAuthority(EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m)),
                     economyCompletesNow: true)
-                : default;
+                : ResourceAllocator.IsGroundCombat(m)
+                    ? new SpendAuthority(ResourceAllocator.GroundCombatDepartureOwner(m),
+                        economyCompletesNow: false, defendsHome: m.Kind == MissionKind.ActiveDefence)
+                    : default;
 
-        // Units each Economy owner's own missions already drew in this pack (locked or funded):
-        // TurnResourceBook.Outstanding nets that owner's hold by them.
-        private Dictionary<string, float> EconomyDraws(IReadOnlyList<FundedEntry> funded,
+        // Units each hold owner's own missions (an Economy build, a ground-combat departure) already
+        // drew in this pack (locked or funded): TurnResourceBook.Outstanding nets that owner's hold
+        // by them, so the same units are not subtracted twice.
+        private Dictionary<string, float> HoldOwnerDraws(IReadOnlyList<FundedEntry> funded,
             System.Func<LockedAllocation, float> lockedDraw, System.Func<FundedEntry, float> fundedDraw)
         {
             var draws = new Dictionary<string, float>();
             void Add(MissionProposal mission, float amount)
             {
-                if (mission?.Kind != MissionKind.Economy)
+                string owner = mission?.Kind == MissionKind.Economy
+                    ? EconomyMissionPlanner.OwnerKey(StableMissionKey.For(mission))
+                    : ResourceAllocator.IsGroundCombat(mission)
+                        ? ResourceAllocator.GroundCombatDepartureOwner(mission) : null;
+                if (owner == null)
                     return;
-                string owner = EconomyMissionPlanner.OwnerKey(StableMissionKey.For(mission));
                 draws.TryGetValue(owner, out float drawn);
                 draws[owner] = drawn + amount;
             }
@@ -1041,7 +1069,7 @@ namespace Game.Ai.V2
             SpendAuthority authority = AuthorityFor(m);
             List<ResourceClaim> claims = TurnResourceBook.LedgerClaims(_player, _snap?.TurnNumber ?? 0);
             float Held(StrategicReservedResource r) =>
-                TurnResourceBook.Outstanding(claims, r, authority, EconomyDraws(funded,
+                TurnResourceBook.Outstanding(claims, r, authority, HoldOwnerDraws(funded,
                     locked => PhysicalAmount(locked.PhysicalClaim, r),
                     entry => PhysicalAmount(entry.PhysicalDraw, r)));
             var held = new ResourceVector(0f, Held(StrategicReservedResource.Human),

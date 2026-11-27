@@ -704,7 +704,7 @@ namespace Game.Ai.V2
                 return;
 
             MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
-                actor, destination.Value, out int eta);
+                snap, actor, destination.Value, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = phase,
@@ -782,7 +782,7 @@ namespace Game.Ai.V2
             HexCoord? meet = a.RendezvousHex;
             bool primaryArrived = !meet.HasValue || primary.Hex.Equals(meet.Value);
             if (!primaryArrived)
-                AppendAttackPrimaryToRendezvous(intent, a, primary, meet.Value, proposals);
+                AppendAttackPrimaryToRendezvous(snap, intent, a, primary, meet.Value, proposals);
             // A support already waiting on the rendezvous has nothing to do until the primary
             // arrives.
             if (!primaryArrived && support.Hex.Equals(meet.Value))
@@ -790,7 +790,7 @@ namespace Game.Ai.V2
             HexCoord supportDestination = meet ?? primary.Hex;
 
             MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
-                support, supportDestination, out int eta);
+                snap, support, supportDestination, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.Reinforcement,
@@ -823,11 +823,11 @@ namespace Game.Ai.V2
         // The primary's half of a committed Reinforcement: one more step along its route toward
         // the target, ending on the rendezvous Continuity chose (never behind the primary). A
         // lifecycle leg of the Hard operation, so its intrinsic score stays neutral.
-        private static void AppendAttackPrimaryToRendezvous(MissionIntent intent, AttackIntent a,
+        private static void AppendAttackPrimaryToRendezvous(WorldSnapshot snap, MissionIntent intent, AttackIntent a,
             ArmySnapshot primary, HexCoord rendezvous, List<MissionProposal> proposals)
         {
             MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
-                primary, rendezvous, out int eta);
+                snap, primary, rendezvous, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.Reinforcement,

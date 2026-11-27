@@ -148,10 +148,39 @@ namespace Game.Ai.V2
                 if (best[i] >= 0)
                     map[StableMissionKey.For(open[i].Mission)] = cands[i][best[i]];
             session.SetGroundCombatAssignment(map);
+            HoldDepartureAp(session.Snapshot, open, map);
 
             if (open.Count > 0)
                 AiDebugLog.Write($"[AI][V2]   provision prepare ground-combat - {open.Count} open, assigned ["
                     + string.Join(" ", map.Select(kv => $"{kv.Key}->#{kv.Value}")) + "]");
+        }
+
+        // A funded fresh ground-combat mission whose assigned actor can still move this turn keeps
+        // its activation AP until it executes: another task's step in between must not spend it.
+        // A durable (Hard) operation is protected by its own continuation claim instead.
+        private static void HoldDepartureAp(WorldSnapshot snap, List<FundedEntry> open,
+            Dictionary<StableMissionKey, int> assigned)
+        {
+            if (snap?.Observer == null) return;
+            foreach (FundedEntry fe in open)
+            {
+                if (fe.IsCommitment || fe.Mission.FromDurableIntent
+                    || !assigned.TryGetValue(StableMissionKey.For(fe.Mission), out int actorId))
+                    continue;
+                ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == actorId);
+                float ap = fe.Mission.Requirements?.ApMinimum ?? 0f;
+                if (actor == null || actor.CurrentMovement <= 0 || ap <= 0f || fe.Tentative.Ap + 0.001f < ap)
+                    continue;
+                StrategicResourceReservationLedger.Upsert(snap.Observer, snap.TurnNumber,
+                    new StrategicResourceReservation
+                    {
+                        Owner = ResourceAllocator.GroundCombatDepartureOwner(fe.Mission),
+                        Reason = StrategicReservationReason.GroundCombatDeparture,
+                        Resource = StrategicReservedResource.ActionPoints,
+                        Amount = ap,
+                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                    });
+            }
         }
 
         private static int GroundCombatActorActivation(WorldSnapshot snap, int id)
@@ -236,6 +265,17 @@ namespace Game.Ai.V2
             MissionProposal m = funded?.Mission;
             if (m == null || ctx?.Map == null || root == null)
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("no mission / map / root"));
+
+            // A ground-combat mission provisioned now spends its own departure hold (the allocator's
+            // locked claim protects the AP from here) or loses it on failure. An ActiveDefence answer
+            // may have drawn on other departures' holds: they are re-set by the next assignment
+            // while still funded.
+            if (m.Kind == MissionKind.ActiveDefence)
+                StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+                    StrategicReservationReason.GroundCombatDeparture);
+            else if (ResourceAllocator.IsGroundCombat(m))
+                StrategicResourceReservationLedger.ReleaseByOwner(player, ctx.TurnNumber,
+                    ResourceAllocator.GroundCombatDepartureOwner(m));
 
             if (m.Kind == MissionKind.Raid)
                 return RaidProvisioner.Provision(player, root, ctx, session, funded);

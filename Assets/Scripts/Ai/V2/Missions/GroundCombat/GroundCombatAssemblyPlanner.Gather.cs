@@ -141,7 +141,7 @@ namespace Game.Ai.V2
                 List<UnitData> sparable = GroundCombatReinforcement.SparableSupportBodies(live);
                 if (live == null || sparable.Count == 0)
                     continue;
-                int turns = AiV2Util.CeilDiv(HexGridMath.Distance(s.Hex, host.Hex),
+                int turns = AiV2Util.CeilDiv(AiV2Util.GroundRouteDistance(snap, s, host.Hex),
                     System.Math.Max(1, s.MaxMovement));
                 pool.Add(new GatherSupport
                 {
@@ -422,8 +422,9 @@ namespace Game.Ai.V2
             if (routeAdmissible != null && !routeAdmissible(roster))
                 return GroundCombatGatherPlan.Infeasible($"gather host #{host.Id}: final roster loses the task route");
             int assembledMove = ArmyData.ComputeMaxMovement(roster);
-            int assaultEta = AiV2Util.CeilDiv(HexGridMath.Distance(host.Hex, targetHex),
-                System.Math.Max(AiConfigV2.etaFallbackMoveBudget, assembledMove));
+            int assaultMove = System.Math.Max(AiConfigV2.etaFallbackMoveBudget, assembledMove);
+            int assaultEta = AiV2Util.CeilDiv(
+                AiV2Util.GroundRouteDistance(snap, hostSnap, targetHex, assaultMove), assaultMove);
             var plan = new GroundCombatGatherPlan
             {
                 Feasible = true,

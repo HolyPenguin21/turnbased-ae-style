@@ -151,7 +151,7 @@ namespace Game.Ai.V2
                         PreparationWin(objective, gather.ProjectedWinChance), gather.CurrentTurnAp,
                         AiV2Util.CeilDiv(gather.GatherFutureAp, eta), eta,
                         moverOpportunityCost: gather.DisplacedValue);
-                    MissionProposal proposal = BuildAttackGatherLeg(objective.Target, fieldHost, lead,
+                    MissionProposal proposal = BuildAttackGatherLeg(snap, objective.Target, fieldHost, lead,
                         gather.SupportArmyIds, hexBonus, objective.DefenderCount,
                         gather.ProjectedWinChance, gather.CoversAllDefenders, 0, score, null);
                     MarkPreparation(proposal, AttackPreparationStep.None);

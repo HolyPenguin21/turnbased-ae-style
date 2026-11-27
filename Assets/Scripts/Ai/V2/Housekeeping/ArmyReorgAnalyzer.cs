@@ -285,24 +285,29 @@ namespace Game.Ai.V2
             List<ReorgUnit> nonHeroFriendlies = containers.SelectMany(c => c.Units)
                 .Where(u => u != null && u.IsGroundCombatant).ToList();
 
-            // A hidden enemy (fog/stealth cheat) benchmarks only the held starting Citadel's group, so its
-            // garrison is never packaged as an easy win; anywhere else only honestly seen enemies count.
-            // It never creates a threat or blocks a mission (Housekeeping owns neither). Self.Citadel falls
-            // back to another base once the starting Citadel is lost.
+            // A hidden enemy (in the fog or stealthed) benchmarks only the held starting Citadel's group,
+            // so its garrison is never packaged as an easy win; anywhere else only enemies seen now (an
+            // Exact contact) count. It never creates a threat or blocks a mission (Housekeeping owns
+            // neither). Self.Citadel falls back to another base once the starting Citadel is lost.
             bool citadelGroup = snapshot.Self != null && snapshot.Self.HoldsStartingCitadel
                 && groupHex.Equals(snapshot.Self.Citadel);
+            var seenNow = new HashSet<int>((snapshot.Threat?.Contacts
+                    ?? (IReadOnlyList<EnemyContactSnapshot>)System.Array.Empty<EnemyContactSnapshot>())
+                .Where(c => c?.Army != null && c.Knowledge == ContactKnowledge.Exact)
+                .Select(c => c.Army.ArmyId));
             foreach (ArmySnapshot enemy in enemies.OrderBy(a => a?.ArmyId ?? int.MaxValue))
             {
                 if (!HeroRoleEvaluator.IsCommandBenchmark(enemy))
                     continue;
-                if (enemy.IsHiddenFromUs && !citadelGroup)
+                bool hidden = enemy.IsHiddenFromUs || !seenNow.Contains(enemy.ArmyId);
+                if (hidden && !citadelGroup)
                     continue;
 
                 int move = Mathf.Max(1, enemy.MaxMovement);
-                int groupEta = AiV2Util.CeilDiv(HexGridMath.Distance(enemy.Hex, groupHex), move);
+                int groupEta = AiV2Util.CeilDiv(AiV2Util.GroundRouteDistance(snapshot, enemy, groupHex), move);
                 int baseEta = groupEta;
                 if (bases.Count > 0)
-                    baseEta = bases.Min(b => AiV2Util.CeilDiv(HexGridMath.Distance(enemy.Hex, b), move));
+                    baseEta = bases.Min(b => AiV2Util.CeilDiv(AiV2Util.GroundRouteDistance(snapshot, enemy, b), move));
 
                 var targetable = new HashSet<int>();
                 foreach (ReorgUnit u in nonHeroFriendlies)
@@ -313,7 +318,7 @@ namespace Game.Ai.V2
                 result.Add(new ReorgThreatBenchmark
                 {
                     ArmyId = enemy.ArmyId,
-                    HiddenFromUs = enemy.IsHiddenFromUs,
+                    HiddenFromUs = hidden,
                     EtaToGroup = groupEta,
                     EtaToNearestBase = baseEta,
                     Members = enemy.Members,

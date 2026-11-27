@@ -1998,7 +1998,7 @@ namespace Game.EditorTests
             actor.HasActivatedThisTurn = activated;
             WorldSnapshot snap = AssetWorld(actor);
             snap.Self.ActionPoints = physicalAp;
-            var requirements = GroundCombatLegs.PinnedLegRequirements(actor, Home, out _);
+            var requirements = GroundCombatLegs.PinnedLegRequirements(null, actor, Home, out _);
             var mission = new MissionProposal { Kind = MissionKind.ActiveDefence,
                 BaseValue = 10f, LocalAdmissionScore = 10f, Requirements = requirements,
                 Target = new ActiveDefenceMissionTarget { Phase = ActiveDefencePhase.Return,

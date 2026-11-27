@@ -961,6 +961,45 @@ namespace Game.EditorTests
             Assert.That(Why(6), Is.EqualTo("no_witnessed_route"));
         }
 
+        // Match 2026-11-27b T5: Phase A put AT Infantry and Nadia into #18 for the raid (an
+        // Aggression lease); Economy took #18 as a builder and unloaded AT Infantry into the garrison.
+        [Test]
+        public void BuilderCandidateGate_LeavesAnArmyLeasedToAnotherAxis()
+        {
+            var player = new PlayerSetupData();
+            var snap = new WorldSnapshot
+            {
+                Observer = player,
+                TurnNumber = 5,
+                Self = new SelfSnapshot
+                {
+                    Armies = new List<ArmySnapshot>
+                    {
+                        new ArmySnapshot { ArmyId = 18, Hex = Home, IsMobileEconomyBuilder = true, HasHero = true },
+                        new ArmySnapshot { ArmyId = 19, Hex = Home, IsMobileEconomyBuilder = true, HasHero = true },
+                    },
+                },
+            };
+            var routes = new List<EconomyBuilderRouteSnapshot>
+            {
+                new EconomyBuilderRouteSnapshot { ArmyId = 18, TravelCost = 4 },
+                new EconomyBuilderRouteSnapshot { ArmyId = 19, TravelCost = 4 },
+            };
+            try
+            {
+                StrategicCapabilityLeaseRegistry.Mark(player, 5, DesireAxis.Aggression,
+                    CapabilityKind.FieldCombatPower, new[] { 18 });
+                StrategicCapabilityLeaseRegistry.Mark(player, 5, DesireAxis.Economy,
+                    CapabilityKind.Hero, new[] { 19 });
+                string Why(int id) => EconomyBuilderSelection.EconomyBuilderCandidateRejection(snap, Site, routes, id,
+                    System.Array.Empty<MissionIntent>(), new ActorCommitments());
+
+                Assert.That(Why(18), Is.EqualTo("leased_to_Aggression"));
+                Assert.That(Why(19), Does.StartWith("ranking_rejected"), "an Economy lease is Economy's own builder");
+            }
+            finally { StrategicCapabilityLeaseRegistry.ClearAll(); }
+        }
+
         // --- B12: collector usefulness is judged without its own contribution ---------------
 
         [Test]

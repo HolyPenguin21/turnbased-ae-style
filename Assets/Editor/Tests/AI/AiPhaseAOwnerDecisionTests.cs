@@ -81,6 +81,34 @@ namespace Game.EditorTests
             Assert.That(budget.ReservedFollowup(), Is.EqualTo(3f), "the vanished army's promise is gone");
         }
 
+        // Match 2026-11-27b T6: Siege Grenadier's new army #19 kept a 1 AP promise all turn without a
+        // mission, and the 1 AP build of a builder standing on its site was refused.
+        [Test]
+        public void DeliveryFollowup_EndsWhenAnAllocationFundsNoMissionForItsArmy()
+        {
+            var budget = PhaseAApBudget.Create(null);
+            ArmyData idle = Army();
+            ArmyData moving = Army();
+            budget.ReserveDeliveryFollowup(idle, 1f);
+            budget.ReserveDeliveryFollowup(moving, 2f);
+            budget.ReserveActorFollowup(4242, 3f);
+
+            budget.ReleaseUnfundedDeliveryFollowups(new HashSet<int> { moving.Id });
+
+            Assert.That(budget.ReservedFollowup(), Is.EqualTo(5f), "the funded army's 2 AP and the refit's 3 AP stay");
+            Assert.That(budget.ActorFollowup(idle.Id), Is.Zero, "no funded mission will take the idle army's step");
+        }
+
+        [Test]
+        public void DeliveryFollowup_StaysWhileAFundedMissionHasNoKnownMoverYet()
+        {
+            var budget = PhaseAApBudget.Create(null);
+            ArmyData army = Army();
+            budget.ReserveDeliveryFollowup(army, 1f);
+            budget.ReleaseUnfundedDeliveryFollowups(null);
+            Assert.That(budget.ReservedFollowup(), Is.EqualTo(1f));
+        }
+
         [Test]
         public void DeliveryFollowup_DoesNotTouchRefitPromises()
         {

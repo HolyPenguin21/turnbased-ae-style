@@ -27,6 +27,22 @@ namespace Game.EditorTests
                 ResourceClaimKind.OperationContinuation, Ap, 2f),
         };
 
+        // A fresh ground-combat departure hold (match 2026-11-27b T5 Raid Guard@-2,0): the raid itself
+        // and an ActiveDefence answer may use it; every other spender sees it as held.
+        [Test]
+        public void GroundCombatDepartureHold_IsItsOwnersAndHomeDefencesOnly()
+        {
+            var claims = new[] { Claim("departure:raid", ResourceClaimKind.GroundCombatDeparture, Ap, 5f) };
+            Assert.That(TurnResourceBook.Free(5f, claims, Ap, default), Is.Zero, "Phase A cards / other missions");
+            Assert.That(TurnResourceBook.Free(5f, claims, Ap, new SpendAuthority("departure:raid", false)),
+                Is.EqualTo(5f), "the raid itself");
+            Assert.That(TurnResourceBook.Free(5f, claims, Ap,
+                new SpendAuthority("departure:defence", false, defendsHome: true)), Is.EqualTo(5f),
+                "an answer to a threat at home");
+            Assert.That(TurnResourceBook.KindOf(StrategicReservationReason.GroundCombatDeparture),
+                Is.EqualTo(ResourceClaimKind.GroundCombatDeparture));
+        }
+
         [Test]
         public void PhysicalBatchMatchesIndividualReadsAndNeverRetainsPreviousHolds()
         {

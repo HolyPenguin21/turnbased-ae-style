@@ -130,7 +130,7 @@ namespace Game.Ai.V2
                 .ThenByDescending(h => BaseOwnPowerAt(snap, h))
                 .ThenBy(h => BaseThreatSeverityAt(snap, h))
                 .ThenBy(h => mover == null ? 0
-                    : AiV2Util.CeilDiv(HexGridMath.Distance(mover.Hex, h), moveBudget))
+                    : AiV2Util.CeilDiv(AiV2Util.GroundRouteDistance(snap, mover, h, moveBudget), moveBudget))
                 .ThenByDescending(h => h.Equals(citadel) ? 1 : 0)
                 .ThenBy(h => h.Q).ThenBy(h => h.R)
                 .Select(h => (HexCoord?)h)

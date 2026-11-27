@@ -44,7 +44,7 @@ namespace Game.Ai.V2
             foreach (FistMusterObjective o in FistMusterObjectiveEvaluator.Enumerate(snap, objective, committed))
             {
                 MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
-                    o.Mover, o.StagingHex, out int eta);
+                    snap, o.Mover, o.StagingHex, out int eta);
                 // Detach / Intake: the first step is the free extraction (an unactivated shell or a
                 // same-hex transfer); a Detach walk is the next step's activation.
                 if (o.DonorGarrisonId.HasValue)

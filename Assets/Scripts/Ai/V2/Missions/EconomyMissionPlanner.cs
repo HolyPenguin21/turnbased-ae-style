@@ -268,7 +268,7 @@ namespace Game.Ai.V2
                 float collectorActivation = collector != null && !collector.HasActivatedThisTurn
                     && !collector.Hex.Equals(t.TargetHex) ? collector.ActivationApCost : 0f;
                 int distance = collector == null ? 0
-                    : HexGridMath.Distance(collector.Hex, t.TargetHex);
+                    : AiV2Util.GroundRouteDistance(snapshot, collector, t.TargetHex);
                 return new MissionRequirements
                 {
                     RequiresArmy = true, RequiresHero = false, MoverKnown = collector != null,
@@ -285,7 +285,7 @@ namespace Game.Ai.V2
                 float recoveryActivation = recoveryActor != null
                     && !recoveryActor.HasActivatedThisTurn ? recoveryActor.ActivationApCost : 0f;
                 int recoveryDistance = recoveryActor == null ? 0
-                    : HexGridMath.Distance(recoveryActor.Hex, t.TargetHex);
+                    : AiV2Util.GroundRouteDistance(snapshot, recoveryActor, t.TargetHex);
                 return new MissionRequirements
                 {
                     RequiresArmy = true, RequiresHero = true, MoverKnown = true,

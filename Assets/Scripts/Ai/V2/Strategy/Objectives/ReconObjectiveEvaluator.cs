@@ -110,6 +110,7 @@ namespace Game.Ai.V2
             internal WorldSnapshot Snap;
             internal HashSet<HexCoord> ObservationNeeds;
             internal float? LocalExplorationGap;
+            internal bool? HomeFrontierOpen;
             internal ReconDirectionSnapshot Direction;
         }
 
@@ -172,6 +173,23 @@ namespace Game.Ai.V2
                 _pending?.Dispose();
                 _pending = null;
             }
+        }
+
+        // Home is not explored yet: a runnable Explore frontier hex with unseen neighbours lies within
+        // scoutStepHomeLocalRingRadius of an own home.
+        private static bool HomeFrontierOpen(WorldSnapshot snap)
+        {
+            EnumerationFacts facts = FactsFor(snap);
+            if (facts?.HomeFrontierOpen is bool cached)
+                return cached;
+            bool open = snap?.MapKnowledge?.Frontier != null && snap.MapKnowledge.Frontier.Any(f =>
+                f.FreshNeighbors > 0
+                && TaskScoreEvaluator.NearestOwnedHomeDistance(snap, f.Hex, f.DistanceFromNearestBase)
+                    <= AiConfigV2.scoutStepHomeLocalRingRadius
+                && ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex));
+            if (facts != null)
+                facts.HomeFrontierOpen = open;
+            return open;
         }
 
         private static float LocalExplorationGap(WorldSnapshot snap)
@@ -372,7 +390,7 @@ namespace Game.Ai.V2
             return (snap.Self?.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(a => a != null
                 && !a.IsAir && !a.IsPrison && !a.IsGarrison && !a.IsSoloRecce && a.MemberCount > 1
                 && a.IsStructuralRaidActor && a.MaxMovement > 0
-                && HexGridMath.Distance(a.Hex, hex) <= 2 * a.MaxMovement
+                && AiV2Util.GroundRouteDistance(snap, a, hex) <= 2 * a.MaxMovement
                 && !CarriesOwn(a)
                 && FistMayAssault(snap, a, hex));
         }
@@ -860,16 +878,28 @@ namespace Game.Ai.V2
             float relevance = (observationNeed ?? IsObservationNeed(snap, hex))
                 ? 1f : RuinsRelevance(snap, hex);
             bool eventVisit = ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, hex);
+            float relevanceSlot = TaskScoreEvaluator.StrategicRelevance(relevance);
+            // A home threat amplifies the direction's pressure inside the slot's ceiling.
+            float threatSlot = TaskScoreEvaluator.ThreatDirection(
+                DirectionalPressure(snap, hex, DirectionFor(snap)) * (1f + Mathf.Clamp01(HomeThreat(snap))));
+            float proximitySlot = TaskScoreEvaluator.OwnTerritoryProximity(homeDistance) * homeWeight;
+            // While home still has unexplored frontier (R1), a target's ruins / enemy-citadel /
+            // threat-direction bonus is capped at its own proximity to home: a far target cannot
+            // outbid the home ring on those bonuses alone. A live Attack's own target is exempt.
+            float bonus = relevanceSlot + threatSlot;
+            if (bonus > 0f && HomeFrontierOpen(snap) && LiveAssaultAt(snap, hex) == null)
+            {
+                float scale = Mathf.Clamp01(Mathf.Max(0f, proximitySlot) / bonus);
+                relevanceSlot *= scale;
+                threatSlot *= scale;
+            }
             return new TaskScore(
-                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(relevance),
-                // 2026-11-19 (owner, audit K2) — a home threat amplifies the direction's pressure
-                // inside the slot's shared ceiling (taskScoreThreatDirectionMax), never past it.
-                threatDirection: TaskScoreEvaluator.ThreatDirection(
-                    DirectionalPressure(snap, hex, DirectionFor(snap)) * (1f + Mathf.Clamp01(HomeThreat(snap)))),
+                strategicRelevance: relevanceSlot,
+                threatDirection: threatSlot,
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 eventReward: eventVisit ? TaskScoreEvaluator.EventReward(-1) : 0f,
                 citadelThreatRisk: eventVisit ? TaskScoreEvaluator.CitadelThreatRisk(snap) : 0f,
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance) * homeWeight,
+                ownTerritoryProximity: proximitySlot,
                 cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
                 delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
                     cost.RecurringActivationAp, cost.EtaTurns)),

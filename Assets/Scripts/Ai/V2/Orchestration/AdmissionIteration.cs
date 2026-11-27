@@ -57,9 +57,14 @@ namespace Game.Ai.V2
         }
 
         // Every admission pass ends with this: axes still waiting for aviation must not be lost
-        // when the pass ends first.
-        public IEnumerator TerminalForce() =>
-            _runner.Run(ReadmissionCause.TerminalForce, StrategicInvalidationReason.None, null);
+        // when the pass ends first. A departure hold lives only inside an open pass: Phase B and
+        // the next pass see the AP free again (the next assignment re-sets a still-funded one).
+        public IEnumerator TerminalForce()
+        {
+            ResourceAllocator.ReleaseUnfundedDepartureHolds(_player, _ctx.TurnNumber,
+                System.Array.Empty<MissionProposal>());
+            return _runner.Run(ReadmissionCause.TerminalForce, StrategicInvalidationReason.None, null);
+        }
 
         // A mandatory aviation obligation as a work step. Execution stays with the existing
         // owners (MandatoryAviation). No ledger, Settle or observer boundary: the obligation
@@ -96,6 +101,42 @@ namespace Game.Ai.V2
                     + MandatoryAviation.StallMessage(kind, actor.Id));
         }
 
+
+        // The turn's holds follow this admission's funding: a delivered card's follow-up promise
+        // (Phase A budget) and a fresh ground-combat departure hold end when nothing funded uses them.
+        private void ReleaseUnfundedHolds(IReadOnlyList<MissionProposal> funded)
+        {
+            _runner.ApBudget?.ReleaseUnfundedDeliveryFollowups(FundedArmyIds(_frame.Snapshot, funded));
+            ResourceAllocator.ReleaseUnfundedDepartureHolds(_player, _ctx.TurnNumber, funded);
+        }
+
+        private static List<MissionProposal> FundedMissions(IReadOnlyList<MissionProposal> missions,
+            IEnumerable<StableMissionKey> fundedKeys)
+        {
+            var keys = new HashSet<StableMissionKey>(fundedKeys);
+            return missions.Where(m => m != null && keys.Contains(StableMissionKey.For(m))).ToList();
+        }
+
+        // The armies the funded missions may move: the named mover, the ground-combat eligible set,
+        // or for a Scout job without a scout yet every solo Recce / air wing. Null when another
+        // funded mission has no known mover (it may still pick any army).
+        private static ISet<int> FundedArmyIds(WorldSnapshot snap, IReadOnlyList<MissionProposal> funded)
+        {
+            var ids = new HashSet<int>();
+            foreach (MissionProposal m in funded)
+            {
+                if (GroundCombatAdmissionRegistry.TryGet(m, out HashSet<int> eligible))
+                    ids.UnionWith(eligible);
+                if (m.PreferredMoverArmyId.HasValue)
+                    ids.Add(m.PreferredMoverArmyId.Value);
+                else if (m.Kind == MissionKind.Scout)
+                    ids.UnionWith((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                        .Where(a => a != null && (a.IsSoloRecce || a.IsAir)).Select(a => a.ArmyId));
+                else if (eligible == null)
+                    return null;
+            }
+            return ids;
+        }
 
         // One admission iteration of the open pass: settled world -> missions -> pack -> one work
         // step. Reports its ending in the outcome (TurnLoop applies it): a settled step, or a stop
@@ -174,11 +215,15 @@ namespace Game.Ai.V2
                 mandatory.Kind, allocation.Funded.Count);
             if (work == OperationalWorkKind.MandatoryAviation)
             {
+                // A paid airborne obligation is senior to a fresh ground-combat departure hold.
+                ResourceAllocator.ReleaseUnfundedDepartureHolds(_player, _ctx.TurnNumber,
+                    System.Array.Empty<MissionProposal>());
                 yield return RunMandatoryAviationStep(mandatory.Kind, mandatory.Actor, view, outcome);
                 yield break;
             }
             if (work == OperationalWorkKind.None)
             {
+                ReleaseUnfundedHolds(System.Array.Empty<MissionProposal>());
                 outcome.NoFundedMission();
                 AiDebugLog.Write("[AI][V2][Loop] stop - no funded typed mission");
                 yield break;
@@ -193,6 +238,7 @@ namespace Game.Ai.V2
             _telemetry.Allocation = allocation;
             foreach (StableMissionKey fundedKey in pick.FundedKeysAcrossPacks)
                 _telemetry.FundedKeys.Add(fundedKey);
+            ReleaseUnfundedHolds(FundedMissions(missions, pick.FundedKeysAcrossPacks));
             // The attempts reach the mission ledger and the turn telemetry in the order they
             // happened, before the step executes (nothing in between reads the ledger).
             foreach (ProvisionEvent attempt in pick.Events)

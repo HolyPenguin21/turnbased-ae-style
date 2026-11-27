@@ -86,23 +86,28 @@ namespace Game.Ai.V2
     //   · Owner — the action's own hold (e.g. the build a builder hero serves), excluded from the sum;
     //   · EconomyCompletesNow — an Economy action that pays off NOW (an on-hex build, a global
     //     resource source put into play) is senior to OTHER builds' EconomyDeferredBuild holds,
-    //     which only shield H/E/M/T from non-Economy spending. Every other hold still counts.
+    //     which only shield H/E/M/T from non-Economy spending. Every other hold still counts;
+    //   · DefendsHome — an ActiveDefence answer is senior to a fresh ground-combat departure hold.
     // default == no special authority (the historical behaviour of every other spend).
-    // TurnResourceBook.MayDrawOn is the one place these two rules are applied to claims.
+    // TurnResourceBook.MayDrawOn is the one place these rules are applied to claims.
     public readonly struct SpendAuthority
     {
         public readonly string Owner;
         public readonly bool EconomyCompletesNow;
+        // An ActiveDefence answer: may use a fresh ground-combat departure's hold.
+        public readonly bool DefendsHome;
 
-        public SpendAuthority(string owner, bool economyCompletesNow)
+        public SpendAuthority(string owner, bool economyCompletesNow, bool defendsHome = false)
         {
             Owner = owner;
             EconomyCompletesNow = economyCompletesNow;
+            DefendsHome = defendsHome;
         }
 
-        public bool IsNone => Owner == null && !EconomyCompletesNow;
+        public bool IsNone => Owner == null && !EconomyCompletesNow && !DefendsHome;
         // Identity for per-authority caches (MaterializationPortfolioSolver own-hold add-back).
-        public string Key => (Owner ?? "-") + (EconomyCompletesNow ? "|now" : "");
+        public string Key => (Owner ?? "-") + (EconomyCompletesNow ? "|now" : "")
+            + (DefendsHome ? "|home" : "");
         public override string ToString() => IsNone ? "none" : Key;
     }
 

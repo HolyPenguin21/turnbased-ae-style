@@ -91,6 +91,23 @@ namespace Game.Ai.V2
             }
         }
 
+        // A delivery promise also ends when an allocation made after it funded no mission for its
+        // army: nothing will take that step, so the AP goes back to the turn. `fundedArmyIds` null
+        // = a funded mission has no known mover yet (it may still pick any army): keep everything.
+        internal void ReleaseUnfundedDeliveryFollowups(ISet<int> fundedArmyIds)
+        {
+            if (fundedArmyIds == null)
+                return;
+            foreach (int id in _followup.Where(kv => !kv.Value.Refit && !fundedArmyIds.Contains(kv.Key))
+                .Select(kv => kv.Key).ToList())
+            {
+                AiDebugLog.Write($"[AI][V2][ApBudget] release follow-up "
+                    + $"{_followup[id].Ap.ToString("0.##", CultureInfo.InvariantCulture)} AP of army #{id}: "
+                    + "no funded mission after the allocation");
+                _followup.Remove(id);
+            }
+        }
+
         // Several local refits serve one next activation, so replace its promise, never sum it.
         internal float ActorFollowup(int id) => _followup.TryGetValue(id, out Followup f) ? f.Ap : 0f;
         internal IEnumerable<int> ActorFollowupIds => _followup.Where(kv => kv.Value.Refit).Select(kv => kv.Key);

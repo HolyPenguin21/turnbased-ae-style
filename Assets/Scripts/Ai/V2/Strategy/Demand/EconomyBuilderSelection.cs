@@ -630,6 +630,14 @@ namespace Game.Ai.V2
                 return "operator_leaves_served_facility";
 
             MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
+            // An army Phase A materialized this turn for another axis's shortage is that axis's:
+            // it may be reinforced, never taken over and unloaded as a builder. A builder already
+            // on its Economy task keeps it.
+            DesireAxis? leasedTo = snap?.Observer == null ? null
+                : StrategicCapabilityLeaseRegistry.LeasedAxis(snap.Observer, snap.TurnNumber, army.ArmyId);
+            if (leasedTo.HasValue && leasedTo.Value != DesireAxis.Economy
+                && assignment?.Kind != MissionKind.Economy)
+                return $"leased_to_{leasedTo.Value}";
             // Project owner, 2026-10-02: Vex's 20-power army was released from an intercept and
             // sent to found a base two turns before an enemy fist of 78 reached its citadel.
             // 2026-11-18 (owner, match Tessek vs Halden T3-T10): the fixed 25%-of-strike share

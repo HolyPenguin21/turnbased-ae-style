@@ -175,10 +175,10 @@ namespace Game.Ai.V2
         // The requirements of a lifecycle leg whose mover Continuity already pinned (a walk home,
         // a convoy, a gather): one activation this turn unless already paid, and the mover's own
         // travel time to `destination`. The leg's execution priority is its durable commitment.
-        internal static MissionRequirements PinnedLegRequirements(ArmySnapshot mover,
+        internal static MissionRequirements PinnedLegRequirements(WorldSnapshot snap, ArmySnapshot mover,
             HexCoord destination, out int eta)
         {
-            int distance = HexGridMath.Distance(mover.Hex, destination);
+            int distance = AiV2Util.GroundRouteDistance(snap, mover, destination);
             eta = AiV2Util.CeilDiv(distance, Mathf.Max(1, mover.MaxMovement));
             float ap = mover.HasActivatedThisTurn ? 0f : mover.ActivationApCost;
             return new MissionRequirements

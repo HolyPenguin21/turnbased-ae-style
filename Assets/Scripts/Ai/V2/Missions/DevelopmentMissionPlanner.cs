@@ -66,7 +66,7 @@ namespace Game.Ai.V2
         {
             ArmySnapshot actor = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
                 && preferred.HasValue && a.ArmyId == preferred.Value);
-            int distance = actor == null ? 0 : HexGridMath.Distance(actor.Hex, target.FacilityHex);
+            int distance = actor == null ? 0 : AiV2Util.GroundRouteDistance(snapshot, actor, target.FacilityHex);
             float activation = actor != null && !actor.IsGarrison && distance > 0
                 && !actor.HasActivatedThisTurn ? actor.ActivationApCost : 0f;
             // The garrison's entire roster is NOT the mover. Its legal, pinned extraction

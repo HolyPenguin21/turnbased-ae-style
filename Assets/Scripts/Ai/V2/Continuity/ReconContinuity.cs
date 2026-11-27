@@ -268,6 +268,27 @@ namespace Game.Ai.V2
                 return;
             }
 
+            // A ground Explore/Refresh whose actor has not come nearer its focus for
+            // reconNoApproachRetireTurns is unreachable for it now: retire it and cool the target
+            // down, so the next pick looks at a target the scout can actually reach. An actor that
+            // already sees its focus (standing on it or at a vantage) is not stalled.
+            if ((ReconScoutKinds.IsExplore(s.Kind) || s.Kind == ScoutTargetKind.Refresh)
+                && intent.PreferredMoverArmyId.HasValue && snap?.Self?.Armies != null
+                && snap.Self.Armies.Any(a => a != null && a.ArmyId == intent.PreferredMoverArmyId.Value
+                    && !a.IsAir
+                    && HexGridMath.Distance(a.Hex, s.FocusHex) > System.Math.Max(1, a.EffectiveVisionRadius))
+                && ReconPatrolStateRegistry.TurnsWithoutApproach(player, intent.PreferredMoverArmyId.Value,
+                    s.FocusHex, snap.TurnNumber) is int idle
+                && idle >= AiConfigV2.reconNoApproachRetireTurns)
+            {
+                dead.Add(intent.IntentKey);
+                MissionContinuityLayer.StartPersistentCooldown(AiAllocatorStateRegistry.GetOrCreate(player),
+                    intent.LastAttemptKey, intent.Kind, snap.TurnNumber, "ReconNoApproach");
+                AiDebugLog.Write($"[AI][V2] continuity - {intent.IntentKey} retired: actor "
+                    + $"#{intent.PreferredMoverArmyId.Value} has not come nearer the focus for {idle} turn(s)");
+                return;
+            }
+
             if (ReconScoutKinds.IsDisruption(s.Kind) && intent.PreferredMoverArmyId.HasValue
                 && snap.Self.Armies.Any(a => a != null && a.ArmyId == intent.PreferredMoverArmyId.Value
                     && a.Hex.Equals(s.FocusHex) && Game.Combat.DisruptionRules.HasCarrier(a.MembersWithHeroes)))

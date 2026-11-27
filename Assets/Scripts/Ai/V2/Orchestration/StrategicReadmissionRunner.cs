@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -57,6 +57,9 @@ namespace Game.Ai.V2
             _hand = hand;
             _ctx = ctx;
         }
+
+        // The turn's shared Phase A AP budget (its follow-up promises).
+        internal PhaseAApBudget ApBudget => _apBudget;
 
         // The admission key of an axis on the CURRENT frame (the domain owner computes it).
         internal string Key(DesireAxis axis) =>

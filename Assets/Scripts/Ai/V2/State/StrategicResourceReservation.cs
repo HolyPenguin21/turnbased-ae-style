@@ -40,6 +40,9 @@ namespace Game.Ai.V2
     {
         EconomyDeferredBuild,
         EconomyBuildCompletion,
+        // AP of a funded fresh ground-combat mission whose actor is assigned and departs this turn:
+        // kept for it until it executes, fails or loses its funding.
+        GroundCombatDeparture,
     }
 
     // The stage by which the reservation is guaranteed gone in the normal (non-aborted) flow.

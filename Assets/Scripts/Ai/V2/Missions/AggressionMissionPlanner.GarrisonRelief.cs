@@ -16,7 +16,7 @@ namespace Game.Ai.V2
             foreach (GarrisonReliefObjective o in GarrisonReliefObjectiveEvaluator.Enumerate(snap, committed))
             {
                 MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
-                    o.Detachment, o.RecipientHex, out int eta);
+                    snap, o.Detachment, o.RecipientHex, out int eta);
                 // This leg's first step is the free extraction (an empty, unactivated shell; the
                 // executor's terminal step); the walk's activation is the next step's, funded by the
                 // durable Return. The TaskScore still prices the whole walk.
