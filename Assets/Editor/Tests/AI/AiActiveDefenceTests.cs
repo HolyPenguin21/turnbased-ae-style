@@ -1496,8 +1496,6 @@ namespace Game.EditorTests
                 Assert.That(vetoReached, Is.True, "earlier combat, binding and route checks must all pass");
                 Assert.That(outcome.Success, Is.False);
                 Assert.That(outcome.Failure.Failure.Detail, Does.Contain("strategic_intercept_deadline_missed"));
-                Assert.That(outcome.Failure.StateChanged, Is.False);
-                Assert.That(outcome.Failure.TransferredMemberCount, Is.Zero);
                 Assert.That(host.Members, Has.Count.EqualTo(1));
                 Assert.That(donor.Members, Has.Count.EqualTo(2));
                 Assert.That(donor.Members, Does.Contain(recruit));

@@ -82,8 +82,8 @@ namespace Game.Ai.V2
                 // and funded (pm.EconomyExtractionPlan), never a fresh re-resolve: a re-resolve with
                 // commitments:null/session:null runs under weaker constraints than the original
                 // choice and can legally pick a different — or already-claimed — hero/container/tier.
-                ProvisioningManager.GarrisonExtractionCandidate plan = pm.EconomyExtractionPlan;
-                if (plan.Tier == ProvisioningManager.GarrisonExtractionTier.None)
+                ReusableArmySelector.GarrisonExtractionCandidate plan = pm.EconomyExtractionPlan;
+                if (plan.Tier == ReusableArmySelector.GarrisonExtractionTier.None)
                     return false;
                 // Revalidate the pinned hero, not a replacement chosen under weaker constraints.
                 // A prepared site can become selected after binding, before this mutation step.
@@ -96,7 +96,7 @@ namespace Game.Ai.V2
                     result.StopReason = ExecutionStopReason.TargetInvalidated;
                     return false;
                 }
-                materialized = ProvisioningManager.ApplyGarrisonExtraction(
+                materialized = ApplyGarrisonExtraction(
                     player, garrison, plan, ctx, out string extractionReason);
                 if (materialized == null)
                 {
@@ -185,7 +185,7 @@ namespace Game.Ai.V2
                 }
             }
 
-            int preparedMembers = ProvisioningManager.ApplyEconomyArmyLightening(
+            int preparedMembers = ApplyEconomyArmyLightening(
                 materialized, prep.Garrison, prep.Unload, prep.Reinforcement, ctx);
             int plannedTransfers = prep.Unload.Count + prep.Reinforcement.Count;
             if (preparedMembers != plannedTransfers)
@@ -234,7 +234,7 @@ namespace Game.Ai.V2
             pm.ReservationOwner = prep.OwnerKey;
             pm.EconomyLoanSource = prep.Donor?.IntentKey;
             pm.ClaimedAp = realAp;
-            pm.ClaimedPhysical = ProvisioningManager.CostVector(prep.StageCost);
+            pm.ClaimedPhysical = ResourceVector.Of(prep.StageCost);
             result.ActualActorArmyId = materialized.Id;
             result.EconomyPrepared = true;
             AiDebugLog.Write($"[AI][V2][Economy] prepared builder #{materialized.Id} for {pm.Key} "
@@ -393,6 +393,75 @@ namespace Game.Ai.V2
             if (pm?.Kind == MissionKind.Economy && ctx != null)
                 MissionLeaseBook.ReleaseByOwner(player, ctx.TurnNumber,
                     pm.ReservationOwner);
+        }
+
+        // The pinned garrison extraction (Economy and Development): the hero moves into its container.
+        internal static ArmyData ApplyGarrisonExtraction(PlayerSetupData player, ArmyData garrison,
+            ReusableArmySelector.GarrisonExtractionCandidate candidate, AiTurnContext ctx, out string reason)
+        {
+            reason = candidate.Reason;
+            if (candidate.Tier == ReusableArmySelector.GarrisonExtractionTier.None)
+                return null;
+
+            ArmyData container = candidate.Container;
+            if (candidate.Tier == ReusableArmySelector.GarrisonExtractionTier.Create)
+            {
+                FactionCardCatalog catalog = ctx.StartingDeckCatalog?.GetCatalog(player.Faction);
+                container = ArmyActions.CreateArmyWithMember(player, garrison.Hex, catalog,
+                    garrison, candidate.Hero, ctx.HexSelection, out reason);
+                if (container == null)
+                    return null;
+                AiDebugLog.Write($"[AI][V2][Economy] extracted idle hero {candidate.Hero.Name} "
+                    + $"from garrison #{garrison.Id} into #{container.Id} ({candidate.Tier}, "
+                    + $"ap {candidate.ApCost:0.##}) for economy mobile_hero duty");
+                return container;
+            }
+
+            if (!ArmyActions.TransferMember(candidate.Hero, garrison, container,
+                    ctx.HexSelection, out reason))
+                return null;
+            AiDebugLog.Write($"[AI][V2][Economy] extracted idle hero {candidate.Hero.Name} "
+                + $"from garrison #{garrison.Id} into #{container.Id} ({candidate.Tier}, "
+                + $"ap {candidate.ApCost:0.##}) for economy mobile_hero duty");
+            return container;
+        }
+
+        // The pinned composition change of a builder: all-or-nothing unload and reinforcement.
+        internal static int ApplyEconomyArmyLightening(ArmyData builder,
+            ArmyData garrison, IReadOnlyList<UnitData> unload,
+            IReadOnlyList<UnitData> reinforcement, AiTurnContext ctx)
+        {
+            if (builder == null || garrison == null)
+                return 0;
+            bool unloadApplied = false;
+            if (unload.Count > 0)
+            {
+                if (!ArmyActions.TransferMembersAtomic(
+                        unload, builder, garrison, ctx.HexSelection, out string whyUnload))
+                    return 0;
+                unloadApplied = true;
+            }
+            if (reinforcement.Count > 0 && !ArmyActions.TransferMembersAtomic(
+                    reinforcement, garrison, builder, ctx.HexSelection, out string whyAdd))
+            {
+                // Unload+reinforce is ONE canonical composition change: a reinforcement failure
+                // must not leave an already-applied unload in place while the caller reports
+                // failure. The planner does not currently produce both non-empty at once, but this
+                // must not depend on that as an unstated invariant. Roll the unload back so this
+                // call is all-or-nothing.
+                if (unloadApplied && !ArmyActions.TransferMembersAtomic(
+                        unload, garrison, builder, ctx.HexSelection, out string whyRollback))
+                    AiDebugLog.Write($"[AI][V2][Economy][WARN] lighten rollback failed for builder "
+                        + $"#{builder.Id} after a reinforce failure: {whyRollback} - roster left "
+                        + "partially unloaded");
+                return 0;
+            }
+            int changed = unload.Count + reinforcement.Count;
+            if (changed > 0)
+                AiDebugLog.Write($"[AI][V2][Economy] builder #{builder.Id} prepared "
+                    + $"unload={unload.Count} add={reinforcement.Count} "
+                    + $"garrison=#{garrison.Id} power={AiPower.EffectiveArmyPower(builder.Members):0.##}");
+            return changed;
         }
     }
 }

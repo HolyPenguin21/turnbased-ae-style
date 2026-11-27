@@ -127,7 +127,7 @@ namespace Game.Ai.V2
             ResourceVector cost, SpendAuthority authority = default) =>
             cost.AnyPhysical && !ReferenceEquals(root, null)
                 && TryPlan(player, root, ctx, CostOf(cost), out var quote, authority)
-                ? ProvisioningManager.CostVector(quote.ExternalCost) : cost;
+                ? ResourceVector.Of(quote.ExternalCost) : cost;
 
         internal static bool Fund(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ResourceCost cost, SpendAuthority authority = default)

@@ -725,8 +725,8 @@ namespace Game.EditorTests
                     ResearchProductionMode.Production, ctx: _ctx), Is.True);
                 var pm = new ProvisionedMission { Kind = MissionKind.Development, ExecutionHex = source.Hex,
                     EconomyExtractionGarrisonArmyId = source.Id,
-                    EconomyExtractionPlan = ProvisioningManager.GarrisonExtractionCandidate.Yes(
-                        ProvisioningManager.GarrisonExtractionTier.Create, hero, null, ArmyActions.CreateArmyApCost),
+                    EconomyExtractionPlan = ReusableArmySelector.GarrisonExtractionCandidate.Yes(
+                        ReusableArmySelector.GarrisonExtractionTier.Create, hero, null, ArmyActions.CreateArmyApCost),
                     ClaimedAp = ArmyActions.CreateArmyApCost,
                     DevelopmentTarget = new DevelopmentMissionTarget { FacilityHex = Site,
                         Mode = ResearchProductionMode.Production, Hero = hero } };
@@ -1123,8 +1123,8 @@ namespace Game.EditorTests
                 for (int i = 0; i < AiConfig.secureBaseMinNonHeroUnits; i++)
                     _garrison.AppendRosterMember(new UnitData { Owner = _player });
                 Assert.That(AiArmyRoles.CanSpareGarrisonMember(_player, _garrison, op), Is.True);
-                var plan = ProvisioningManager.GarrisonExtractionCandidate.Yes(
-                    ProvisioningManager.GarrisonExtractionTier.Create, op, null, ArmyActions.CreateArmyApCost);
+                var plan = ReusableArmySelector.GarrisonExtractionCandidate.Yes(
+                    ReusableArmySelector.GarrisonExtractionTier.Create, op, null, ArmyActions.CreateArmyApCost);
                 // Duty appears AFTER binding: either a ready facility or its selected preparation site.
                 if (facilityBuilt)
                 {

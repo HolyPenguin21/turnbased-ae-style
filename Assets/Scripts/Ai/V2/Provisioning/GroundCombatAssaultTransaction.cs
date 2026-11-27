@@ -387,7 +387,7 @@ namespace Game.Ai.V2
                         ProvisionFailure.AssemblyInfeasible(rollbackOk
                             ? $"atomic {lane} assembly rejected: {why}"
                             : $"{lane} assembly failed and rollback was incomplete: {why}"),
-                        rollbackChangedWorld, transfersStillApplied));
+                        rollbackChangedWorld));
                 }
                 applied.Add(t);
             }
@@ -420,7 +420,7 @@ namespace Game.Ai.V2
                     ProvisionFailure.EnvelopeTooSmall(actualAp,
                         $"{lane} host #{host.Id} reconciled activation {N(actualAp)} AP diverges from the "
                         + $"projected {N(activationAp)} AP"),
-                    stillApplied > 0, stillApplied));
+                    stillApplied > 0));
             }
 
             foreach (int d in claimedDonors)

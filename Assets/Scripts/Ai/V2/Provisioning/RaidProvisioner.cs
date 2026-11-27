@@ -139,7 +139,6 @@ namespace Game.Ai.V2
                 // the projected/funded figure above, so allocator, revalidator and executor all
                 // debit this one number exactly once.
                 ClaimedAp = actualAp,
-                StealthApReserved = false,
             }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
         }
 
@@ -238,7 +237,6 @@ namespace Game.Ai.V2
                 RaidTargetIsNeutral = target.TargetIsNeutral,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = activationAp,
-                StealthApReserved = false,
             });
         }
 
@@ -309,13 +307,11 @@ namespace Game.Ai.V2
                 RaidPrimaryArmyId = primary.Id,
                 RaidSupportArmyId = support.Id,
                 RaidDestinationHex = rendezvous,
-                RaidHandoffReady = atRendezvous,
                 RaidTarget = target.Target,
                 RaidLastKnownHex = target.LastKnownHex,
                 RaidTargetIsNeutral = target.TargetIsNeutral,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = activationAp,
-                StealthApReserved = false,
             });
         }
 

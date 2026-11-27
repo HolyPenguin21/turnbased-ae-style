@@ -508,7 +508,7 @@ namespace Game.EditorTests
                 out ArmyData recipient, out List<UnitData> unload, out List<UnitData> add,
                 MissionIntentRegistry.Peek(p)), Is.True);
             Assert.That(unload, Is.EqualTo(new[] { dear })); Assert.That(add, Is.Empty);
-            Assert.That(ProvisioningManager.ApplyEconomyArmyLightening(builder, recipient, unload, add,
+            Assert.That(EconomyExecutor.ApplyEconomyArmyLightening(builder, recipient, unload, add,
                 new AiTurnContext()), Is.EqualTo(1));
             Assert.That(builder.Members, Is.EqualTo(new[] { hero, cheap }));
             Assert.That(ProvisioningManager.EconomyMissionClaimedAp(builder, 2, 3, null,

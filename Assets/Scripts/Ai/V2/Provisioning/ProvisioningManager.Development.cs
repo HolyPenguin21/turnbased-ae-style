@@ -81,15 +81,7 @@ namespace Game.Ai.V2
                     || army.Members.Count(u => ReferenceEquals(u, target.Hero)) != 1))
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                     "Development needs a unique qualified hero in a mobile ground army"));
-            // Live source protection mirrors the preparation witness and never steals an
-            // operator from a different working factory.
-            BuildingData source = BuildingRegistry.FindAt(army.Hex);
-            if (source != null && source.Owner == player
-                && new[] { ResearchProductionMode.Research, ResearchProductionMode.Production }
-                    .Any(mode => source.HasFacilityWithAbility(
-                        ResearchProductionSystem.FacilityAbility(mode))
-                        && ResearchProductionSystem.ActorStillQualifies(player,
-                            target.Hero, army.Hex, mode)))
+            if (AiArmyRoles.OperatesWorkingFacility(player, target.Hero, army.Hex))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "hero is operating another working facility"));
 
@@ -101,13 +93,13 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.DestinationUnreachable(
                     "no legal safe route to the Development facility"));
 
-            GarrisonExtractionCandidate extraction = default;
+            ReusableArmySelector.GarrisonExtractionCandidate extraction = default;
             float requiredAp;
             if (extract)
             {
-                extraction = ResolveGarrisonExtractionCandidate(player, army, claims,
-                    session, root, funded.Tentative.Ap, target.Hero, target.Mode);
-                if (extraction.Tier == GarrisonExtractionTier.None)
+                extraction = ReusableArmySelector.ResolveGarrisonExtraction(player, army, claims,
+                    session.ClaimedArmyIds, root, funded.Tentative.Ap, target.Hero, target.Mode);
+                if (extraction.Tier == ReusableArmySelector.GarrisonExtractionTier.None)
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         extraction.Reason ?? "no legal extraction of the bound Development hero"));
                 requiredAp = extraction.ApCost;

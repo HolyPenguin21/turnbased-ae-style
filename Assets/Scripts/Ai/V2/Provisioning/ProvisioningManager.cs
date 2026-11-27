@@ -484,7 +484,7 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Recon] garrison extraction rollback FAILED "
                         + $"#{destinationShell.Id}->#{garrisonArmy.Id}: {why}");
                 bool stateChanged = !rolledBack;
-                return ProvisioningResult.Fail(failure, stateChanged, stateChanged ? 1 : 0);
+                return ProvisioningResult.Fail(failure, stateChanged);
             }
 
             // Task 2 — the one genuine post-commit check TransferMember's own validation does not

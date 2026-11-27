@@ -83,7 +83,7 @@ namespace Game.Ai.V2
         public bool DevelopmentDeliveryReady;
 
         // Provisioned mission that produced this execution ledger row.
-        public ProvisionedMission Source;
+        internal ProvisionedMission Source;
 
         // The real ArmyId after an actor is materialized or otherwise resolved during execution.
         public int? ActualActorArmyId;

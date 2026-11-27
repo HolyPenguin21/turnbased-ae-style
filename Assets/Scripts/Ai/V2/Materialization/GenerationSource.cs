@@ -29,9 +29,6 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public static class GenerationSource
     {
-        private static readonly ResearchProductionMode[] Modes =
-            { ResearchProductionMode.Research, ResearchProductionMode.Production };
-
         internal static string StableCardKey(CardData card) => card == null ? "?"
             : "card" + card.RuntimeId.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
@@ -61,7 +58,7 @@ namespace Game.Ai.V2
 
             foreach (BuildingData b in ownBuildings)
             {
-                foreach (ResearchProductionMode mode in Modes)
+                foreach (ResearchProductionMode mode in AiArmyRoles.DevelopmentModes)
                 {
                     if (!b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
                         continue;

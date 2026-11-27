@@ -71,8 +71,8 @@ namespace Game.Ai.V2
             private readonly PlayerSetupData _player;
             private readonly System.Func<ResearchProductionMode, HexCoord?> _preparationSite;
             private readonly Dictionary<int, IReadOnlyList<(UnitData Hero,
-                ProvisioningManager.GarrisonExtractionCandidate Extraction)>> _garrisonHeroes =
-                new Dictionary<int, IReadOnlyList<(UnitData, ProvisioningManager.GarrisonExtractionCandidate)>>();
+                ReusableArmySelector.GarrisonExtractionCandidate Extraction)>> _garrisonHeroes =
+                new Dictionary<int, IReadOnlyList<(UnitData, ReusableArmySelector.GarrisonExtractionCandidate)>>();
 
             internal EconomyBuilderPool(WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx)
             {
@@ -99,20 +99,20 @@ namespace Game.Ai.V2
 
             // Sparable heroes of `garrison` in EconomyHeroCandidates order, each with a resolved
             // (non-None) extraction; the same answers the per-target loop used to recompute.
-            internal IReadOnlyList<(UnitData Hero, ProvisioningManager.GarrisonExtractionCandidate Extraction)>
+            internal IReadOnlyList<(UnitData Hero, ReusableArmySelector.GarrisonExtractionCandidate Extraction)>
                 GarrisonHeroes(ArmyData garrison)
             {
                 if (_garrisonHeroes.TryGetValue(garrison.Id, out var heroes))
                     return heroes;
-                var list = new List<(UnitData, ProvisioningManager.GarrisonExtractionCandidate)>();
+                var list = new List<(UnitData, ReusableArmySelector.GarrisonExtractionCandidate)>();
                 foreach (UnitData sparableHero in AiArmyRoles.EconomyHeroCandidates(_player, garrison, _preparationSite))
                 {
-                    ProvisioningManager.GarrisonExtractionCandidate extraction =
-                        ProvisioningManager.ResolveGarrisonExtractionCandidate(_player, garrison,
-                            commitments: null, session: null, root: null,
+                    ReusableArmySelector.GarrisonExtractionCandidate extraction =
+                        ReusableArmySelector.ResolveGarrisonExtraction(_player, garrison,
+                            commitments: null, claimedThisPass: null, root: null,
                             ecoApEnvelopeRemaining: float.MaxValue, preparationSite: _preparationSite,
                             exactEconomyHeroId: sparableHero.RuntimeId);
-                    if (extraction.Tier != ProvisioningManager.GarrisonExtractionTier.None)
+                    if (extraction.Tier != ReusableArmySelector.GarrisonExtractionTier.None)
                         list.Add((sparableHero, extraction));
                 }
                 _garrisonHeroes[garrison.Id] = list;
@@ -147,7 +147,7 @@ namespace Game.Ai.V2
                 {
                     if (!liveById.TryGetValue(army.ArmyId, out ArmyData liveGarrison))
                         continue;
-                    foreach ((UnitData sparableHero, ProvisioningManager.GarrisonExtractionCandidate extraction)
+                    foreach ((UnitData sparableHero, ReusableArmySelector.GarrisonExtractionCandidate extraction)
                              in pool.GarrisonHeroes(liveGarrison))
                     {
                         if (army.Hex.Equals(target))

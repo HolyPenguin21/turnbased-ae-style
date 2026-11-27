@@ -39,8 +39,8 @@ namespace Game.Ai.V2
                 return true;
             }
             ArmyData garrison = AiV2Util.ResolveArmy(player, pm.EconomyExtractionGarrisonArmyId);
-            ProvisioningManager.GarrisonExtractionCandidate pinned = pm.EconomyExtractionPlan;
-            if (garrison == null || pinned.Tier == ProvisioningManager.GarrisonExtractionTier.None
+            ReusableArmySelector.GarrisonExtractionCandidate pinned = pm.EconomyExtractionPlan;
+            if (garrison == null || pinned.Tier == ReusableArmySelector.GarrisonExtractionTier.None
                 || !ReferenceEquals(pinned.Hero, pm.DevelopmentTarget.Hero)
                 || !garrison.Members.Contains(pinned.Hero)
                 || !(garrison.IsGarrison
@@ -53,7 +53,7 @@ namespace Game.Ai.V2
                 result.FinalHex = pm.ExecutionHex;
                 return true;
             }
-            ArmyData extracted = ProvisioningManager.ApplyGarrisonExtraction(
+            ArmyData extracted = EconomyExecutor.ApplyGarrisonExtraction(
                 player, garrison, pinned, ctx, out string extractionReason);
             if (extracted == null)
                 AiDebugLog.Write($"[AI][V2][Development] extraction rejected for {pm.Key}: {extractionReason}");

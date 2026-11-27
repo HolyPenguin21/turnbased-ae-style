@@ -15,7 +15,7 @@ using Game.Combat;
 
 namespace Game.Ai.V2
 {
-    public sealed class ProvisioningSession : IDisposable
+    internal sealed class ProvisioningSession : IDisposable
     {
         public readonly WorldSnapshot Snapshot;
         public float ApClaimed { get; private set; }

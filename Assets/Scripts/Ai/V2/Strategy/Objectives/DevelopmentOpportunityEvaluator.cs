@@ -98,9 +98,6 @@ namespace Game.Ai.V2
 
     public static class DevelopmentOpportunityEvaluator
     {
-        private static readonly ResearchProductionMode[] Modes =
-            { ResearchProductionMode.Research, ResearchProductionMode.Production };
-
         // Every admitted opportunity for the current settled state, best first. Empty while the
         // investment window is closed. Demand (and the capacity-upgrade look-ahead) consume this
         // list; they never re-admit with a different predicate.
@@ -163,7 +160,7 @@ namespace Game.Ai.V2
                 .Concat(snap.Development.Facilities.Select(f => f.Hex))
                 .Distinct().OrderBy(h => h.Q).ThenBy(h => h.R).ToList();
 
-            foreach (ResearchProductionMode mode in Modes)
+            foreach (ResearchProductionMode mode in AiArmyRoles.DevelopmentModes)
             foreach (HexCoord hex in sites)
             {
                 if (pacer != null) yield return pacer.Checkpoint();
@@ -711,12 +708,7 @@ namespace Game.Ai.V2
                     if (candidate == null || candidate.Owner != player)
                         continue;
                     // Never strip a different active facility of its exact operator.
-                    BuildingData sourceBuilding = OwnWorld.Of(player).BuildingAt(army.Hex);
-                    if (sourceBuilding != null && sourceBuilding.Owner == player
-                        && Modes.Any(m => sourceBuilding.HasFacilityWithAbility(
-                                ResearchProductionSystem.FacilityAbility(m))
-                            && ResearchProductionSystem.ActorStillQualifies(
-                                player, candidate, army.Hex, m)))
+                    if (AiArmyRoles.OperatesWorkingFacility(player, candidate, army.Hex))
                         continue;
                     // Nor the sole operator of a preparation site selected for another mode.
                     if (AiArmyRoles.FacilityNeedsHero(player, army, candidate,
@@ -1015,7 +1007,7 @@ namespace Game.Ai.V2
             var forecasts = new List<DevelopmentOpportunity>();
             ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
             List<GenerationStep> sources = null;
-            foreach (ResearchProductionMode mode in Modes)
+            foreach (ResearchProductionMode mode in AiArmyRoles.DevelopmentModes)
             foreach (HexCoord hex in snap.Self.BaseHexes.OrderBy(h => h.Q).ThenBy(h => h.R))
             {
                 BuildingData b = OwnWorld.Of(player).BuildingAt(hex);

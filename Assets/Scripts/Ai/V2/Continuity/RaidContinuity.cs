@@ -819,7 +819,6 @@ namespace Game.Ai.V2
             o.RaidFactsForWrite().RaidSupportArmyId = pm.RaidSupportArmyId;
             o.RaidFactsForWrite().RaidAirSupportArmyId = pm.RaidAirSupportArmyId;
             o.RaidFactsForWrite().RaidAirSupportLandingHex = pm.RaidAirSupportLandingHex;
-            o.RaidFactsForWrite().RaidRefitAction = pm.RaidRefitAction;
         }
 
         internal static void CaptureRaidExecutionFacts(ExecutionResult e, MissionStepResult o)

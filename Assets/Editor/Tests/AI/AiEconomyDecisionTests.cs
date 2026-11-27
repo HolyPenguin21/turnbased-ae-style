@@ -15,6 +15,49 @@ namespace Game.EditorTests
 {
     public class AiEconomyDecisionTests
     {
+        // The live preparation path in one call: Analysis creates the facts, Demand decides, the
+        // production materializer applies.
+        private static int TryLightenEconomyArmy(PlayerSetupData player, ArmyData builder,
+            HexCoord target, WorldSnapshot snapshot, Game.Ai.AiTurnContext ctx, int minimumEscort = 0)
+        {
+            if (player == null || builder == null || ctx?.Map is null || !Game.Ai.AiArmyRoles.IsHeroLed(builder))
+                return 0;
+            BuildingData home = BuildingRegistry.FindAt(builder.Hex);
+            if (home?.Owner != player || !(home.IsBase || home.IsStartingCitadel)) return 0;
+            var frozen = WorldAnalysis.ToArmySnapshot(builder, player, true, 0,
+                snapshot?.Intents);
+            ArmyData liveGarrison = ArmyRegistry.FindGarrisonAt(builder.Hex, player);
+            var self = new SelfSnapshot { BaseHexes = new[] { builder.Hex },
+                Armies = liveGarrison == null ? new[] { frozen }
+                    : new[] { frozen, WorldAnalysis.ToArmySnapshot(liveGarrison, player, true, 0,
+                        snapshot?.Intents) } };
+            var facts = new WorldSnapshot { Self = self, Known = snapshot?.Known, Intents = snapshot?.Intents };
+            IReadOnlyList<EconomyBuilderRouteSnapshot> routes = WorldAnalysis.EconomyBuilderRoutes(
+                facts, player, ctx, target);
+            if (routes.Count == 0) return 0;
+            var choice = EconomyBuilderSelection.AssessEconomyArmy(facts, target, routes.First(x => x.ArmyId == builder.Id),
+                frozen, 0f, false);
+            if (choice.Suitability == EconomyBuilderSelection.EconomyArmySuitability.Ineligible
+                || !ProvisioningManager.MaterializeEconomyRoster(player, builder, choice, out ArmyData garrison,
+                    out List<UnitData> unload, out List<UnitData> reinforcement, snapshot?.Intents)) return 0;
+            return EconomyExecutor.ApplyEconomyArmyLightening(builder, garrison, unload, reinforcement, ctx);
+        }
+        private static IReadOnlyList<UnitData> SelectEconomyEscort(ArmyData builder,
+            IReadOnlyList<UnitData> bodies, IReadOnlyList<Game.Ai.AiMapMemory.KnownEnemySighting> threats,
+            int minimumEscort = 0)
+        {
+            if (builder == null) return null;
+            var pool = (bodies ?? System.Array.Empty<UnitData>()).Where(u => u != null).Distinct().ToList();
+            ArmySnapshot facts = WorldAnalysis.ToArmySnapshot(builder, builder.Owner, true, 0,
+                MissionIntentRegistry.GetOrCreate(builder.Owner));
+            facts.Members = pool.Select(Game.Combat.WorthIt.FromLiveUnit).ToList();
+            facts.NonHeroActivationApCosts = pool.Select(u => u.ActivationApCost).ToList();
+            facts.NonHeroMoveMax = pool.Select(WorldAnalysis.SoloMoveMax).ToList();
+            facts.NonHeroIsAviation = pool.Select(u => u.IsAviation).ToList();
+            List<int> selected = EconomyBuilderSelection.MinimumSafeEconomyEscortIndices(facts, threats, minimumEscort);
+            return selected?.Select(i => pool[i]).ToList();
+        }
+
         [TestCase(CardType.Unit, false, true)]
         [TestCase(CardType.Hero, false, true)]
         [TestCase(CardType.Facility, false, true)]
@@ -48,9 +91,9 @@ namespace Game.EditorTests
             Assert.That(Game.Ai.AiArmyRoles.EconomyHeroCandidates(player, garrison).Contains(miller), Is.False);
             garrison.ReplaceRoster(new[] { miller, rusty });
             rusty.CommandRating = 0;
-            var candidate = ProvisioningManager.ResolveGarrisonExtractionCandidate(player, garrison,
+            var candidate = ReusableArmySelector.ResolveGarrisonExtraction(player, garrison,
                 null, null, null, 10f, exactEconomyHeroId: rusty.RuntimeId);
-            Assert.That(candidate.Tier, Is.EqualTo(ProvisioningManager.GarrisonExtractionTier.None));
+            Assert.That(candidate.Tier, Is.EqualTo(ReusableArmySelector.GarrisonExtractionTier.None));
             Assert.That(candidate.Reason, Is.Not.Null.And.Not.Empty);
             Assert.That(garrison.Members.Count, Is.EqualTo(2), "preview must never transfer members");
         }
@@ -2046,7 +2089,7 @@ namespace Game.EditorTests
                     defenseSum: 3f, attackSum: 5f, defenders: null),
             };
 
-            IReadOnlyList<UnitData> retained = ProvisioningManager.SelectEconomyEscort(
+            IReadOnlyList<UnitData> retained = SelectEconomyEscort(
                 builder, new[] { escort }, threats);
 
             Assert.That(retained, Is.Null);
@@ -2080,7 +2123,7 @@ namespace Game.EditorTests
             {
                 float before = ProvisioningManager.EconomyMissionClaimedAp(
                     builder, 1f, 1f, null);
-                int moved = ProvisioningManager.TryLightenEconomyArmy(player, builder,
+                int moved = TryLightenEconomyArmy(player, builder,
                     new HexCoord(4, 0), SnapshotWithDeficits(0f, 0f, true),
                     new Game.Ai.AiTurnContext { Map = map });
                 float after = ProvisioningManager.EconomyMissionClaimedAp(
@@ -2122,7 +2165,7 @@ namespace Game.EditorTests
             SetHexes(map, home, target);
             try
             {
-                int moved = ProvisioningManager.TryLightenEconomyArmy(
+                int moved = TryLightenEconomyArmy(
                     player, builder, target, SnapshotWithDeficits(0f, 0f, true),
                     new Game.Ai.AiTurnContext { Map = map });
 
@@ -2157,7 +2200,7 @@ namespace Game.EditorTests
                 { Owner = player, Hex = home, Name = "Base", IsBase = true });
             try
             {
-                int moved = ProvisioningManager.TryLightenEconomyArmy(player, builder,
+                int moved = TryLightenEconomyArmy(player, builder,
                     new HexCoord(4, 0), SnapshotWithDeficits(0f, 0f, true),
                     new Game.Ai.AiTurnContext());
 
@@ -2187,7 +2230,7 @@ namespace Game.EditorTests
             ArmyRegistry.Register(garrison);
             try
             {
-                int moved = ProvisioningManager.TryLightenEconomyArmy(player, builder,
+                int moved = TryLightenEconomyArmy(player, builder,
                     new HexCoord(4, 0), SnapshotWithDeficits(0f, 0f, true),
                     new Game.Ai.AiTurnContext());
 
@@ -2226,7 +2269,7 @@ namespace Game.EditorTests
             });
             try
             {
-                int moved = ProvisioningManager.TryLightenEconomyArmy(player, builder,
+                int moved = TryLightenEconomyArmy(player, builder,
                     new HexCoord(4, 0), SnapshotWithDeficits(0f, 0f, true),
                     new Game.Ai.AiTurnContext());
 
@@ -2268,7 +2311,7 @@ namespace Game.EditorTests
                     defenders: new[] { enemyProfile, aircraftProfile }),
             };
 
-            IReadOnlyList<UnitData> retained = ProvisioningManager.SelectEconomyEscort(
+            IReadOnlyList<UnitData> retained = SelectEconomyEscort(
                 builder, new[] { counter, spare }, threats);
 
             Assert.That(retained, Is.Not.Null);
@@ -3165,7 +3208,7 @@ namespace Game.EditorTests
             SetHexes(map, home, new HexCoord(1, 0), new HexCoord(2, 0), target);
             try
             {
-                int moved = ProvisioningManager.TryLightenEconomyArmy(
+                int moved = TryLightenEconomyArmy(
                     player, builder, target, snapshot,
                     new Game.Ai.AiTurnContext { Map = map },
                     projected.MinimumEscortCount);

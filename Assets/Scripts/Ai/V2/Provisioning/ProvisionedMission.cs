@@ -15,7 +15,7 @@ using Game.Combat;
 
 namespace Game.Ai.V2
 {
-    public sealed class ProvisionedMission
+    internal sealed class ProvisionedMission
     {
         public MissionProposal Mission;
         public StableMissionKey Key;
@@ -38,18 +38,11 @@ namespace Game.Ai.V2
         public int? RaidAirSupportArmyId;
         public HexCoord? RaidAirSupportLandingHex;
         public HexCoord RaidDestinationHex;
-        // Reinforcement only: the support army is already standing on the primary's hex, so this
-        // step is the ATOMIC roster handoff (transfer / swap) and must perform no movement.
-        public bool RaidHandoffReady;
-        public RaidRefitAction RaidRefitAction;
         public ActiveDefenceMissionTarget ActiveDefenceTarget;
         // ATK §22 — the whole Attack leg in ONE frozen object (phase, actors, destination, site
         // facts). Deliberately not a spray of Attack* fields beside it: the mission target struct
         // already is the lane's transport, so Execution reads the same object Provisioning wrote.
         public AttackMissionTarget AttackTarget;
-        // Reinforcement only: the support army is already standing on the primary's hex, so this
-        // step is the ATOMIC roster handoff and must perform no movement.
-        public bool AttackHandoffReady;
         // T01 — a host-side preparation step (AttackTarget.PreparationStep): the exact same-hex
         // transfers Provisioning validated against its claims (null when a creation has no first
         // member / a reuse only binds the shell). Execution applies precisely these; it never
@@ -76,7 +69,7 @@ namespace Game.Ai.V2
         // with weaker inputs (commitments:null, session:null), which could legally pick a different
         // — or already-claimed — actor. Default (Tier == None) whenever
         // EconomyExtractionGarrisonArmyId is -1 (nothing deferred).
-        internal ProvisioningManager.GarrisonExtractionCandidate EconomyExtractionPlan;
+        internal ReusableArmySelector.GarrisonExtractionCandidate EconomyExtractionPlan;
         // The FULL preparation decision (composition, donor, real AP, resource stage cost)
         // PlanEconomyCompletion computed against a read-only preview of the not-yet-real container.
         // Execution applies this pinned plan directly — see

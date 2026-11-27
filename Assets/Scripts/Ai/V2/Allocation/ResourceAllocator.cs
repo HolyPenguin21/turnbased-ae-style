@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Cards;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -34,6 +36,11 @@ namespace Game.Ai.V2
         }
 
         public static readonly ResourceVector Zero = new ResourceVector(0f, 0f, 0f, 0f, 0f);
+        // The physical part of a card/build cost (no AP).
+        public static ResourceVector Of(ResourceCost cost) => cost == null
+            ? Zero
+            : new ResourceVector(0f, cost.Get(ResourceType.Human), cost.Get(ResourceType.Energy),
+                cost.Get(ResourceType.Materials), cost.Get(ResourceType.Tech));
         public bool AnyPhysical => Human > AiConfigV2.allocatorSliceEpsilon || Energy > AiConfigV2.allocatorSliceEpsilon
             || Materials > AiConfigV2.allocatorSliceEpsilon || Tech > AiConfigV2.allocatorSliceEpsilon;
 
@@ -526,7 +533,7 @@ namespace Game.Ai.V2
             _state = state;
         }
 
-        public void RegisterProvisionFailure(FundedEntry funded, ProvisionFailure failure)
+        internal void RegisterProvisionFailure(FundedEntry funded, ProvisionFailure failure)
         {
             if (funded?.Mission == null) return;
             StableMissionKey key = StableMissionKey.For(funded.Mission);

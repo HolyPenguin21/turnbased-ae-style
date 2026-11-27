@@ -21,9 +21,6 @@ namespace Game.Ai.V2
     // class; only this snapshot family's slice moved to its own file.
     public static partial class WorldAnalysis
     {
-        private static readonly ResearchProductionMode[] DevModes =
-            { ResearchProductionMode.Research, ResearchProductionMode.Production };
-
         // The ONE Research/Production capability detect. Snapshot-pure: enumerates own facilities
         // (+ the qualifying hero), then every catalog card that passes facility ability + hero +
         // CanAffordCard. Success chance remains a soft EV/ranking input. The enemy-on-hex rule is recorded
@@ -43,7 +40,7 @@ namespace Game.Ai.V2
             // The second slot is relevant only when this player's deck permits a compatible
             // Mutator. Forecasts and execution share OfferedCards' faction/blueprint filters.
             var mutatorOutputs = ctx?.ResearchProductionCatalog == null ? new List<CardDefinition>()
-                : DevModes.SelectMany(mode => ResearchProductionSystem.OfferedCards(
+                : AiArmyRoles.DevelopmentModes.SelectMany(mode => ResearchProductionSystem.OfferedCards(
                     ctx.ResearchProductionCatalog, mode, player))
                     .Where(d => d != null && d.attachmentSlot == AttachmentSlot.Mutator).ToList();
             bool HasMutatorOutput(CardDefinition host) => mutatorOutputs.Any(d => EquipmentSystem.FitsHost(d, host, out _));
@@ -74,7 +71,7 @@ namespace Game.Ai.V2
             foreach (BuildingData b in BuildingRegistry.AllBuildings())
             {
                 if (b == null || b.Owner != player) continue;
-                foreach (ResearchProductionMode mode in DevModes)
+                foreach (ResearchProductionMode mode in AiArmyRoles.DevelopmentModes)
                 {
                     if (!b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
                         continue;
@@ -101,7 +98,7 @@ namespace Game.Ai.V2
             if (catalog != null)
             {
                 rd.CatalogKnown = true;
-                rd.CatalogOutputs = DevModes
+                rd.CatalogOutputs = AiArmyRoles.DevelopmentModes
                     .SelectMany(mode => ResearchProductionSystem.OfferedCards(catalog, mode, player))
                     .Where(card => card != null)
                     .Distinct()

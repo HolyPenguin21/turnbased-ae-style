@@ -197,7 +197,6 @@ namespace Game.Ai.V2
                 AttackTarget = target,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = assault.ActualAp,
-                StealthApReserved = false,
             }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
         }
 
@@ -313,7 +312,6 @@ namespace Game.Ai.V2
                 AttackPreparationAssembly = assembly,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = ap,
-                StealthApReserved = false,
             });
         }
 
@@ -363,7 +361,6 @@ namespace Game.Ai.V2
                 AttackTarget = target,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = ap,
-                StealthApReserved = false,
             });
         }
 
@@ -416,7 +413,6 @@ namespace Game.Ai.V2
                 AttackTarget = target,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = 0f,
-                StealthApReserved = false,
             });
         }
 
@@ -491,7 +487,6 @@ namespace Game.Ai.V2
                 AttackTarget = target,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = check.ActivationAp,
-                StealthApReserved = false,
             });
         }
 
@@ -566,10 +561,8 @@ namespace Game.Ai.V2
                 FocusHex = meetAt,
                 ExecutionHex = meetAt,
                 AttackTarget = target,
-                AttackHandoffReady = atRendezvous,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = check.ActivationAp,
-                StealthApReserved = false,
             });
         }
 

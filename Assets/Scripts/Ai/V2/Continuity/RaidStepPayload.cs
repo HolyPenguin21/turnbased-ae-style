@@ -15,7 +15,6 @@ namespace Game.Ai.V2
         public int? RaidAirSupportArmyId;
         public HexCoord? RaidAirSupportLandingHex;
         public bool RaidAirSupportStrikeSucceeded;
-        public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;
     }
 }

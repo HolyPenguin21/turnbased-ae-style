@@ -93,7 +93,7 @@ namespace Game.Ai.V2
                 Mathf.Max(0, wing.Members.First(u => u.RuntimeId == id).LaunchEnergyCost)) : exec.RequiredEnergy;
             float apEnvelope = funded.Tentative.Ap;
             ResourceCost fuel = new ResourceCost(energy: Mathf.CeilToInt(realEnergy));
-            ResourceVector debit = TradeFunding.PricedVector(player, root, ctx, CostVector(fuel));
+            ResourceVector debit = TradeFunding.PricedVector(player, root, ctx, ResourceVector.Of(fuel));
             float energyEnvelope = funded.PhysicalDraw.Energy;
             if (realAp > apEnvelope + eps || !funded.PhysicalDraw.CoversPhysical(debit, eps))
                 // Round 7 (Problem 3) — report BOTH the real AP and the real Energy this exact air
@@ -144,8 +144,6 @@ namespace Game.Ai.V2
                 ClaimedAp = realAp,
                 ClaimedEnergy = realEnergy,
                 ClaimedPhysical = debit,
-                StealthApReserved = false,
-                RequiresStealth = false,
                 ExecutorKind = exec.ExecutorKind,
                 AircraftRuntimeIds = exec.AircraftRuntimeIds,
             });
@@ -177,7 +175,7 @@ namespace Game.Ai.V2
                 - (session?.EnergyClaimed ?? 0f);
             var fuel = new ResourceCost(energy: Mathf.CeilToInt(Mathf.Max(0f, requiredEnergy)));
             if (requiredEnergy <= current || !TradeFunding.CanFund(player, root, ctx, fuel)) return current;
-            ResourceVector debit = TradeFunding.PricedVector(player, root, ctx, CostVector(fuel));
+            ResourceVector debit = TradeFunding.PricedVector(player, root, ctx, ResourceVector.Of(fuel));
             ResourceVector prior = ResourceVector.Zero;
             foreach (ProvisionedMission mission in session?.Successful.Values ?? Enumerable.Empty<ProvisionedMission>())
                 if (mission.ClaimedEnergy > 0f) prior += mission.ClaimedPhysical;

@@ -15,7 +15,7 @@ using Game.Combat;
 
 namespace Game.Ai.V2
 {
-    public readonly struct ProvisionFailure
+    internal readonly struct ProvisionFailure
     {
         public readonly ProvisionFailureKind Kind;
         public readonly ProvisionDisposition Disposition;
@@ -65,53 +65,29 @@ namespace Game.Ai.V2
             new ProvisionFailure(ProvisionFailureKind.SortieNotWorthwhile, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, d);
     }
 
-    public sealed class ProvisioningResult
+    internal sealed class ProvisioningResult
     {
         public bool Success;
         public ProvisionedMission Provisioned;
         public ProvisionFailure Failure;
-        // Provisioning is normally pure binding. Raid assembly and Economy's same-hex builder
-        // lightening are the transactional exceptions: successful member transfers are versioned once only
-        // after the whole transaction commits. A complete rollback reports no mutation.
-        public bool StateChanged;
-        public int StateVersionAfter = -1;
-        public int TransferredMemberCount;
 
-        // `bumpVersion` lets a caller that is itself the SOLE version-bump owner for its own
-        // execution result (TaskExecutor.StampVersion, during the deferred garrison-extraction
-        // Execution step) suppress this constructor's bump so WorldDeltaLifecycle is bumped exactly once
-        // per real mutation. Every other caller (Provisioning's direct-army path, which has no
-        // separate StampVersion call for this mutation) keeps the default `true`.
-        // `otherMutation` — a committed world change that moved no member (the assault
-        // transaction's commander promotion): versioned exactly like a transfer.
+        // Provisioning is pure binding except the same-hex assault assembly and the Recon garrison
+        // extraction: a committed transfer (or a commander promotion, `otherMutation`) bumps the
+        // world revision once, and the provisioned plan is stamped with the revision it was made at.
         public static ProvisioningResult Ok(ProvisionedMission m, int transferredMemberCount = 0,
-            bool bumpVersion = true, bool otherMutation = false)
+            bool otherMutation = false)
         {
             bool changed = transferredMemberCount > 0 || otherMutation;
-            int version = changed && bumpVersion ? WorldDeltaLifecycle.CommitMutation() : WorldDeltaLifecycle.Current;
+            int version = changed ? WorldDeltaLifecycle.CommitMutation() : WorldDeltaLifecycle.Current;
             if (m != null) m.PlannedAtStateVersion = version;
-            return new ProvisioningResult
-            {
-                Success = true,
-                Provisioned = m,
-                StateChanged = changed,
-                StateVersionAfter = version,
-                TransferredMemberCount = transferredMemberCount,
-            };
+            return new ProvisioningResult { Success = true, Provisioned = m };
         }
 
-        public static ProvisioningResult Fail(ProvisionFailure f,
-            bool stateChanged = false, int transferredMemberCount = 0)
+        // `stateChanged`: a rollback that could not undo every transfer left the world changed.
+        public static ProvisioningResult Fail(ProvisionFailure f, bool stateChanged = false)
         {
-            int version = stateChanged ? WorldDeltaLifecycle.CommitMutation() : WorldDeltaLifecycle.Current;
-            return new ProvisioningResult
-            {
-                Success = false,
-                Failure = f,
-                StateChanged = stateChanged,
-                StateVersionAfter = version,
-                TransferredMemberCount = transferredMemberCount,
-            };
+            if (stateChanged) WorldDeltaLifecycle.CommitMutation();
+            return new ProvisioningResult { Success = false, Failure = f };
         }
     }
 }

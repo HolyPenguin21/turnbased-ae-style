@@ -60,14 +60,14 @@ namespace Game.Ai.V2
                 RecordProvisionFailure(attempt.Proposal, attempt.Failure);
         }
 
-        public void RecordProvisionSuccess(MissionProposal m, ProvisionedMission pm)
+        internal void RecordProvisionSuccess(MissionProposal m, ProvisionedMission pm)
         {
             MissionStepFacts r = MissionStepFactsFor(m);
             r.Provisioned = pm;
             r.PendingFailure = null;
         }
 
-        public void RecordProvisionFailure(MissionProposal m, ProvisionFailure f)
+        internal void RecordProvisionFailure(MissionProposal m, ProvisionFailure f)
         {
             MissionStepFacts r = MissionStepFactsFor(m);
             if (r.Provisioned == null)

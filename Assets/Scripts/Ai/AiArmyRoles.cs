@@ -242,8 +242,9 @@ namespace Game.Ai
             }
         }
 
-        private static readonly ResearchProductionMode[] DevelopmentModes =
-            { ResearchProductionMode.Research, ResearchProductionMode.Production };
+        // The Research/Production modes, in their one evaluation order.
+        public static readonly IReadOnlyList<ResearchProductionMode> DevelopmentModes =
+            new[] { ResearchProductionMode.Research, ResearchProductionMode.Production };
 
         // The modes an own facility on `hex` serves (the operator duties of that hex).
         public static IEnumerable<ResearchProductionMode> FacilityModes(PlayerSetupData player, HexCoord hex)
@@ -257,6 +258,12 @@ namespace Game.Ai
                 if (building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
                     yield return mode;
         }
+
+        // A hero that is still a qualified operator of a working own facility on `hex`: a Development
+        // delivery never takes it from there.
+        public static bool OperatesWorkingFacility(PlayerSetupData player, UnitData hero, HexCoord hex) =>
+            hero != null && FacilityModes(player, hex).Any(mode =>
+                ResearchProductionSystem.ActorStillQualifies(player, hero, hex, mode));
 
         // A hero that operates an own Research/Production facility on `hex`: the facility's
         // role hero standing there (ResearchProductionSystem.FindActors — the same source the

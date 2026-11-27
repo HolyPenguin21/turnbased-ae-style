@@ -164,21 +164,21 @@ namespace Game.Ai.V2
             // would move into, the FULL preparation plan pinned against a read-only preview of it,
             // or why it fails — with the AP it would have needed when funding is the only obstacle.
             // Shared by the selection loop and the FoundBase diagnostic trace.
-            (ArmyData Garrison, GarrisonExtractionCandidate Plan, EconomyCompletionPlan Prep,
+            (ArmyData Garrison, ReusableArmySelector.GarrisonExtractionCandidate Plan, EconomyCompletionPlan Prep,
                 float? ShortfallAp, string Detail) EvaluateGarrisonCandidate(
                     EconomyBuilderSelection.EconomyBuilderChoice candidate)
             {
                 ArmyData g = AiV2Util.ResolveArmy(player, candidate.Route.ArmyId);
                 if (g == null)
                     return (null, default, default, null, "garrison_not_resolved");
-                GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
-                    player, g, actorCommitments, session, root, ecoApEnvelopeRemaining,
+                ReusableArmySelector.GarrisonExtractionCandidate plan = ReusableArmySelector.ResolveGarrisonExtraction(
+                    player, g, actorCommitments, session.ClaimedArmyIds, root, ecoApEnvelopeRemaining,
                     preparationSite: PreparationSite,
                     exactEconomyHeroId: candidate.Route.BuilderHeroRuntimeId);
-                if (plan.Tier == GarrisonExtractionTier.None)
+                if (plan.Tier == ReusableArmySelector.GarrisonExtractionTier.None)
                     // plan.ApCost is 0f only for a true non-existence (no sparable hero); a
                     // positive value is the cheapest tier's real cost, rejected purely for
-                    // exceeding ecoApEnvelopeRemaining (see ResolveGarrisonExtractionCandidate).
+                    // exceeding ecoApEnvelopeRemaining (see ReusableArmySelector.ResolveGarrisonExtraction).
                     return (g, plan, default, plan.ApCost > 0f ? plan.ApCost : (float?)null,
                         plan.Reason);
                 // Cheap pre-check before paying for a full composition search: ONLY the one cost
@@ -233,7 +233,7 @@ namespace Game.Ai.V2
             EconomyBuilderSelection.EconomyBuilderChoice builderChoice = null;
             ArmyData hero = null;
             ArmyData deferredGarrison = null;
-            GarrisonExtractionCandidate deferredPlan = default;
+            ReusableArmySelector.GarrisonExtractionCandidate deferredPlan = default;
             EconomyCompletionPlan deferredPreparation = default;
             // The cheapest garrison-extraction cost seen across every candidate that was
             // structurally legal but rejected only for exceeding the AP envelope/pool. If the loop
@@ -317,7 +317,7 @@ namespace Game.Ai.V2
         private static ProvisioningResult GarrisonExtractionResult(PlayerSetupData player,
             AiTurnContext ctx, FundedEntry funded, StableMissionKey key, EconomyMissionTarget target,
             MissionIntentKey currentIntentKey, ArmyData deferredGarrison,
-            GarrisonExtractionCandidate deferredPlan, EconomyCompletionPlan deferredPreparation)
+            ReusableArmySelector.GarrisonExtractionCandidate deferredPlan, EconomyCompletionPlan deferredPreparation)
         {
             MissionProposal m = funded.Mission;
             // Preflight the canonical Continuity site lease before spending a builder
