@@ -59,15 +59,10 @@ namespace Game.EditorTests
         FullHand,           // the hand at its capacity: Phase B never draws while it is full
         PendingContactFar,  // a far weak army whose discovery is pending: the loop takes the Contact fact
         GarrisonOnly,       // the garrison alone, no enemy: no defence objective, no mission step moves AP
-        // Provisioning cases (actor binding: garrison extraction, same-hex assembly, sortie):
-        GarrisonRecce,      // the only Recce stands in the garrison beside an empty shell: Recon may extract it
-        DonorOnHost,        // a second army on the field army's hex, a weak enemy seen: the assault may assemble
-        GarrisonSortie,     // no field army, a weak enemy next to the Citadel, a strong garrison: a sortie
-        GarrisonBuilder,    // the hero in the garrison, a resource hex in sight: Economy may extract a builder
     }
 
     // One stand turn: the world of a case, its run and its checks. Shared by both modes.
-    internal sealed class TurnStandCase : IDisposable
+    internal sealed partial class TurnStandCase : IDisposable
     {
         internal const string CatalogPath = "Assets/Cards/StartingDeckCatalog.asset";
         private const string GameConfigPath = "Assets/Config/GameConfig.asset";
@@ -81,7 +76,12 @@ namespace Game.EditorTests
         private HexSelectionController _selection;
 
         internal readonly TurnScenario Scenario;
+        // A family case (TurnStandFamilies.cs) instead of a Scenario; null for the scenario cases.
+        internal readonly TurnFamilyCase Family;
         internal readonly string OwnDeck, EnemyDeck;
+        // The turn being played (1 for a scenario case; 1..Family.Turns for a family case).
+        internal int Turn = 1;
+        internal int Turns => Family?.Turns ?? 1;
         internal PlayerSetupData Me, Foe;
         internal PlayerRoot Root;
         internal AiHandData Hand;
@@ -90,8 +90,14 @@ namespace Game.EditorTests
         private HashSet<UnitData> _unitsBefore;
 
         internal TurnStandCase(string ownDeck, string enemyDeck, TurnScenario scenario, bool play)
+            : this(ownDeck, enemyDeck, play) => Scenario = scenario;
+
+        internal TurnStandCase(string ownDeck, string enemyDeck, TurnFamilyCase family, bool play)
+            : this(ownDeck, enemyDeck, play) => Family = family;
+
+        private TurnStandCase(string ownDeck, string enemyDeck, bool play)
         {
-            OwnDeck = ownDeck; EnemyDeck = enemyDeck; Scenario = scenario; _play = play;
+            OwnDeck = ownDeck; EnemyDeck = enemyDeck; _play = play;
             Game.Setup.MatchStateInventory.ResetForNewMatch();
             AiDebugLog.LogToUnityConsole = true;
             Application.logMessageReceived += Capture;
@@ -111,7 +117,10 @@ namespace Game.EditorTests
         private void Capture(string message, string stack, LogType type)
         {
             if (message != null && message.Contains("[AI]"))
+            {
                 Lines.Add(message);
+                CaptureStep(message);
+            }
             if (type == LogType.Exception)
                 Lines.Add("EXCEPTION " + message);
         }
@@ -123,7 +132,7 @@ namespace Game.EditorTests
                     yield return (own, enemy, s);
         }
 
-        internal string Name => $"{Scenario}.{OwnDeck.Replace(' ', '_')}";
+        internal string Name => $"{(Family != null ? Family.Name : Scenario.ToString())}.{OwnDeck.Replace(' ', '_')}";
 
         // ---- world ------------------------------------------------------------------------------
         // Builds the case. Returns false with Ignored set when the decks cannot stage it.
@@ -133,13 +142,15 @@ namespace Game.EditorTests
             StartingDeckCatalog catalog = UnityEditor.AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>(CatalogPath);
             StartingDeck own = catalog.aiDecks.First(d => d != null && d.deckName == OwnDeck);
             StartingDeck foeDeck = catalog.aiDecks.First(d => d != null && d.deckName == EnemyDeck);
-            UnityEngine.Random.InitState(OwnDeck.GetHashCode() ^ (int)scenario * 7919);
+            UnityEngine.Random.InitState(OwnDeck.GetHashCode() ^ (Family != null ? Family.Seed : (int)scenario * 7919));
 
             var mapObject = new GameObject("turn stand map");
             _objects.Add(mapObject);
             HexMap map = mapObject.AddComponent<HexMap>();
             var hexes = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
-            const int radius = 6;
+            // Families get room for distances the scenario map has no space for (relief beyond the
+            // Citadel's threat horizon).
+            int radius = Family != null ? 8 : 6;
             for (int q = -radius; q <= radius; q++)
                 for (int r = -radius; r <= radius; r++)
                     if (HexGridMath.Distance(new HexCoord(0, 0), new HexCoord(q, r)) <= radius)
@@ -156,8 +167,11 @@ namespace Game.EditorTests
                 _objects.Add(selectionObject);
                 _selection = selectionObject.AddComponent<HexSelectionController>();
                 _selection.enabled = false;
+                // The scene wires the selection's map and game config (extraction sites read it).
                 typeof(HexSelectionController).GetField("map", BindingFlags.Instance | BindingFlags.NonPublic)
                     .SetValue(_selection, map);
+                typeof(HexSelectionController).GetField("gameConfig", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(_selection, config);
             }
 
             Me = new PlayerSetupData { Nickname = "Stand", ColorIndex = 0, Faction = own.faction,
@@ -167,8 +181,8 @@ namespace Game.EditorTests
             Game.Core.GameSession.Players = new List<PlayerSetupData> { Me, Foe };
             Root = NewRoot(Me);
             NewRoot(Foe);
-            Citadel(catalog, Me, new HexCoord(0, 0));
-            Citadel(catalog, Foe, new HexCoord(6, 0));
+            Base(catalog, Me, new HexCoord(0, 0), citadel: true);
+            Base(catalog, Foe, new HexCoord(6, 0), citadel: true);
 
             List<CardDefinition> ownCards = Cards(catalog, own);
             List<CardDefinition> foeCards = Cards(catalog, foeDeck);
@@ -183,47 +197,6 @@ namespace Game.EditorTests
             }
             CardDefinition recce = ownCards.FirstOrDefault(c => c.cardType == CardType.Unit && !c.isAviation
                 && AbilityParams.UnitHasAnyRecce(UnitData.FromDefinition(c, Me)));
-            if (scenario == TurnScenario.GarrisonRecce && recce == null)
-            {
-                Ignored = $"{OwnDeck}: no ground Recce";
-                return false;
-            }
-
-            bool fieldArmy = scenario != TurnScenario.NoFieldArmyThreat && scenario != TurnScenario.GarrisonOnly
-                && scenario != TurnScenario.GarrisonSortie && scenario != TurnScenario.GarrisonBuilder;
-            switch (scenario)
-            {
-                case TurnScenario.GarrisonRecce:
-                    Army(Me, new HexCoord(0, 0), true, bodies[0], recce);
-                    break;
-                case TurnScenario.GarrisonSortie:
-                    Army(Me, new HexCoord(0, 0), true, bodies[0], bodies[bodies.Count - 1],
-                        bodies[bodies.Count - 1], bodies[bodies.Count - 1]);
-                    break;
-                case TurnScenario.GarrisonBuilder:
-                    Army(Me, new HexCoord(0, 0), true, bodies[0], hero);
-                    break;
-                default:
-                    Army(Me, new HexCoord(0, 0), true, bodies[0]);
-                    break;
-            }
-            if (fieldArmy)
-                Army(Me, new HexCoord(1, 0), false, hero, bodies[bodies.Count / 2], bodies[bodies.Count - 1]);
-            if (recce != null && scenario != TurnScenario.GarrisonOnly && scenario != TurnScenario.GarrisonRecce)
-                Army(Me, new HexCoord(0, 1), false, recce);
-            if (scenario == TurnScenario.GarrisonRecce)
-                Army(Me, new HexCoord(0, 0), false);
-            if (scenario == TurnScenario.DonorOnHost)
-                Army(Me, new HexCoord(1, 0), false, bodies[0], bodies[bodies.Count / 2]);
-            if (scenario == TurnScenario.GarrisonBuilder)
-                HexResourceBonusRegistry.Set(new HexCoord(2, -1), new ResourceYields { materials = 3 });
-            if (scenario == TurnScenario.ZeroApThreat)
-                Root.ActionPoints = 0;
-            if (scenario == TurnScenario.RichThreat)
-                foreach (ResourceType type in new[] { ResourceType.Human, ResourceType.Energy,
-                             ResourceType.Materials, ResourceType.Tech })
-                    Root.AddResource(type, 34);
-
             // The context AiTurnContext.From builds in a match: the scene hand's draw price, start
             // size and capacity, the game config and the Research/Production catalog.
             SceneHand sceneHand = SceneHand.Read();
@@ -237,11 +210,31 @@ namespace Game.EditorTests
             };
             Hand = AiHandRegistry.GetOrCreate(Me, catalog, Ctx.StartingHandSize, Ctx.HandCapacity);
             Hand.SetCurrentTurn(TurnNumber);
+            List<CardDefinition> foeBodies = GroundBodies(foeCards, Foe);
+            if (Family != null)
+            {
+                bool staged = StageFamily(new FamilyKit(catalog, ownCards, bodies, foeBodies, hero, recce, Me));
+                _unitsBefore = OwnUnits(Me);
+                return staged;
+            }
+
+            bool fieldArmy = scenario != TurnScenario.NoFieldArmyThreat && scenario != TurnScenario.GarrisonOnly;
+            Army(Me, new HexCoord(0, 0), true, bodies[0]);
+            if (fieldArmy)
+                Army(Me, new HexCoord(1, 0), false, hero, bodies[bodies.Count / 2], bodies[bodies.Count - 1]);
+            if (recce != null && scenario != TurnScenario.GarrisonOnly)
+                Army(Me, new HexCoord(0, 1), false, recce);
+            if (scenario == TurnScenario.ZeroApThreat)
+                Root.ActionPoints = 0;
+            if (scenario == TurnScenario.RichThreat)
+                foreach (ResourceType type in new[] { ResourceType.Human, ResourceType.Energy,
+                             ResourceType.Materials, ResourceType.Tech })
+                    Root.AddResource(type, 34);
+
             if (scenario == TurnScenario.FullHand)
                 while (Hand.HasFreeSlot && Hand.HasCardsLeftToDraw)
                     Hand.DrawOne();
 
-            List<CardDefinition> foeBodies = GroundBodies(foeCards, Foe);
             if (scenario >= TurnScenario.HostAdjacent)
             {
                 if (!PlaceExpectationEnemies(foeBodies))
@@ -264,8 +257,6 @@ namespace Game.EditorTests
             }
             if (scenario == TurnScenario.PendingHand)
                 StrategicInterruptRegistry.MarkHandOpportunity(Me, TurnNumber);
-            if (scenario == TurnScenario.GarrisonBuilder)
-                AiMapMemory.RefreshVisibleForTest(Me);
 
             _unitsBefore = OwnUnits(Me);
             return true;
@@ -275,8 +266,7 @@ namespace Game.EditorTests
         private bool PlaceExpectationEnemies(List<CardDefinition> foeBodies)
         {
             TurnScenario scenario = Scenario;
-            if (scenario == TurnScenario.FullHand || scenario == TurnScenario.GarrisonOnly
-                || scenario == TurnScenario.GarrisonRecce || scenario == TurnScenario.GarrisonBuilder)
+            if (scenario == TurnScenario.FullHand || scenario == TurnScenario.GarrisonOnly)
                 return true;
             if (foeBodies.Count == 0)
             {
@@ -302,12 +292,6 @@ namespace Game.EditorTests
                     break;
                 case TurnScenario.PendingContactFar:
                     seen.Add(Army(Foe, new HexCoord(-3, -3), false, weak, weak));
-                    break;
-                case TurnScenario.DonorOnHost:
-                    seen.Add(Army(Foe, new HexCoord(3, 0), false, weak, weak));
-                    break;
-                case TurnScenario.GarrisonSortie:
-                    seen.Add(Army(Foe, new HexCoord(1, -1), false, weak));
                     break;
             }
             foreach (ArmyData enemy in seen)
@@ -358,13 +342,21 @@ namespace Game.EditorTests
             return root;
         }
 
-        private static void Citadel(StartingDeckCatalog catalog, PlayerSetupData owner, HexCoord hex)
+        // The base a match places (CitadelSetupController.FinalizePlayer for the Citadel): the
+        // faction's Base building, its airfield container and, for the Citadel, the prison.
+        private BuildingData Base(StartingDeckCatalog catalog, PlayerSetupData owner, HexCoord hex, bool citadel)
         {
             CardDefinition baseCard = catalog.GetCatalog(owner.Faction)?.ForType(CardType.Base).FirstOrDefault();
             BuildingData building = BuildingData.FromDefinition(baseCard, hex, owner)
                 ?? new BuildingData { Hex = hex, Owner = owner, IsBase = true, Defense = 1 };
-            building.IsStartingCitadel = true;
+            building.IsStartingCitadel = citadel;
             BuildingRegistry.Register(hex, building);
+            ArmyData airfield = Game.Aviation.AviationActions.EnsureAirfield(_selection, owner, hex);
+            if (_play && airfield != null && airfield.Controller == null)
+                AttachController(airfield);
+            if (citadel)
+                ArmyRegistry.Register(new ArmyData { Name = "Prison", Owner = owner, Hex = hex, IsPrison = true });
+            return building;
         }
 
         private static List<CardDefinition> Cards(StartingDeckCatalog catalog, StartingDeck deck) =>
@@ -380,9 +372,21 @@ namespace Game.EditorTests
         // In execution mode every stand army gets a scene controller with instant steps.
         private ArmyData Army(PlayerSetupData owner, HexCoord hex, bool garrison, params CardDefinition[] cards)
         {
+            // The game's capacity rule (ArmyData.RosterFits): a unit that would not fit stays out.
             var army = new ArmyData { Owner = owner, Hex = hex, IsGarrison = garrison };
+            var roster = new List<UnitData>();
             foreach (CardDefinition c in cards)
-                army.AddMemberSorted(UnitData.FromDefinition(c, owner));
+            {
+                UnitData unit = UnitData.FromDefinition(c, owner);
+                List<UnitData> next = ArmyData.ProjectAdd(roster, unit, garrison);
+                if (!ArmyData.RosterFits(next, garrison))
+                {
+                    Lines.Add($"[stand] {owner.Nickname} army at ({hex.Q},{hex.R}) is full: {c.displayName} left out");
+                    continue;
+                }
+                roster = next;
+                army.AddMemberSorted(unit);
+            }
             if (_play)
                 AttachController(army);
             ArmyRegistry.Register(army);
@@ -458,23 +462,59 @@ namespace Game.EditorTests
             }
         }
 
-        // ---- checks and digest ------------------------------------------------------------------
-        internal List<string> Problems(Exception failure, bool unfinished)
+        // ---- turns --------------------------------------------------------------------------------
+        private readonly List<string> _turnProblems = new List<string>();
+        private readonly StringBuilder _turnDigests = new StringBuilder();
+        private int _turnFirstLine;
+
+        // The round transition of GameTurnController before every turn after the first (resource
+        // income, initiative purchases, turn order, initiative AP), then the player's own turn start
+        // (StrategicTurnEffects.BeginPlayer: movement, activation, stealth flags, re-observation).
+        // The foe stays passive: it gets its round effects, never a turn.
+        internal void BeginTurn(int turn)
         {
-            var problems = new List<string>();
-            if (failure != null) problems.Add("exception: " + failure);
-            if (unfinished) problems.Add("the turn did not finish");
-            if (Root.ActionPoints < 0) problems.Add($"AP below zero: {Root.ActionPoints}");
+            Turn = turn;
+            Ctx.TurnNumber = turn;
+            if (turn > 1)
+            {
+                List<PlayerSetupData> players = Game.Core.GameSession.Players;
+                List<PlayerSetupData> active = Game.Turns.StrategicTurnEffects.PrepareRound(Ctx.Map, Ctx.GameConfig, players);
+                Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(active, Ctx.Map,
+                    Ctx.StartingDeckCatalog, turn);
+                Game.Turns.StrategicTurnEffects.ApplyTurnOrder(Game.Turns.TurnOrderResolver.Resolve(active).Order, players);
+            }
+            Game.Turns.StrategicTurnEffects.BeginPlayer(Me);
+            _turnFirstLine = Lines.Count;
+            Lines.Add($"[stand] == turn {turn}");
+        }
+
+        // The player's turn end (StrategicTurnEffects.EndPlayer: aviation end of turn, empty armies
+        // disbanded, regeneration), the turn's boundaries and its digest block.
+        internal void EndTurn(Exception failure, bool unfinished)
+        {
+            Game.Turns.StrategicTurnEffects.EndPlayer(Me, _selection);
+            if (failure != null) _turnProblems.Add($"turn {Turn}: exception: " + failure);
+            if (unfinished) _turnProblems.Add($"turn {Turn}: the turn did not finish");
+            if (Root.ActionPoints < 0) _turnProblems.Add($"turn {Turn}: AP below zero: {Root.ActionPoints}");
+            if (StrategicResourceReservationLedger.HasAny(Me, Turn))
+                _turnProblems.Add($"turn {Turn}: a reservation survived the turn");
+            if (!unfinished && AiTurnSession.PeekActive(Me) != null)
+                _turnProblems.Add($"turn {Turn}: the turn session is still active");
+            if (Turns > 1)
+                _turnDigests.AppendLine($"== turn {Turn}");
+            _turnDigests.Append(Digest(failure, _turnFirstLine));
+        }
+
+        // ---- checks and digest ------------------------------------------------------------------
+        internal List<string> Problems()
+        {
+            var problems = new List<string>(_turnProblems);
             problems.AddRange(Lines.Where(l => l.Contains("[AI][V2][INVARIANT]")
                 || l.Contains("[Invariant] ERROR") || l.Contains("][ERROR]") || l.StartsWith("EXCEPTION")));
-            if (StrategicResourceReservationLedger.HasAny(Me, TurnNumber))
-                problems.Add("a reservation survived the turn");
-            if (!unfinished && AiTurnSession.PeekActive(Me) != null)
-                problems.Add("the turn session is still active");
             List<UnitData> lost = _unitsBefore.Except(OwnUnits(Me)).ToList();
             if (lost.Count > 0)
                 problems.Add("units lost: " + string.Join(", ", lost.Select(u => u.Name)));
-            problems.AddRange(Expectations());
+            problems.AddRange(Family != null ? FamilyExpectations() : Expectations());
             return problems;
         }
 
@@ -525,10 +565,13 @@ namespace Game.EditorTests
         }
 
         // The state after the turn and the turn's control lines; timings and trace ids are left out.
-        internal string Digest(Exception failure)
+        internal string Digest() =>
+            $"case {(Family != null ? Family.Name : Scenario.ToString())} {OwnDeck} vs {EnemyDeck}\n" + _turnDigests;
+
+        private string Digest(Exception failure, int firstLine)
         {
+            List<string> lines = Lines.Skip(firstLine).ToList();
             var sb = new StringBuilder();
-            sb.AppendLine($"case {Scenario} {OwnDeck} vs {EnemyDeck}");
             sb.AppendLine($"failure {(failure == null ? "-" : failure.GetType().Name + ": " + failure.Message)}");
             sb.AppendLine($"ap {Root.ActionPoints} H{Root.GetResource(ResourceType.Human)} "
                 + $"E{Root.GetResource(ResourceType.Energy)} M{Root.GetResource(ResourceType.Materials)} "
@@ -550,8 +593,10 @@ namespace Game.EditorTests
                 "][ERROR]", "end-of-turn facts",
             };
             foreach (string m in markers)
-                sb.AppendLine($"lines '{m}' {Lines.Count(l => l.Contains(m))}");
-            foreach (string l in Lines.Where(l => l.Contains("[INVARIANT]") || l.Contains("ERROR")
+                sb.AppendLine($"lines '{m}' {lines.Count(l => l.Contains(m))}");
+            foreach ((int turn, string task) in Steps.Where(x => x.Turn == Turn))
+                sb.AppendLine("step " + task);
+            foreach (string l in lines.Where(l => l.Contains("[INVARIANT]") || l.Contains("ERROR")
                          || l.StartsWith("EXCEPTION")))
                 sb.AppendLine("! " + l);
             return sb.ToString();
@@ -566,6 +611,9 @@ namespace Game.EditorTests
                 dir = Path.Combine(dir, subfolder);
             Directory.CreateDirectory(dir);
             File.WriteAllText(Path.Combine(dir, Name + ".txt"), digest);
+            // The case's AI lines, for reading one case (not compared).
+            Directory.CreateDirectory(Path.Combine(dir, "lines"));
+            File.WriteAllLines(Path.Combine(dir, "lines", Name + ".txt"), Lines);
         }
     }
 
@@ -584,13 +632,15 @@ namespace Game.EditorTests
             using var stand = new TurnStandCase(ownDeck, enemyDeck, scenario, play: false);
             if (!stand.Build())
                 Assert.Ignore(stand.Ignored);
+            stand.BeginTurn(1);
             Exception failure = null;
             try { TurnStandCase.Drain(AiTurnController.RunTurn(stand.Me, stand.Ctx, null)); }
             catch (Exception e) { failure = e; }
+            stand.EndTurn(failure, unfinished: false);
 
-            string digest = stand.Digest(failure);
+            string digest = stand.Digest();
             stand.WriteDigest(digest, null);
-            Assert.That(stand.Problems(failure, unfinished: false), Is.Empty, digest);
+            Assert.That(stand.Problems(), Is.Empty, digest);
         }
     }
 
@@ -614,40 +664,49 @@ namespace Game.EditorTests
             yield return new ExitPlayMode();
         }
 
-        [UnityTest]
+        [UnityTest, Timeout(3600000)]
         public IEnumerator TurnsExecute()
         {
             string filter = Environment.GetEnvironmentVariable("TURN_STAND_CASES");
             var report = new List<string>();
             int ran = 0;
-            foreach ((string own, string enemy, TurnScenario scenario) in TurnStandCase.All())
+            var cases = TurnStandCase.All().Select(c => (c.Own, c.Enemy, Scenario: (TurnScenario?)c.Scenario,
+                    Family: (TurnFamilyCase)null))
+                .Concat(TurnStandCase.Families().Select(c => (c.Own, c.Enemy, Scenario: (TurnScenario?)null, c.Family)));
+            foreach ((string own, string enemy, TurnScenario? scenario, TurnFamilyCase family) in cases)
             {
-                string name = $"{scenario}.{own.Replace(' ', '_')}";
-                if (!string.IsNullOrEmpty(filter) && !System.Text.RegularExpressions.Regex.IsMatch(name, filter))
-                    continue;
-                var stand = new TurnStandCase(own, enemy, scenario, play: true);
+                var stand = family != null ? new TurnStandCase(own, enemy, family, play: true)
+                    : new TurnStandCase(own, enemy, scenario.Value, play: true);
                 try
                 {
+                    if (!string.IsNullOrEmpty(filter) && !System.Text.RegularExpressions.Regex.IsMatch(stand.Name, filter))
+                        continue;
                     if (!stand.Build())
                         continue;
                     ran++;
-                    var stepper = new TurnStandCase.FrameStepper(AiTurnController.RunTurn(stand.Me, stand.Ctx, null));
-                    int frames = 0;
-                    while (true)
+                    for (int turn = 1; turn <= stand.Turns; turn++)
                     {
-                        stand.AttachMarkers();
-                        stepper.Tick();
-                        if (stepper.Done || ++frames >= MaxFramesPerTurn)
-                            break;
+                        stand.BeginTurn(turn);
+                        var stepper = new TurnStandCase.FrameStepper(AiTurnController.RunTurn(stand.Me, stand.Ctx, null));
+                        int frames = 0;
+                        while (true)
+                        {
+                            stand.AttachMarkers();
+                            stepper.Tick();
+                            if (stepper.Done || ++frames >= MaxFramesPerTurn)
+                                break;
+                            yield return null;
+                        }
+                        // Movement presentation settles on the following frame.
                         yield return null;
+                        stand.EndTurn(stepper.Failure, unfinished: !stepper.Done);
+                        if (stepper.Failure != null || !stepper.Done)
+                            break;
                     }
-                    // Movement presentation settles on the following frame.
-                    yield return null;
-                    string digest = stand.Digest(stepper.Failure);
-                    stand.WriteDigest(digest, "play");
-                    List<string> problems = stand.Problems(stepper.Failure, unfinished: !stepper.Done);
+                    stand.WriteDigest(stand.Digest(), "play");
+                    List<string> problems = stand.Problems();
                     if (problems.Count > 0)
-                        report.Add($"{name}: " + string.Join(" | ", problems));
+                        report.Add($"{stand.Name}: " + string.Join(" | ", problems));
                 }
                 finally
                 {
