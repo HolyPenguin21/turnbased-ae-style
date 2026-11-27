@@ -259,8 +259,13 @@ namespace Game.Ai.V2
         {
             s.EndOfTurn = true;
             s.Stage = TurnStage.Tempo;
+            // An operational fact opens the pass and resets the no-progress count, as after a Phase B
+            // round (TempoRoundVerdict): a pass the last one closed for no progress may run again.
             if (facts.Operational != StrategicInvalidationReason.None)
+            {
+                s.NoProgressCycles = 0;
                 OpenPass(s, admission, AdmissionCause.EndOfTurnFacts);
+            }
             IEnumerator drive = Drive(s, admission, tempo, null);
             while (drive.MoveNext())
                 yield return drive.Current;

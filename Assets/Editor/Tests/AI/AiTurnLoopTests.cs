@@ -316,6 +316,25 @@ namespace Game.EditorTests
             }, RunWithEndOfTurn(sc.Clone(), end, operational: true));
         }
 
+        // The last pass closed for no progress: the end-of-turn facts still get their admission step,
+        // the count is reset exactly as after a Phase B round that opens a pass.
+        [Test]
+        public void EndOfTurnFactsRunAfterAPassClosedForNoProgress()
+        {
+            var sc = new Scenario();
+            sc.Iterations.Enqueue(new IterationScript { Kind = IterationKind.MissionStep, Progress = false });
+            sc.Iterations.Enqueue(new IterationScript { Kind = IterationKind.MissionStep, Progress = false });
+            sc.Rounds.Enqueue(new TempoRoundOutcome(false, false, false, false));
+            var end = new Scenario();
+            end.Iterations.Enqueue(new IterationScript { Kind = IterationKind.StopNoTrigger, Progress = true });
+            end.Rounds.Enqueue(new TempoRoundOutcome(false, false, false, false));
+            List<string> trace = RunWithEndOfTurn(sc.Clone(), end, operational: true);
+            int open = trace.FindIndex(l => l.StartsWith("begin cause=EndOfTurnFacts"));
+            Assert.That(open, Is.GreaterThan(0), string.Join(" | ", trace));
+            StringAssert.StartsWith("iter StopNoTrigger", trace[open + 1], string.Join(" | ", trace));
+            StringAssert.Contains("np=0", trace[open], "the pass opens with a reset no-progress count");
+        }
+
         [Test]
         public void EndOfTurnFactsWithoutAnOperationalShareRunOnlyOneRound()
         {
