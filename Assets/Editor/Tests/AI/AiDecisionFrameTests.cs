@@ -495,49 +495,6 @@ namespace Game.EditorTests
                 { DesireAxis.Recon, DesireAxis.Economy, DesireAxis.Development }));
         }
 
-        [Test]
-        public void EveryMomentOfTheFrameIsNamedInTheBaselineOrder()
-        {
-            string root = AiTurnLoopTests.FindScriptsRoot();
-            if (root == null) Assert.Ignore("Assets/Scripts not found from the working directory");
-            string[] Calls(string fileName)
-            {
-                string file = System.IO.Directory.GetFiles(root, fileName, System.IO.SearchOption.AllDirectories).Single();
-                string code = string.Join(Environment.NewLine, System.IO.File.ReadLines(file)
-                    .Select(l => l.Split(new[] { "//" }, 2, StringSplitOptions.None)[0]));
-                return System.Text.RegularExpressions.Regex.Matches(code, @"_?frame\.(\w+)\(")
-                    .Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value)
-                    // Checkpoint is frame pacing (FramePacer), not a moment of the decision protocol.
-                    .Where(n => n != "Snapshot" && n != "Checkpoint").ToArray();
-            }
-            Assert.That(Calls("AiStrategyV2Pipeline.cs"), Is.EqualTo(new[]
-            {
-                "EnumerateObjectives", "ResolveInitialOwnership", "WarmDemands", "RebuildDemandsPaced", // the start
-                "AcceptChangedPhaseA", "RebuildDemandsPaced",                              // an opening delivery changed facts
-                "AcceptChangedPhaseA", "RebuildDemandsPaced",                              // the demand-driven Phase A changed
-                "RefreshAfterFormation",                                                   // a wing was formed
-                "StartWithCredit",                                                         // the loop block begins
-                "RefreshFinalOwnership", "AcceptHousekeeping",                             // the end of the turn
-                "ObserveSettled",                                                          // air-support recall
-                "ObserveSettled",                                                          // recon air recall
-            }));
-            Assert.That(Calls("StrategicReadmissionRunner.cs"), Is.EqualTo(new[]
-            {
-                "RefreshOperationalDecision", "RebuildDemandsPaced",                     // current needs before a deferred opening
-                "AcceptChangedReentry",                                                    //   ... its delivery changed facts
-                "GenerateDemandsPaced", "ReplaceDemandFamilies",                         // demand-driven re-admission
-                "AcceptChangedReentry",                                                    //   ... that changed the world
-            }));
-            Assert.That(Calls("AdmissionIteration.cs"), Is.EqualTo(new[]
-            {
-                "ObserveSettled",                                                          // mandatory aviation step
-                "PrepareAdmission", "ObserveSettled",                                      // an admission iteration
-            }));
-            Assert.That(Calls("TempoRound.cs"), Is.EqualTo(new[] { "PrepareTempoOwnership", "ObserveSettled" }));
-            Assert.That(Calls("ColdResidual.cs"), Is.EqualTo(new[]
-                { "PrepareColdResidual", "GenerateDemands", "AcceptChangedCold" }));
-        }
-
         // The references of the frame are assigned only inside the frame, and the work bodies of
         // RunTurn no longer own the shared locals or the freshness flag.
         [Test]

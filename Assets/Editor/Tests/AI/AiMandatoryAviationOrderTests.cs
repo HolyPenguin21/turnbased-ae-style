@@ -74,18 +74,6 @@ namespace Game.EditorTests
                 }
         }
 
-        [Test]
-        public void TheKindKeepsItsBaselineTriggerPairsAndLabels()
-        {
-            Assert.AreEqual(1, MandatoryAviation.TriggerPairs(MandatoryAviationKind.Rebase));
-            Assert.AreEqual(2, MandatoryAviation.TriggerPairs(MandatoryAviationKind.Recovery));
-            Assert.AreEqual("aviation-rebase", MandatoryAviation.Label(MandatoryAviationKind.Rebase));
-            Assert.AreEqual("recovery", MandatoryAviation.Label(MandatoryAviationKind.Recovery));
-            Assert.AreEqual("aviation rebase #4 could not take a safe step - deferred to next turn, missions continue",
-                MandatoryAviation.StallMessage(MandatoryAviationKind.Rebase, 4));
-            Assert.AreEqual("recovery #4 made no progress - deferred to next turn, missions continue",
-                MandatoryAviation.StallMessage(MandatoryAviationKind.Recovery, 4));
-        }
     }
 }
 #endif

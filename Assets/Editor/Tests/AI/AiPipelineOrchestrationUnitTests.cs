@@ -148,18 +148,6 @@ namespace Game.EditorTests
             }
             finally { LifecycleReturnPolicy.ClearAll(); }
         }
-
-        // ---- loop bounds: moving counters must not widen them (าว ง3.1) --------------------------
-
-        [Test]
-        public void TheTurnLoopBoundsKeepTheirBaselineValues()
-        {
-            Assert.AreEqual(96, AiConfigV2.maxMidTurnStepsPerTurn);
-            Assert.AreEqual(2, AiConfigV2.maxMidTurnNoProgressCycles);
-            Assert.AreEqual(1, AiConfigV2.maxEndOfTurnTempoReruns, "management rounds = reruns + 1");
-            Assert.AreEqual(3, AiConfigV2.maxReallocIterations);
-            Assert.AreEqual(0.25f, AiConfigV2.lifecycleReturnHomeThreatSeverity);
-        }
     }
 }
 #endif

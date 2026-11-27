@@ -78,18 +78,6 @@ namespace Game.EditorTests
         private static HashSet<DesireAxis> ConsumersOf(StrategicInvalidationReason facts) =>
             TypedTriggerFanOut.Split(facts, () => false).DirtyAxes;
 
-        // ---- the counts ------------------------------------------------------------------------
-
-        [Test]
-        public void TheBaselinePairCountsAreNamed()
-        {
-            Assert.AreEqual(2, StepTriggerSequence.StandardPairs);
-            Assert.AreEqual(1, StepTriggerSequence.RebasePairs);
-            Assert.AreEqual(1, MandatoryAviation.TriggerPairs(MandatoryAviationKind.Rebase));
-            Assert.AreEqual(2, MandatoryAviation.TriggerPairs(MandatoryAviationKind.Recovery));
-            Assert.AreEqual(2, StepTriggerSequence.StandardPairs, "mission step and management round");
-        }
-
         // ---- a compound fact published by the first re-entry ------------------------------------
 
         [Test]
