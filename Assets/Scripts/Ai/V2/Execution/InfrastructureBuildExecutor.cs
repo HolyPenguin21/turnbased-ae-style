@@ -29,6 +29,8 @@ namespace Game.Ai.V2
         // A paid stand-alone Base-level step (Development CapacityUnlock): a real, successful action that
         // is NOT a facility, a played card or a new building. It never satisfies a "facility is ready" demand.
         public bool CapacityUnlocked;
+        // A Base level bought for a Facility's slot; it stays bought when the placement then fails.
+        public bool BaseLevelBought;
         public float ApSpent;
         public bool StateChanged;
         // DEV path plays a CardType.Facility card out of hand; the ECO extraction path is a
@@ -139,11 +141,11 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2]   infra - action rejected: {r.FailReason} ({a.Label})");
                 return new InfraFulfillResult { ResourceConverted = converted, Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
-                    CardPlayed = r.CardConsumed,
+                    CardPlayed = r.CardConsumed, BaseLevelBought = r.BaseLevelBought,
                     StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
             }
             return new InfraFulfillResult { ResourceConverted = converted, Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
-                CardPlayed = r.CardConsumed,
+                CardPlayed = r.CardConsumed, BaseLevelBought = r.BaseLevelBought,
                 AdditionalCardsConsumed = r.AdditionalCardsConsumed,
                 BuilderArmyId = a.BuilderArmyId,
                 StateVersionAfter = r.StateVersionAfter, Detail = a.Label };
@@ -225,6 +227,7 @@ namespace Game.Ai.V2
                 player, root, hand, ctx, card, hex);
             // The upgrade is a real mutation even if the placement then fails.
             placed.StateChanged = true;
+            placed.BaseLevelBought = true;
             placed.ApSpent = V2ActionOutcome.ApSpentSince(apBefore, root);
             if (placed.StateVersionAfter < upgradeVersion)
                 placed.StateVersionAfter = upgradeVersion;

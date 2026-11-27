@@ -30,6 +30,8 @@ namespace Game.Ai.V2
         public int StateVersionAfter = -1;
         public bool CardConsumed;
         public int AdditionalCardsConsumed;   // a synchronous founding defender, if any
+        // The Base level bought for the slot stays bought even when the Facility placement then fails.
+        public bool BaseLevelBought;
         public string FailReason;
 
         public static BuildingPlayResult Fail(string why) => new BuildingPlayResult { FailReason = why };

@@ -193,6 +193,40 @@ namespace Game.EditorTests
             Assert.That(Bank(), Is.EqualTo(bank), "proposing must not reserve or spend resources");
         }
 
+        [Test]
+        public void BaseLevelBoughtBeforeAFailedPlacementIsReportedAsAPartialAction()
+        {
+            var source = new CardData(new CardDefinition
+            {
+                cardType = CardType.Facility, authoredKey = "recurring-source", apCost = 0,
+                resourceCost = new ResourceCost(human: 1),
+                grantedAbilities = new List<string> { UnitAbilities.ApBonus },
+            });
+            _hand.AddCard(source);
+            // A free level: the AP delta alone cannot tell that the level was paid for.
+            _config.baseUpgradeTiers[0].apCost = 0;
+            _config.baseUpgradeTiers[0].cost = new ResourceCost(human: 1);
+            _snapshot.Self.ActionPoints = 12;
+            _snapshot.Self.ApEconomy = new ApActionEconomySnapshot { BaseActionPoints = 12 };
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.GlobalResourceFacility, EconomySourceCard = source,
+                DesiredAmount = 1, Value = 7.3f };
+            InfraBuildAction action = InfrastructureFulfillment.Admit(_snapshot, _player, _root, _hand, _ctx,
+                demand, PhaseAApBudget.Create(_root), out string refusal, witnessedUsefulApDemand: 30f);
+            Assert.That(action, Is.Not.Null, refusal);
+            Assert.That(action.Kind, Is.EqualTo(InfraBuildKind.FacilityAfterUpgrade));
+
+            _hand.RemoveCard(source);   // the level is bought, then the placement cannot happen
+            InfraFulfillResult r = InfrastructureBuildExecutor.Execute(action, demand.SpendAuthority,
+                _player, _root, _hand, _ctx);
+
+            Assert.That(r.Built, Is.False);
+            Assert.That(r.BaseLevelBought, Is.True);
+            Assert.That(r.ApSpent, Is.Zero);
+            Assert.That(r.StateChanged, Is.True);
+            Assert.That(_base.Level, Is.EqualTo(2));
+        }
+
         private DevelopmentOpportunity CapacityStep()
         {
             DevelopmentOpportunity step = Admitted().SingleOrDefault(

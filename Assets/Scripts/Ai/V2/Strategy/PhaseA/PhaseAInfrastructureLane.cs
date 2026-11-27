@@ -149,13 +149,13 @@ namespace Game.Ai.V2
             V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(pass.Player, pass.Root);
             if (infra.StateChanged)
                 result.StateChanged = true;
-            // A failed BUILD must roll back. A paid Challenge (win or loss) is an
-            // intentional partial action and must NOT be diagnosed as a build leak.
+            // A failed BUILD must roll back. A paid Challenge (win or loss) and a Base level bought
+            // before a failed placement are intentional partial actions, not build leaks.
             // A paid stand-alone Base level is its own successful operation (separate invariant);
             // every other non-built outcome must still have rolled back cleanly.
             if (infra.CapacityUnlocked)
                 AiV2Trace.CheckCapacityUnlock(demand.TraceId, infraBefore, infraAfter);
-            else if (!infra.GenerationAttempted)
+            else if (!infra.GenerationAttempted && !infra.BaseLevelBought)
                 AiV2Trace.CheckInfrastructureRollback(demand.TraceId, infra.Built,
                     infra.StateChanged, infraBefore, infraAfter, resourceConverted: infra.ResourceConverted);
             // A compensated failure can still publish newer knowledge/version stamps.
@@ -178,10 +178,9 @@ namespace Game.Ai.V2
                             demand.DevelopmentOperatorMode.Value, pass.Turn);
                 result.RecordGenerationAttempt(pass.Player, pass.Turn, infra.Generation, null, infra.Generated);
             }
-            // A partial state-changing action (a paid Base capacity upgrade whose Facility
-            // placement then failed) is debited like a Challenge: its AP is really spent.
+            // A Base level bought before its Facility placement failed is a real partial action.
             if (!(infra.Built || infra.CapacityUnlocked || infra.GenerationAttempted || infra.ResourceConverted
-                || (infra.StateChanged && infra.ApSpent > 0f)))
+                || infra.BaseLevelBought))
             {
                 AiDebugLog.WriteDedupedWithId(demand.TraceId,
                     $"[AI][V2]   strat.A infra - {demand}: not built ({infra.Detail})");
