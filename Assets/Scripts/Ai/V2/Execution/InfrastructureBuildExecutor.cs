@@ -14,9 +14,7 @@ namespace Game.Ai.V2
         ExtractionFacility,   // an extraction facility on the built site
         FacilityCard,         // a Facility card into an own Base
         FacilityAfterUpgrade, // buy the Base's next level when a slot must be unlocked, then the Facility
-        // An operator card onto its facility hex: the garrison, or a hero-only bench there
-        // (2026-11-20, PlacementSelector.FacilityOperatorPlacements).
-        OperatorOnFacilityHex,
+        OperatorOnFacilityHex, // an operator card onto its facility hex (PlacementSelector.FacilityOperatorPlacements)
         OperatorGeneration,   // mint a missing operator through a staffed generator's Challenge
         CapacityUnlock,       // buy one Base level on its own; the Facility is a later action
     }
@@ -26,16 +24,14 @@ namespace Game.Ai.V2
     {
         public bool ResourceConverted;
         public bool Built;
-        // A paid stand-alone Base-level step (Development CapacityUnlock): a real, successful action that
-        // is NOT a facility, a played card or a new building. It never satisfies a "facility is ready" demand.
+        // A paid stand-alone Base level: a successful action, but no facility, card or building.
         public bool CapacityUnlocked;
         // A Base level bought for a Facility's slot; it stays bought when the placement then fails.
         public bool BaseLevelBought;
         public float ApSpent;
         public bool StateChanged;
         public int AdditionalCardsConsumed;
-        // An operator may be manufactured by a DIFFERENT already staffed facility.
-        // This is a single Challenge step, not a completed operator deployment.
+        // A missing operator's Challenge at another, staffed facility (not its deployment).
         public bool GenerationAttempted;
         public bool Generated;
         public GenerationStep Generation;
@@ -49,20 +45,29 @@ namespace Game.Ai.V2
 
     internal sealed class InfraBuildAction
     {
-        internal InfraBuildKind Kind;
-        internal CardData Card;
-        internal HexCoord Hex;
-        internal int? BuilderArmyId;
-        internal CardData Defender;
-        internal CardDefinition FacilityDef;
-        internal BuildingData UpgradeBuilding;
-        internal BaseUpgradeTier UpgradeTier;
-        internal PlacementOption Placement;
-        internal GenerationStep Generation;
-        internal int CapacityExpectedLevel;
-        // Set at admission: what a build funds through Trade first and how the log names the action.
-        internal ResourceCost FundingCost;
-        internal string Label;
+        internal InfraBuildKind Kind { get; private set; }
+        internal CardData Card { get; private set; }
+        internal HexCoord Hex { get; private set; }
+        internal int? BuilderArmyId { get; private set; }
+        internal CardData Defender { get; private set; }
+        internal CardDefinition FacilityDef { get; private set; }
+        internal BuildingData UpgradeBuilding { get; private set; }
+        internal BaseUpgradeTier UpgradeTier { get; private set; }
+        internal PlacementOption Placement { get; private set; }
+        internal GenerationStep Generation { get; private set; }
+        internal int CapacityExpectedLevel { get; private set; }
+        // What a build funds through Trade first and how the log names the action.
+        internal ResourceCost FundingCost { get; private set; }
+        internal string Label { get; private set; }
+
+        // Admission completes the action with its bill, its name and the Economy builder it uses.
+        internal InfraBuildAction Admitted(ResourceCost fundingCost, string label, int? builderArmyId)
+        {
+            FundingCost = fundingCost;
+            Label = label;
+            BuilderArmyId = builderArmyId;
+            return this;
+        }
 
         internal static InfraBuildAction BaseCard(CardData card, HexCoord hex, int? builderArmyId, CardData defender) =>
             new InfraBuildAction { Kind = InfraBuildKind.BaseCard, Card = card, Hex = hex,

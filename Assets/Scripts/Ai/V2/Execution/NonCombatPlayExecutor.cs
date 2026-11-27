@@ -7,13 +7,12 @@ using Game.Units;
 
 namespace Game.Ai.V2
 {
-    // A structured result. A generated non-combat play is NOT atomic
-    // (mint then deploy), so a partial failure — Challenge lost after resources were spent /
-    // the Researcher was revealed, OR a mint that then can't be deployed — really changes state
-    // and consumes the turn's generation attempt. The caller must see that, not just `false`.
+    // What one non-combat play did. A generated play is not atomic (mint, then deploy): a lost
+    // Challenge or a minted card that cannot be deployed still changed state and spent the turn's
+    // generation attempt.
     internal struct NonCombatExecuteResult
     {
-        public bool ActionChanged;
+        public bool ActionChanged;        // this play's own mutation (the receipt it stamps)
         public bool Played;               // final deploy/attach/build succeeded
         public bool StateChanged;         // ANY real world mutation happened (mint, reveal, resource spend, deploy)
         public bool GenerationAttempted;  // a Challenge was rolled (attempt is spent either way)
@@ -23,8 +22,7 @@ namespace Game.Ai.V2
     }
 
     // ===========================================================================================
-    //  NON-COMBAT PLAY EXECUTION (2026-10-15: moved out of Evaluation's NonCombatCardPlayer).
-    //  Runs exactly the chosen NonCombatPlay through the canonical gameplay primitives (aviation
+    //  NON-COMBAT PLAY EXECUTION. Runs exactly the chosen NonCombatPlay through the canonical gameplay primitives (aviation
     //  deploy, Base / Facility play, equipment attach, a Challenge mint first when the play is
     //  generated) and reports every real mutation. The one re-resolution it asks Evaluation for is
     //  the placement of a freshly minted card (NonCombatCardPlayer.PlayForGeneratedCard).
@@ -84,9 +82,8 @@ namespace Game.Ai.V2
             int apBefore = root.ActionPoints;
             int stateVersionBefore = WorldDeltaLifecycle.Current;
 
-            // finding 9b — a generated non-combat play pays Challenge AP + ResourceCost,
-            // then probabilistically mints and deploys the REAL instance. finding P1 — every real
-            // mutation of this non-atomic chain is reported even when a later step fails.
+            // A generated play pays the Challenge, then mints and deploys the real card; every
+            // mutation is reported even when a later step fails.
             if (play.Generation != null)
             {
                 MaterializationExecutor.GenerationOutcome go =

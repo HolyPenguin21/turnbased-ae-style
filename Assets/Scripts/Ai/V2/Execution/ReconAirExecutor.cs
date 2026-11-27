@@ -27,7 +27,7 @@ namespace Game.Ai.V2
         public bool Mutated => AnyMoved || AnyStruck || ResourceConverted;
     }
 
-    // ARCH-02 §35 — EXECUTION ONLY. It receives an AirReconPlan (actor/airfield/subset WHO is
+    // EXECUTION ONLY. It receives an AirReconPlan (actor/airfield/subset WHO is
     // picked by ReconAssignmentPlanner/ProvisioningManager, the same single owner Ground has;
     // AirReconPlanner only turns that binding, plus continuing wings, into this plan's shape — mode,
     // first-step gate and energy policy re-derived fresh as execution-input assembly, never a second
@@ -124,8 +124,6 @@ namespace Game.Ai.V2
         // Every outbound step leaves this executor's own Recon AirSortie record on the wing
         // (EnsureAirReconReservation), so that record does not mean "driven by someone else" —
         // only a Strike/Rebase record does (RecallUnsafeStrikes / AviationRebaseExecutor own it).
-        // Match 2026-11-13 Tessek T14: Rusty Vulture kept its Recon record, was skipped, and took
-        // the overdue-refuel damage 2 hexes from its airfield.
         internal static List<ArmyData> RecallUnsafeReconWings(PlayerSetupData player, AiTurnContext ctx)
         {
             if (player == null || ctx?.Map == null)

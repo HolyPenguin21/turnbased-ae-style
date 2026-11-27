@@ -14,10 +14,8 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // Executes provisioned V2 missions through authoritative game paths. TaskExecutor now owns
-    // the shared mission lifecycle/accounting shell and routes to mission-specific executors. Ground Scout
-    // execution is delegated to ReconGroundExecutor, whose durable ReconPatrolState and live
-    // one-step planner replace the old fixed Explore focus + single follow-through loop.
+    // Executes one provisioned mission step through authoritative game paths: TaskExecutor owns the
+    // shared step shell (stale checks, AP, state version) and routes to the lane executors.
     public enum ExecutionStopReason
     {
         ReachedGoal,
@@ -90,25 +88,15 @@ namespace Game.Ai.V2
         // The real ArmyId after an actor is materialized or otherwise resolved during execution.
         public int? ActualActorArmyId;
 
-        // Spec §1/§7 (review P1 #1) — set by the continuous ground Recon executor when ReachedGoal
-        // is true only because the CURRENT focus hex (a live waypoint) was satisfied, while the
-        // actor's durable Explore/Refresh role is still runnable. The ledger then classifies this
-        // as a ProductiveStop, NOT a Completed objective, so the durable MissionIntent is kept and
-        // re-focused next turn instead of being retired — the churn the rework was meant to end.
+        // ReachedGoal only because the current focus hex (a waypoint) is satisfied while the
+        // durable Explore/Refresh role still runs: a ProductiveStop, the intent is re-focused.
         public bool DurableRoleContinues;
 
-        // Spec §2 — the requested Recon movement never started because the actor was ALREADY
-        // combat-locked before its first step (BattleStarted with zero progress on iteration 1).
-        // The ledger treats that as a recoverable Blocked, not a structural Failed: the durable
-        // Recon role survives and is retried once the actor can leave combat. A battle/event that
-        // interrupts a scout AFTER it has moved / entered stealth / made a discovery is a
-        // ProductiveStop instead and never sets this.
+        // The Recon move never started: the actor was combat-locked before its first step. A
+        // recoverable Blocked (the role is retried); a battle after progress is a ProductiveStop.
         public bool BlockedBeforeMovement;
 
-        // ARCH-02 §36 — a stale-goal mission that did nothing (revalidation found the objective
-        // already satisfied: ReachedGoal=true, 0 AP, no movement). It "succeeded" in that the
-        // objective is met, but it changed NOTHING — the common contract must not report
-        // StateChanged for it.
+        // Revalidation found the goal already met: a success that changed nothing.
         public bool StaleNoOp;
         // A real hero-led mover was created from a garrison candidate.
         public bool ActorMaterialized;
@@ -267,9 +255,8 @@ namespace Game.Ai.V2
             if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, out ArmyData army))
                 yield break;
 
-            // ARCH-02 §35 — the executor does NOT synthesise a replacement mission for a
-            // stale-goal Scout. It records the stale outcome; MissionContinuityLayer.Reconcile
-            // + the mission planner re-target the durable ReconPatrolState on the next pass.
+            // A stale-goal Scout gets no replacement mission here: the stale outcome is recorded
+            // and Continuity + the planner re-target its ReconPatrolState on the next pass.
             if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results))
                 yield break;
 
@@ -374,8 +361,7 @@ namespace Game.Ai.V2
             results.Add(result);
         }
 
-        // ARCH-02 §36 — bump the shared state version iff this mission execution actually moved the
-        // world (a real step or a stealth entry), then stamp it onto the result.
+        // Advance the shared state version iff this step moved the world, then stamp it on the result.
         private static void StampVersion(ExecutionResult result)
         {
             if (result == null) return;

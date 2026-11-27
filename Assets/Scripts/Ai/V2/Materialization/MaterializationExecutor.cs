@@ -7,33 +7,26 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  MATERIALIZATION EXECUTOR  (Strategy V2 — Strategic Manager, Step 8B)
+    //  MATERIALIZATION EXECUTOR
     // ===========================================================================================
-    //  Runs one MaterializationPlan through the CANONICAL gameplay APIs, step by step, on the live
-    //  world — never fabricating a card, mutating the hand outside the one boundary here, or
-    //  simulating an Equipment/generation effect. Order: generate -> attach -> deploy.
+    //  Runs one MaterializationPlan through the canonical gameplay APIs on the live world, in the
+    //  order generate -> attach -> deploy, and a stand-alone Challenge (ExecuteGeneration).
     //
-    //  LOGICAL ATOMICITY, NOT a transaction. The chain was fully preflighted and its whole cost
-    //  reserved before this call. Each real action is then taken against the LIVE state: after a
-    //  step, its actual result is used and the next step is re-checked. There is NO rollback of a
-    //  gameplay action that already succeeded:
-    //    · Challenge lost            -> AP/resources stay spent, chain stops, StateChanged if the
-    //                                   world actually moved, generator use is reported as
-    //                                   attempted so the pass never retries it.
-    //    · attach fails after a win  -> the generated card stays in hand, chain stops.
-    //    · deploy fails              -> whatever exists, exists; CardPlayExecutor already keeps a
-    //                                   created empty army as a reusable asset.
-    //  The real AP delta measured on PlayerRoot is reported, so the axis ledger stays honest even
-    //  on a partial failure.
+    //  Each step is taken against the live state and the next one is re-checked; a step that
+    //  succeeded is never rolled back:
+    //    · Challenge lost            -> AP/resources stay spent, the chain stops, the generator use
+    //                                   is reported as attempted so the pass never retries it.
+    //    · attach fails after a win  -> the generated card stays in hand, the chain stops.
+    //    · deploy fails              -> whatever exists, exists; CardPlayExecutor keeps a created
+    //                                   empty army as a reusable asset.
+    //  ApSpent is the AP really spent (V2ActionOutcome.ApSpentSince), partial failures included.
     // ===========================================================================================
     public static class MaterializationExecutor
     {
-        // The Research/Production mint step, shared so the Phase-B non-combat lane can
-        // generate → deploy an Aviation / Base / Facility card too
-        // (NonCombatCardPlayer owns that deploy; MaterializationExecutor only bodies Unit/Hero
-        // chains). Same rules: eligibility re-check, full AP/resource affordability, Research
-        // reveal, probabilistic Challenge, and cap-exempt mint into hand on a win.
-        public readonly struct GenerationOutcome
+        // The Research/Production mint step, shared by the chains here, the non-combat plays
+        // (NonCombatPlayExecutor) and ExecuteGeneration: eligibility re-check, affordability,
+        // Research reveal, the Challenge roll and a cap-exempt mint into hand on a win.
+        internal readonly struct GenerationOutcome
         {
             public readonly bool Attempted;
             public readonly bool Success;
@@ -186,10 +179,8 @@ namespace Game.Ai.V2
             if (root.TradeRate != rateBeforeFunding)
             { res.StateChanged = true; res.StateVersionAfter = WorldDeltaLifecycle.Current; }
             if (!funded) { res.FailReason = "chain funding changed"; return res; }
-            // The candidate was admitted against a previous snapshot. Check the whole canonical
-            // chain again BEFORE its first irreversible step so a mid-turn resource change cannot
-            // make this executor spend another axis's newly protected resources. No substitute
-            // budget model: the same ReservesOkAfterChain is used by feasibility.
+            // Admitted against an earlier snapshot: re-check the whole chain with the feasibility
+            // rule (ReservesOkAfterChain) before the first irreversible step.
             if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player, authority))
             {
                 res.FailReason = "chain no longer fits AP/spendable reserves";
@@ -198,10 +189,8 @@ namespace Game.Ai.V2
 
             bool chainChanged = false;
             int apStart = root.ActionPoints;
-            // A standalone CardPlayExecutor.Play already stamps a deployment (including a partial
-            // failed deploy that changed AP/resources or created an army). An enclosing chain must
-            // stamp only when no child has done so, while still stamping generate/attach-only
-            // partial failures. Both execution paths report the same current version.
+            // One receipt per chain: CardPlayExecutor.Play stamps its own deployment (a partial one
+            // included); the chain stamps only what no child stamped (generate/attach failures).
             void StampVersion(bool childAlreadyStamped = false) =>
                 res.StateVersionAfter = WorldDeltaLifecycle.StampAction(chainChanged, childAlreadyStamped);
 
@@ -265,10 +254,9 @@ namespace Game.Ai.V2
             }
 
             // ---------------------------------------------------------------- 4. deploy ----
-            // ARCH-02 §35 — the executor takes the plan's placement verbatim. If it no longer
-            // preflights (a generate step just minted, or an earlier chain this pass consumed the
-            // slot), that is a STALE PLAN: report it and let the caller refresh + replan. The
-            // executor never enumerates a replacement placement of its own.
+            // The plan's placement is taken verbatim. If it no longer preflights (a mint just
+            // happened, or an earlier chain took the slot) the plan is stale: report it for a
+            // refresh + replan; never pick another placement here.
             CardPlayPlan deployPlan = plan.Deploy.Bind(baseCard);
             if (!CardPlayExecutor.Preflight(player, root, hand, ctx, deployPlan, out string preflightFail))
             {
@@ -285,8 +273,7 @@ namespace Game.Ai.V2
             res.ApSpent = V2ActionOutcome.ApSpentSince(apStart, root);
             if (play.StateChanged)
             { res.StateChanged = true; chainChanged = true; }
-            // CardPlayExecutor has already bumped for any deployment-side mutation. Do not bump
-            // twice for the same chain; generation/attachment-only failures still bump above.
+            // CardPlayExecutor already stamped any deployment-side mutation.
             StampVersion(childAlreadyStamped: play.StateChanged);
             if (play.Deployed && plan.AttackRefitPrimaryId.HasValue)
             {

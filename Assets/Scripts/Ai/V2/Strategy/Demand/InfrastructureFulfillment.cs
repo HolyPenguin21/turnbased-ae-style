@@ -61,7 +61,7 @@ namespace Game.Ai.V2
                         || ResearchProductionSystem.FindActor(player, site, mode) != null
                         || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, site, card.Definition))
                         return false;
-                    // 2026-11-20 - the garrison or a hero-only bench on the hex (one list).
+                    // The garrison or a hero-only bench on the hex (one list).
                     return PlacementSelector.FacilityOperatorPlacements(player, site, card.Definition).Count > 0;
                 });
             reservation.ReconcileDevelopmentOperatorCards(cards);
@@ -190,10 +190,7 @@ namespace Game.Ai.V2
                         .Any(x => x.CardKey == g.CardKey && x.Hero == g.Hero && x.CardDef == g.CardDef)))
             { refusal = "operator generator unavailable or already attempted"; return null; }
 
-            cand.Action.FundingCost = cand.ResCost;
-            cand.Action.Label = cand.Explain;
-            cand.Action.BuilderArmyId = cand.BuilderArmyId;
-            return cand.Action;
+            return cand.Action.Admitted(cand.ResCost, cand.Explain, cand.BuilderArmyId);
         }
 
         internal static string EconomyReservationOwner(AxisDemand demand) => EconomyReservationIdentity(demand);
@@ -229,14 +226,9 @@ namespace Game.Ai.V2
                 && (demand.Capability == CapabilityKind.GlobalResourceFacility
                     || demand.Capability == CapabilityKind.GlobalResourceCarrier))
                 return new SpendAuthority(null, economyCompletesNow: true);
-            // 2026-10-02 playtest (Rurik/Kryll): a Collector's unit costs 1 Human, but a deferred
-            // Base build held ALL the Human (stock 1-3, hold 2-3) for turns, so ~600 collector
-            // attempts failed "resources need H=1 have=0" - and the collector is the only thing
-            // that raises the very income the build waits for. A Collector of a SCARCE resource (any of
-            // the four, never a surplus one - EconomyResourceScarce) is one unit and pays off by
-            // income, so like a build that completes now it may draw on OTHER builds' deferred holds (they shield
-            // H/E/M/T from non-Economy spending; this IS Economy spending). Every other hold -
-            // Attack continuation, its own build - still counts.
+            // A Collector of a scarce resource (EconomyResourceScarce) raises the income the deferred
+            // builds wait for, so like a build that completes now it may draw on OTHER builds'
+            // deferred holds; every other hold (Attack continuation, its own build) still counts.
             if (demand != null && demand.RequestingAxis == DesireAxis.Economy
                 && demand.Capability == CapabilityKind.CollectorCapability
                 && demand.EconomyResourceScarce)
@@ -244,7 +236,7 @@ namespace Game.Ai.V2
             string heroBuildOwner = EconomyHeroPrerequisiteOwner(demand);
             if (heroBuildOwner != null)
                 return new SpendAuthority(heroBuildOwner, economyCompletesNow: false);
-            // 2026-10-01 (user decision): a card that builds the Attack's own strike force may use
+            // A card that builds the Attack's own strike force may use
             // the AP held for the Attack's next step (the derived operation-continuation claim);
             // every other card plays around it.
             return demand != null && demand.UsesAttackContinuationAp
@@ -633,8 +625,8 @@ namespace Game.Ai.V2
                         || abilities == null || !abilities.Contains(role))
                         continue;
 
-                    // 2026-11-20 (owner) - the garrison, or a hero-only bench on the hex when the
-                    // garrison cannot take it (the same first placement the preparation facts chose).
+                    // The garrison, or a hero-only bench on the hex when the garrison cannot take it
+                    // (the same first placement the preparation facts chose).
                     PlacementOption? chosen = DevelopmentOpportunityEvaluator.FirstOperatorPlacement(
                         player, root, hand, ctx, fac.Hex, card, null);
                     if (!chosen.HasValue)
@@ -685,7 +677,7 @@ namespace Game.Ai.V2
                     .Contains(ResearchProductionSystem.RoleAbility(demand.DevelopmentOperatorMode.Value)))
                 return null;
             BuildingData destination = OwnWorld.Of(player).BuildingAt(demand.TargetHex.Value);
-            // 2026-11-20 - the minted card's first facility-hex place: garrison or hero-only bench.
+            // The minted card's first facility-hex place: garrison or hero-only bench.
             List<PlacementOption> destinations = PlacementSelector.FacilityOperatorPlacements(
                 player, demand.TargetHex.Value, proposed.CardDef);
             if (destination == null || destination.Owner != player

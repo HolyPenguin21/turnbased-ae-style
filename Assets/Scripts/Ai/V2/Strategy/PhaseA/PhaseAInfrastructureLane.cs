@@ -46,8 +46,7 @@ namespace Game.Ai.V2
             // card score x its own Radar scale against the best materialization chain, so the
             // better of the two acts first and the other is re-judged on the refreshed world.
             // An Economy global-source Facility is the same kind of plain card play (no builder,
-            // no hold): playtest 2026-10-18 Thane spent its only Energy on Intel Center (net 2.7)
-            // ahead of a threatened Citadel's garrison chain, so it competes there too.
+            // no hold), so it competes there too.
             pass.ArbitratedInfrastructure = pass.States
                 .Where(state => StrategicPhaseA.CompetesInCardArbitration(state.Demand)
                     && !pass.ResidualInfrastructure.Contains(state))
@@ -132,6 +131,7 @@ namespace Game.Ai.V2
             // §2.4 — independent controlled-state snapshot around the op (building count,
             // filled facility slots, army movement, resources), NOT derived from the op's own
             // result. A failed build that changed any of these is a rollback leak.
+            SpendAuthority authority = demand.SpendAuthority;
             V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(pass.Player, pass.Root);
             InfraFulfillResult infra;
             using (new Game.Core.ProfileScope("AI/PhaseA.InfraFulfill"))
@@ -140,15 +140,15 @@ namespace Game.Ai.V2
                     pass.Hand, pass.Ctx, demand, pass.ApBudget, out string refusal, pass.Reservation,
                     pass.ActiveIntents, pass.Commitments, pass.WitnessedUsefulApDemand);
                 infra = action == null ? InfraFulfillResult.No(refusal)
-                    : InfrastructureBuildExecutor.Execute(action, demand.SpendAuthority,
+                    : InfrastructureBuildExecutor.Execute(action, authority,
                         pass.Player, pass.Root, pass.Hand, pass.Ctx);
                 if (action != null && !infra.Built && action.Kind != InfraBuildKind.OperatorGeneration
                     && action.Kind != InfraBuildKind.CapacityUnlock)
                     AiDebugLog.Write($"[AI][V2]   infra - {demand.Capability} action rejected: {infra.Detail} ({action.Label})");
             }
             // A completed Economy build ends the lease its demand held.
-            if (infra.Built && demand.SpendAuthority.Owner != null)
-                MissionLeaseBook.ReleaseByOwner(pass.Player, pass.Turn, demand.SpendAuthority.Owner);
+            if (infra.Built && authority.Owner != null)
+                MissionLeaseBook.ReleaseByOwner(pass.Player, pass.Turn, authority.Owner);
             V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(pass.Player, pass.Root);
             if (infra.StateChanged)
                 result.StateChanged = true;

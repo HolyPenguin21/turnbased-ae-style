@@ -84,9 +84,8 @@ namespace Game.Ai.V2
             if (!root.CanSpendActionPoints(totalAp) || !totalCost.CanAfford(root))
                 return BuildingPlayResult.Fail("base and immediate garrison are not jointly affordable");
 
-            // 2026-11-19 (owner, FoundingSiteDefence) — on a site the known enemy reaches, the
-            // whole escort stays as the new garrison (the builder took its whole roster for that,
-            // EconomyBuilderSelection); elsewhere one body stays, as before.
+            // On a site the known enemy reaches the whole escort stays as the new garrison (the
+            // builder took its whole roster for that, EconomyBuilderSelection); elsewhere one body.
             bool threatenedSite = AiArmyRoles.FoundingSiteThreat(player, hex, out _) > AiConfigV2.allocatorSliceEpsilon;
             using var mutation = WorldDeltaLifecycle.BeginTransaction();
             InfrastructureBuildOutcome outcome = InfrastructureActions.TryFoundBase(
@@ -193,18 +192,9 @@ namespace Game.Ai.V2
             };
         }
 
-        // Project owner, 2026-10-02: a freshly founded Base is not left empty. The builder's
-        // army (the hero and whatever it brought) stands on the hex; one ground body stays as the
-        // new garrison so the base is not taken on the same or the next turn by anything that walks
-        // past. The builder keeps the rest and may stay or go on. Free (the
-        // garrison never activates); the enclosing founding transaction verifies the result.
-        // Nothing happens when the builder brought no body, the base
-        // already has a ground defender, or the hero would be left with nothing to travel with.
-        // The body that costs the builder most to carry (highest activation AP, then lowest power)
-        // is the one that stays.
-        // 2026-11-19 (owner) — a threatened new Base keeps the builder's whole escort: every ground
-        // body of the builder that fits the new garrison and joins it free stays; the hero walks
-        // on alone. Same builder identification and free-transfer rule as LeaveGarrisonBody.
+        // A threatened new Base keeps the builder's whole escort: every ground body that fits the
+        // new garrison and joins it free stays; the hero walks on alone. Same builder and
+        // free-transfer rule as LeaveGarrisonBody.
         private static void LeaveEscortAsGarrison(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
             int? builderArmyId)
         {
@@ -234,6 +224,10 @@ namespace Game.Ai.V2
             }
         }
 
+        // A freshly founded Base is not left empty: one ground body of the builder stays as its free
+        // garrison - the one that costs the builder most to carry (highest activation AP, then lowest
+        // power). Nothing stays when the builder brought no body or the base already has a ground
+        // defender.
         private static void LeaveGarrisonBody(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
             int? builderArmyId = null)
         {
