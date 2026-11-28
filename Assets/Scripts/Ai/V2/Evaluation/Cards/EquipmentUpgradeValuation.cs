@@ -116,7 +116,7 @@ namespace Game.Ai.V2
             if (grant == null || host == null)
                 return default;
             MissionIntent purpose = EquipmentPurpose(snap, hostCard, null);
-            EquipmentDelta Core()
+            EquipmentDelta Core(EquipmentDeltaCache.CorePartSlot corePart)
             {
                 var current = EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator);
                 var before = current.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
@@ -128,7 +128,7 @@ namespace Game.Ai.V2
                     afterConsumption: EquipmentSystem.Consumption(host,
                         equipDef.attachmentSlot == AttachmentSlot.Equipment ? equipDef : hostCard?.Equipment,
                         equipDef.attachmentSlot == AttachmentSlot.Mutator ? equipDef : hostCard?.Mutator),
-                    singleUseHost: ExplosionAttack.IsSingleUseUnit(host));
+                    singleUseHost: ExplosionAttack.IsSingleUseUnit(host), corePart: corePart);
             }
             // A hand card's core is reused across verdict stores (EquipmentDeltaCache); a
             // deployment chain's projection is priced fresh.
@@ -137,7 +137,7 @@ namespace Game.Ai.V2
                 ? EquipmentDeltaCache.GetOrCompute(DevelopmentOpportunityEvaluator.CurrentDeltaScope, snap, inv,
                     equipDef, hostCard, false,
                     () => DevelopmentAdmission.RecipientDeltaStamp(snap, hostCard, purpose), Core)
-                : Core();
+                : Core(null);
             return PrioritizeRecipient(WithSlotWeight(equipDef, core), snap, hostCard, null, deployment, requiredRecipient);
         }
 
@@ -154,12 +154,13 @@ namespace Game.Ai.V2
             EquipmentDelta core = EquipmentDeltaCache.GetOrCompute(DevelopmentOpportunityEvaluator.CurrentDeltaScope,
                 snap, inv, equipDef, host, IsOperatorForecast && host.IsHero,
                 () => DevelopmentAdmission.RecipientDeltaStamp(snap, host, purpose),
-                () => UnitCore(grant, equipDef, host, snap, inv, purpose));
+                corePart => UnitCore(grant, equipDef, host, snap, inv, purpose, corePart));
             return PrioritizeRecipient(WithSlotWeight(equipDef, core), snap, null, host);
         }
 
         private static EquipmentDelta UnitCore(EquipmentGrant grant, CardDefinition equipDef, UnitData host,
-            WorldSnapshot snap, CapabilityInventory inv, MissionIntent purpose)
+            WorldSnapshot snap, CapabilityInventory inv, MissionIntent purpose,
+            EquipmentDeltaCache.CorePartSlot corePart)
         {
             var before = new Dictionary<EquipmentStat, int>
             {
@@ -188,7 +189,7 @@ namespace Game.Ai.V2
                 OwnWorld.Of(snap?.Observer).ArmyContaining(host), null,
                 Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host,
                 EquipmentSystem.Consumption(host), EquipmentSystem.Consumption(host, equipDef),
-                projectedFateMax: next.Stats[EquipmentStat.Fate]);
+                projectedFateMax: next.Stats[EquipmentStat.Fate], corePart: corePart);
         }
 
         // The one slot weight (AiConfigV2.equipMutatorValueMult): only a positive gain of a
@@ -212,7 +213,8 @@ namespace Game.Ai.V2
             IReadOnlyList<UnitTypeTag> hostTags = null, MissionIntent purpose = null, ArmyData army = null,
             MaterializationPlan deployment = null, int hpSpent = 0, UnitData hostUnit = null,
             EquipmentConsumption beforeConsumption = null, EquipmentConsumption afterConsumption = null,
-            bool singleUseHost = false, int? projectedFateMax = null)
+            bool singleUseHost = false, int? projectedFateMax = null,
+            EquipmentDeltaCache.CorePartSlot corePart = null)
         {
             using var __scope = new Game.Core.ProfileScope("AI/Equip.ScoreDelta");
             PredictedEquipmentState predicted = projected ?? EquipmentSystem.Predict(grant, before, hostAbilities);
@@ -240,7 +242,7 @@ namespace Game.Ai.V2
             // own unit at its own boundary (WorldAnalysis.Self.EquipmentReserve).
             return ScoreEquipmentByEfficiency(before, predicted, hostAbilities, isHero, snap, inv,
                 includeStealthTrait, purpose, army, hostUnit, hostTags, deployment, hpSpent,
-                beforeConsumption, afterConsumption, singleUseHost, projectedFateMax);
+                beforeConsumption, afterConsumption, singleUseHost, projectedFateMax, corePart);
         }
 
         // Operational equipment value: the change in the host's efficiency (EquipmentEfficiency),
@@ -252,7 +254,7 @@ namespace Game.Ai.V2
             WorldSnapshot snap, CapabilityInventory inv, bool includeStealthTrait, MissionIntent purpose, ArmyData army,
             UnitData hostUnit, IReadOnlyList<UnitTypeTag> hostTags, MaterializationPlan deployment, int hpSpent,
             EquipmentConsumption beforeConsumption, EquipmentConsumption afterConsumption, bool singleUseHost,
-            int? projectedFateMax)
+            int? projectedFateMax, EquipmentDeltaCache.CorePartSlot corePart = null)
         {
             using var __eff = new Game.Core.ProfileScope("AI/Equip.Efficiency");
             int After(EquipmentStat stat) =>
@@ -366,6 +368,12 @@ namespace Game.Ai.V2
             float perU = 1f / AiConfigV2.equipmentUpgradePersistence;
             float combat, tactical;
             string breakdown;
+            // The utility reads only the context built above; while nothing above read outside
+            // the core key and the recipient stamp, an earlier computation of the same pair under
+            // the same core is this one (EquipmentDeltaCache.CorePartSlot).
+            if (EquipmentDeltaCache.TryGetCorePart(corePart, out (float Combat, float Tactical, string Breakdown) reused))
+                (combat, tactical, breakdown) = reused;
+            else
             using (new Game.Core.ProfileScope("AI/Equip.EffDelta"))
             {
                 if (aviation)
@@ -390,6 +398,7 @@ namespace Game.Ai.V2
                     breakdown = u + " context=" + (opposition.Count > 0 ? "known-composition" : targets.Count > 0
                         ? "reference-deck" : "catalog-prior") + $" targets={targets.Count} hpSpent={hpSpent}";
                 }
+                EquipmentDeltaCache.StoreCorePart(corePart, (combat, tactical, breakdown));
             }
 
             // Abilities the table does not price (global income, auras, summons, ...) keep their

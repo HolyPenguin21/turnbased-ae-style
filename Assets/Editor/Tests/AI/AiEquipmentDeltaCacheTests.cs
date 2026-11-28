@@ -34,7 +34,59 @@ namespace Game.EditorTests
             WorldSnapshot snap, CardDefinition equipment, object recipient, string stamp,
             System.Func<EquipmentUpgradeValuation.EquipmentDelta> compute, object inventory = null) =>
             EquipmentDeltaCache.GetOrCompute(scope, snap, inventory, equipment, recipient, false,
-                () => stamp, compute);
+                () => stamp, _ => compute());
+
+        private static EquipmentUpgradeValuation.EquipmentDelta GetWithPart(EquipmentDeltaCache.ScopeKeys scope,
+            WorldSnapshot snap, CardDefinition equipment, object recipient, string stamp,
+            System.Func<EquipmentDeltaCache.CorePartSlot, EquipmentUpgradeValuation.EquipmentDelta> compute) =>
+            EquipmentDeltaCache.GetOrCompute(scope, snap, null, equipment, recipient, false, () => stamp, compute);
+
+        // 2026-11-28 (match Tessek/Halden perf) — the efficiency utility of a FULL entry (its
+        // registry tail read non-core state) is reused under the same core key and recipient
+        // stamp; the tail is recomputed. A FULL read before the part forbids both reuse and store.
+        [Test]
+        public void CorePartOfAFullEntryIsReused_OnlyWhileNothingBeforeItReadOutsideTheCore()
+        {
+            var player = new PlayerSetupData();
+            var snap = new WorldSnapshot { Observer = player, TurnNumber = 5 };
+            var equipment = new CardDefinition();
+            var recipient = new object();
+            int parts = 0, tails = 0;
+            bool fullBeforePart = false;
+            EquipmentUpgradeValuation.EquipmentDelta Compute(EquipmentDeltaCache.CorePartSlot slot)
+            {
+                if (fullBeforePart) EquipmentDeltaCache.MarkFull();
+                if (!EquipmentDeltaCache.TryGetCorePart(slot, out int part))
+                {
+                    part = ++parts;
+                    EquipmentDeltaCache.StoreCorePart(slot, part);
+                }
+                EquipmentDeltaCache.MarkFull(); // the registry tail
+                return new EquipmentUpgradeValuation.EquipmentDelta(part, ++tails);
+            }
+
+            var d = GetWithPart(Scope(player, snap, "full-a", "core-1"), snap, equipment, recipient, "r1", Compute);
+            Assert.That((d.Combat, d.Tactical), Is.EqualTo((1f, 1f)));
+            d = GetWithPart(Scope(player, snap, "full-b", "core-1"), snap, equipment, recipient, "r1", Compute);
+            Assert.That((d.Combat, d.Tactical), Is.EqualTo((1f, 2f)), "new verdict key: tail recomputed, part reused");
+            d = GetWithPart(Scope(player, snap, "full-c", "core-1"), snap, equipment, recipient, "r2", Compute);
+            Assert.That(d.Combat, Is.EqualTo(2f), "the recipient stamp changed: part recomputed");
+            d = GetWithPart(Scope(player, snap, "full-d", "core-2"), snap, equipment, recipient, "r2", Compute);
+            Assert.That(d.Combat, Is.EqualTo(3f), "the core changed: part recomputed");
+            d = GetWithPart(Scope(player, snap, "full-e", "core-2"), snap, equipment, new object(), "r2", Compute);
+            Assert.That(d.Combat, Is.EqualTo(4f), "another recipient never reads this part");
+
+            fullBeforePart = true;
+            d = GetWithPart(Scope(player, snap, "full-f", "core-2"), snap, equipment, recipient, "r2", Compute);
+            Assert.That(d.Combat, Is.EqualTo(5f), "a FULL read before the part: not reused");
+            fullBeforePart = false;
+            d = GetWithPart(Scope(player, snap, "full-g", "core-2"), snap, equipment, recipient, "r2", Compute);
+            Assert.That(d.Combat, Is.EqualTo(3f), "and not stored over the clean part either");
+
+            // Outside a keyed scope there is no slot: always computed.
+            d = GetWithPart(null, snap, equipment, recipient, "r2", Compute);
+            Assert.That(d.Combat, Is.EqualTo(6f));
+        }
 
         [Test]
         public void CoreEntryIsReusedAcrossStoresUntilItsCoreOrRecipientStampChanges()
