@@ -82,6 +82,47 @@ namespace Game.EditorTests
                 "with home explored the ruins keep their whole value");
         }
 
+        // 2026-11-28 (match Tessek vs Halden T10-T26): a home frontier hex whose remaining
+        // unvisited ground was already seen from a neighbour is explored for R1 — it no longer
+        // caps a far target's bonus. A never-seen neighbour or an unvisited home ruins still does.
+        [Test]
+        public void SeenHomeFrontier_ReleasesTheCap_UnseenGroundOrHomeRuinsKeepIt()
+        {
+            HexCoord home = new HexCoord(-1, -4);
+            HexCoord near = new HexCoord(0, -5);
+            HexCoord far = new HexCoord(-5, 5);
+            var cells = HexGridMath.HexesInRange(home, 4).ToList();
+            cells.Add(far);
+            var seen = new HashSet<HexCoord>(cells);
+            var snap = new WorldSnapshot
+            {
+                Self = new SelfSnapshot { Citadel = home, BaseHexes = new[] { home },
+                    Armies = new ArmySnapshot[0] },
+                MapKnowledge = new MapKnowledgeSnapshot { AllHexes = cells,
+                    VisitedHexSet = new HashSet<HexCoord> { home },
+                    EverSeenHexSet = seen,
+                    ScoutHardBlockedHexes = new HashSet<HexCoord>(),
+                    UnvisitedRuinsHexes = new HashSet<HexCoord> { far },
+                    Frontier = new List<FrontierHexSnapshot> {
+                        new FrontierHexSnapshot { Hex = near, FreshNeighbors = 3, DistanceFromNearestBase = 1 } } },
+            };
+            var cost = new ScoutCostEstimate { ActivationApNow = 0f, RecurringActivationAp = 0f, EtaTurns = 5 };
+            float whole = TaskScoreEvaluator.StrategicRelevance(AiConfigV2.reconRuinsRelevance);
+
+            Assert.That(ReconObjectiveEvaluator.BuildExploreScore(snap, far, 1f, 9, cost, 0f).StrategicRelevance,
+                Is.EqualTo(whole), "seen-only home frontier: the far bonus is whole");
+
+            HexCoord dark = HexGridMath.Neighbors(near).First(n => !n.Equals(home));
+            seen.Remove(dark);
+            Assert.That(ReconObjectiveEvaluator.BuildExploreScore(snap, far, 1f, 9, cost, 0f).StrategicRelevance,
+                Is.Zero, "a never-seen home neighbour keeps the cap");
+
+            seen.Add(dark);
+            snap.MapKnowledge.UnvisitedRuinsHexes.Add(new HexCoord(-2, -3));
+            Assert.That(ReconObjectiveEvaluator.BuildExploreScore(snap, far, 1f, 9, cost, 0f).StrategicRelevance,
+                Is.Zero, "an unvisited home ruins keeps the cap");
+        }
+
         // 2026-11-15 (match Brynn vs Grimm, P3, owner option a) — Explore reads the same "toward
         // the enemy" fact as Refresh (ReconObjectiveEvaluator.DirectionalPressure): unvisited
         // ground in the known enemy Citadel's sector earns ThreatDirection, the opposite side none.
