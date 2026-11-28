@@ -2654,7 +2654,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 4
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
@@ -2985,7 +2985,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 4
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
@@ -3319,7 +3319,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 4
+    fate: 3
     attack: 0
     defenseRating: 0
     range: 0
@@ -3384,7 +3384,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 4
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
