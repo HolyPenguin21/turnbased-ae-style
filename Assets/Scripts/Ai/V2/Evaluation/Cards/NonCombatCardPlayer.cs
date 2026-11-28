@@ -912,6 +912,13 @@ namespace Game.Ai.V2
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             float ap, ResourceCost resources, float? workload, bool ignoreApForMeasurement = false, SpendAuthority authority = default)
         {
+            // 2026-11-28 (match Tessek/Halden perf) — the card's AP and resources do not depend on
+            // the recipient: an unpayable card yields no play, so its recipients are not priced
+            // (Tessek held unaffordable Grenade Launcher / Marksman Rifle for many turns, every
+            // Phase B enumeration priced them against every unit). The per-play checks below stay.
+            if ((!ignoreApForMeasurement && ap > StrategicSpendability.SpendableAp(player, root, ctx, authority))
+                || !TradeFunding.CanFund(player, root, ctx, resources, authority))
+                yield break;
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             // 2026-11-09 (owner, match Q4) — an Air Bomb on an aircraft carries the strike it makes
             // possible, the same operational task an aviation play carries (its best known strike

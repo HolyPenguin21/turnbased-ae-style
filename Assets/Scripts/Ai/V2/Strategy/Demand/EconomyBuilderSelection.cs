@@ -647,11 +647,8 @@ namespace Game.Ai.V2
             // (the delivery horizon), with nothing else to do (assignment / claim gates below) —
             // unless an own stronghold needs it home: THE home-needs-the-army rule Attack's march
             // reads (AttackMarchPolicy.StrongholdNeedingArmy, the own-Citadel race included).
-            if (!army.IsGarrison && !route.IsOnTarget
-                && (assignment == null || assignment.Kind != MissionKind.Economy)
-                && army.IsStructuralRaidActor
-                && AttackMarchPolicy.StrongholdNeedingArmy(snap, army, out _) != null)
-                return "stronghold_needs_the_army";
+            // 2026-11-28 (perf) — the hold simulation runs after the cheap assignment / claim
+            // rejections below: an army they reject is rejected either way.
             if (assignment != null)
             {
                 if (assignment.Kind == MissionKind.Economy)
@@ -666,6 +663,11 @@ namespace Game.Ai.V2
             }
             if (assignment == null && commitments != null && commitments.IsArmyClaimed(army.ArmyId))
                 return "claimed";
+            if (!army.IsGarrison && !route.IsOnTarget
+                && (assignment == null || assignment.Kind != MissionKind.Economy)
+                && army.IsStructuralRaidActor
+                && AttackMarchPolicy.StrongholdNeedingArmy(snap, army, out _) != null)
+                return "stronghold_needs_the_army";
             return null;
         }
 

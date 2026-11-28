@@ -175,21 +175,50 @@ namespace Game.Ai.V2
             }
         }
 
-        // Home is not explored yet: a runnable Explore frontier hex with unseen neighbours lies within
-        // scoutStepHomeLocalRingRadius of an own home.
+        // Home is not explored yet (R1): within scoutStepHomeLocalRingRadius of an own home lies a
+        // runnable Explore frontier hex that still hides never-seen ground (the hex or one of its
+        // unvisited neighbours), or an unvisited City-ruins hex (its event is met only in person).
+        // 2026-11-28 (match Tessek vs Halden): "unvisited" alone kept home open T10-T26 on hexes
+        // already seen from a neighbour (resource types/yield known, Explore InfoGain 0.6), which no
+        // scout was ever worth sending to — the cap never released and starved the Attack's
+        // observation of the enemy Citadel. A seen hex is known ground for R1's purpose.
         private static bool HomeFrontierOpen(WorldSnapshot snap)
         {
             EnumerationFacts facts = FactsFor(snap);
             if (facts?.HomeFrontierOpen is bool cached)
                 return cached;
-            bool open = snap?.MapKnowledge?.Frontier != null && snap.MapKnowledge.Frontier.Any(f =>
-                f.FreshNeighbors > 0
-                && TaskScoreEvaluator.NearestOwnedHomeDistance(snap, f.Hex, f.DistanceFromNearestBase)
-                    <= AiConfigV2.scoutStepHomeLocalRingRadius
-                && ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex));
+            MapKnowledgeSnapshot mk = snap?.MapKnowledge;
+            bool InHomeRing(HexCoord hex, int fallback) =>
+                TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex, fallback)
+                    <= AiConfigV2.scoutStepHomeLocalRingRadius;
+            bool open = mk?.Frontier != null && mk.Frontier.Any(f =>
+                    f.FreshNeighbors > 0
+                    && InHomeRing(f.Hex, f.DistanceFromNearestBase)
+                    && HidesUnseenGround(mk, f.Hex)
+                    && ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
+                || (mk?.UnvisitedRuinsHexes != null && mk.UnvisitedRuinsHexes.Any(r =>
+                    InHomeRing(r, 0) && ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, r)));
             if (facts != null)
                 facts.HomeFrontierOpen = open;
             return open;
+        }
+
+        // The focus or one of the unvisited, on-map, scout-enterable neighbours behind its
+        // FreshNeighbors count was never seen. Without an ever-seen set every unvisited hex counts.
+        private static bool HidesUnseenGround(MapKnowledgeSnapshot mk, HexCoord focus)
+        {
+            ISet<HexCoord> seen = mk.EverSeenHexSet;
+            if (seen == null || !seen.Contains(focus))
+                return true;
+            foreach (HexCoord n in HexGridMath.Neighbors(focus))
+            {
+                if (mk.AllHexes != null && !mk.IsOnMap(n)) continue;
+                if (mk.VisitedHexSet != null && mk.VisitedHexSet.Contains(n)) continue;
+                if (mk.IsBlockedForScout(n, stealthCapable: false)) continue;
+                if (!seen.Contains(n))
+                    return true;
+            }
+            return false;
         }
 
         private static float LocalExplorationGap(WorldSnapshot snap)
