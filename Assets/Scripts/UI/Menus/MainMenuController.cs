@@ -3,7 +3,6 @@ using Game.Saves;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
-using TMPro;
 
 namespace Game.UI
 {
@@ -16,21 +15,15 @@ namespace Game.UI
         [SerializeField] private Button settingsButton;
         [SerializeField] private Game.Core.GameConfig gameConfig;
         [SerializeField] private CollectionScreensUI collectionScreens;
-        [SerializeField] private Sprite campaignIronConcordLogo, campaignAshenLogo, campaignVesselsLogo;
-        // New-campaign popups are authored in the MainMenu scene and edited there.
-        [Header("New campaign popups")]
+        [Header("Campaign popups")]
         [SerializeField] private GameObject campaignRoot;
         [SerializeField] private GameObject campaignFactionWindow;
-        [SerializeField] private GameObject campaignOverwriteWindow;
+        [SerializeField] private GameObject campaignOptionsWindow;
         [SerializeField] private Button[] campaignFactionButtons = new Button[0]; // in DeckRules.PlayableFactions order
-        [SerializeField] private Button campaignCancelButton;
-        [SerializeField] private Image campaignOverwriteLogo;
-        [SerializeField] private TMP_Text campaignOverwriteFaction;
-        [SerializeField] private Button campaignOverwriteReplaceButton;
-        [SerializeField] private Button campaignOverwriteCancelButton;
+        [SerializeField] private Button campaignFactionBackButton;
+        [SerializeField] private Button campaignContinueButton, campaignNewButton, campaignOptionsCancelButton;
         [SerializeField] private Button continueCampaignButton;
         [SerializeField] private MatchSaveSlotsUI saveSlots;
-        private Game.Players.Faction campaignPendingFaction;
         private void Awake()
         {
             Game.Core.GameSession.EndRewardEligibility();
@@ -79,7 +72,12 @@ namespace Game.UI
             bool campaign = !matches && Game.Campaign.CampaignMatchBridge.Load(out _);
             continueCampaignButton.interactable = ContinueAction(matches, campaign) != 0;
         }
-        private void OnApplicationFocus(bool focused) { if (focused) RefreshContinue(); }
+        private void OnApplicationFocus(bool focused)
+        {
+            if (!focused) return;
+            RefreshContinue();
+            if (campaignOptionsWindow != null && campaignOptionsWindow.activeInHierarchy) RefreshCampaignContinue();
+        }
         public void OnContinueClicked()
         {
             if (UIFocusUtility.HasOverlay || (mainMenuPanel != null && !mainMenuPanel.activeSelf)) return;
@@ -119,9 +117,14 @@ namespace Game.UI
 
         private void Update()
         {
-            UIFocusUtility.KeepFocusWithinModal();
-            if (campaignRoot != null && campaignRoot.activeSelf && UIFocusUtility.WasEscapePressed(this))
-            { CloseCampaignSetup(); return; }
+            bool campaignOpen = campaignRoot != null && campaignRoot.activeSelf;
+            UIFocusUtility.KeepFocusWithinModal(restoreMissingSelection: campaignOpen && UIFocusUtility.IsTop(this));
+            if (campaignOpen && UIFocusUtility.WasEscapePressed(this))
+            {
+                if (campaignFactionWindow.activeSelf) ShowCampaignOptions();
+                else CloseCampaignSetup();
+                return;
+            }
             // Guarded by mainMenuPanel's own active state — this component isn't disabled
             // when the setup screen takes over, so Space would otherwise keep re-triggering
             // "New Game" from there too.
@@ -141,17 +144,29 @@ namespace Game.UI
             }
         }
 
-        public void OnNewCampaignClicked()
+        public void OnCampaignClicked()
         {
-            if (campaignRoot == null || campaignRoot.activeSelf) return;
+            if (campaignRoot == null || campaignRoot.activeSelf || UIFocusUtility.HasOverlay) return;
             campaignRoot.SetActive(true);
-            UIFocusUtility.SetModal(this, campaignRoot, ModalBlock.Full);
-            ShowCampaignFactions();
+            ShowCampaignOptions();
+        }
+        private void ShowCampaignOptions()
+        {
+            campaignFactionWindow.SetActive(false);
+            campaignOptionsWindow.SetActive(true);
+            RefreshCampaignContinue();
+            var focus = campaignContinueButton.IsInteractable() ? campaignContinueButton : campaignNewButton;
+            UIFocusUtility.SetModal(this, campaignRoot, ModalBlock.Full, focus, sceneControls: campaignRoot.transform);
+            focus.Select();
+        }
+        private void RefreshCampaignContinue()
+        {
+            campaignContinueButton.interactable = Game.Campaign.CampaignMatchBridge.Store.Exists;
         }
         private void ShowCampaignFactions()
         {
+            campaignOptionsWindow.SetActive(false);
             campaignFactionWindow.SetActive(true);
-            campaignOverwriteWindow.SetActive(false);
             if (campaignFactionButtons.Length > 0 && campaignFactionButtons[0] != null) campaignFactionButtons[0].Select();
         }
         private void BindCampaignButtons()
@@ -162,27 +177,19 @@ namespace Game.UI
             {
                 var chosen = factions[i];
                 UIUtility.ResetRuntimeListeners(campaignFactionButtons[i]);
-                campaignFactionButtons[i].onClick.AddListener(() => ConfirmCampaign(chosen));
+                campaignFactionButtons[i].onClick.AddListener(() => StartCampaign(chosen));
             }
-            foreach (var cancel in new[] { campaignCancelButton, campaignOverwriteCancelButton })
-            { if (cancel == null) continue; UIUtility.ResetRuntimeListeners(cancel); cancel.onClick.AddListener(CloseCampaignSetup); }
-            UIUtility.ResetRuntimeListeners(campaignOverwriteReplaceButton);
-            campaignOverwriteReplaceButton.onClick.AddListener(() => StartCampaign(campaignPendingFaction));
+            Bind(campaignContinueButton, OnContinueCampaignClicked);
+            Bind(campaignNewButton, ShowCampaignFactions);
+            Bind(campaignOptionsCancelButton, CloseCampaignSetup);
+            Bind(campaignFactionBackButton, ShowCampaignOptions);
+
+            void Bind(Button button, UnityEngine.Events.UnityAction action)
+            {
+                UIUtility.ResetRuntimeListeners(button);
+                button.onClick.AddListener(action);
+            }
         }
-        private void ConfirmCampaign(Game.Players.Faction human)
-        {
-            if (!Game.Campaign.CampaignMatchBridge.Store.Exists) { StartCampaign(human); return; }
-            campaignOverwriteLogo.sprite = CampaignLogo(human);
-            campaignOverwriteLogo.enabled = campaignOverwriteLogo.sprite != null;
-            campaignOverwriteFaction.text = "New faction: " + Game.Campaign.CampaignUI.FactionName(human);
-            campaignPendingFaction = human;
-            campaignFactionWindow.SetActive(false);
-            campaignOverwriteWindow.SetActive(true);
-            campaignOverwriteCancelButton.Select();
-        }
-        private Sprite CampaignLogo(Game.Players.Faction faction) =>
-            faction == Game.Players.Faction.IronConcord ? campaignIronConcordLogo
-            : faction == Game.Players.Faction.Ashen ? campaignAshenLogo : campaignVesselsLogo;
         private void StartCampaign(Game.Players.Faction human)
         {
             try
@@ -193,7 +200,7 @@ namespace Game.UI
                     return;
                 }
                 Game.Campaign.CampaignMatchBridge.Create(human);
-                CloseCampaignSetup(); UnityEngine.SceneManagement.SceneManager.LoadScene(Game.Core.SceneNames.Campaign);
+                OpenCampaignScene();
             }
             catch (System.Exception ex)
             {
@@ -208,8 +215,18 @@ namespace Game.UI
         }
         public void OnContinueCampaignClicked()
         {
-            if (!Game.Campaign.CampaignMatchBridge.Load(out string error)) { CollectionScreensUI.ShowMessage(transform, error ?? "No saved campaign."); return; }
-            UnityEngine.SceneManagement.SceneManager.LoadScene(Game.Core.SceneNames.Campaign);
+            if (!Game.Campaign.CampaignMatchBridge.Load(out string error))
+            {
+                if (campaignOptionsWindow != null && campaignOptionsWindow.activeInHierarchy) RefreshCampaignContinue();
+                CollectionScreensUI.ShowMessage(transform, error ?? "No saved campaign.");
+                return;
+            }
+            OpenCampaignScene();
+        }
+        private void OpenCampaignScene()
+        {
+            CloseCampaignSetup();
+            UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.Campaign);
         }
         private void OnDestroy()
         {
