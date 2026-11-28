@@ -183,16 +183,18 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void FormatterShowsHostKindHiddenStatsAndCompleteResearchDescription()
+        public void FormatterShowsCompatibilityAndCompleteResearchDescription()
         {
             var neural = Mutator("neural-accelerator");
             string face = EquipmentCardText.CardFace(neural, null);
-            Assert.That(face, Does.StartWith("Bio, Unit").And.Not.Contain("Initiative"));
+            Assert.That(face, Does.StartWith("Bio\n").And.Not.Contain("Initiative"));
             Assert.That(EquipmentCardText.AttachedCardFace(neural, null), Is.EqualTo(face));
-            Assert.That(EquipmentCardText.Description(neural, null), Does.StartWith("Challenge: ").And.Contain("\nBio, Unit\n").And.Contain("Initiative: +1"));
+            Assert.That(EquipmentCardText.Description(neural, null), Does.StartWith("Challenge: ").And.Contain("\nBio\n").And.Contain("Initiative: +1"));
             Assert.That(EquipmentCardText.StatBadgeValue(neural.equipment, EquipmentStat.Defense), Is.EqualTo("1"));
             Assert.That(EquipmentCardText.Description(neural, null), Does.Contain("Defense: +1"));
-            Assert.That(EquipmentCardText.Description(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
+            var fortunate = Mutator("fortunate-genome");
+            Assert.That(EquipmentCardText.CardFace(fortunate, null), Is.EqualTo("Bio, Hero"));
+            Assert.That(EquipmentCardText.Description(fortunate, null), Does.Contain("\nBio, Hero\n"));
             string description = EquipmentCardText.Description(Mutator("reinforced-skeleton"), null);
             Assert.That(description, Does.Contain("Defense: +2").And.Contain("HP: +1").And.Contain("Initiative: -1"));
             // No em dash (U+2014); the 2026-10-21 literal sweep turned this check into a hyphen,

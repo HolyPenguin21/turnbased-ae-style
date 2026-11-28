@@ -486,7 +486,14 @@ public sealed class CampaignSystemTests
     [Test] public void S01_S06_RoundOrderGeometryAndInterruptedMatchSurviveReload()
     {
         var s = HumanTurn(Planet()); var store = new CampaignStore(directory); store.Save(s); var c = new CampaignController(s, store); var pair = CampaignRules.LegalAttacks(s).First();
-        c.BeginAttack(pair.Source, pair.Target, true); c.RegisterMatch("selected-deck", "Human", "AI"); var persisted = store.Load(out _);
+        c.BeginAttack(pair.Source, pair.Target, manual: true, humanDeckId: "selected-deck");
+        var preparing = store.Load(out _);
+        Assert.AreEqual(CampaignPhase.PreparingBattle, preparing.Phase);
+        Assert.AreEqual("selected-deck", preparing.PendingOperation.SelectedHumanDeckId);
+        c = new CampaignController(preparing, store);
+        c.RegisterMatch("selected-deck", "Human", "AI");
+        var persisted = store.Load(out _);
+        Assert.AreEqual(preparing.PendingOperation.MatchId, persisted.PendingOperation.MatchId);
         Assert.AreEqual(Geometry(s), Geometry(persisted)); CollectionAssert.AreEqual(s.TurnOrder, persisted.TurnOrder);
         Assert.AreEqual(CampaignPhase.BattleInProgress, persisted.Phase); Assert.IsFalse(persisted.PendingOperation.ResultRecorded);
         Assert.AreEqual("selected-deck", persisted.PendingOperation.SelectedHumanDeckId); Assert.AreEqual(s.CurrentTurnIndex, persisted.CurrentTurnIndex);

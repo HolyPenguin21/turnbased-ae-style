@@ -30,7 +30,7 @@ namespace Game.Campaign
         }
         private void Transact(Action<CampaignState> edit)
         { var next = state.Copy(); edit(next); store.Save(next); Publish(next); }
-        public void BeginAttack(int sourceId, int targetId, bool manual)
+        public void BeginAttack(int sourceId, int targetId, bool manual, string humanDeckId = null)
         {
             if (!CampaignRules.CanAttack(state, state.CurrentFaction, sourceId, targetId)) throw new InvalidOperationException("You cannot attack this region now.");
             var target = state.Regions.Find(r => r.RegionId == targetId);
@@ -40,6 +40,7 @@ namespace Game.Campaign
                 s.PendingOperation = new CampaignOperation { OperationId = Guid.NewGuid().ToString("N"), MatchId = manual ? Guid.NewGuid().ToString("N") : null,
                     AttackerFaction = s.CurrentFaction, DefenderFaction = target.OwnerFaction, SourceRegionId = sourceId, TargetRegionId = targetId,
                     RandomSeed = CampaignRandom.Derive(s.Seed, s.RandomSequence++), Manual = manual,
+                    SelectedHumanDeckId = manual ? humanDeckId : null,
                     Weather = target.Weather };
                 s.Phase = CampaignPhase.PreparingBattle;
             });

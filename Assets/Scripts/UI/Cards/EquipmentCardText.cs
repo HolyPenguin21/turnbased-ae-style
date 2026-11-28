@@ -11,7 +11,7 @@ namespace Game.UI
     public static class EquipmentCardText
     {
 
-        // One compact compatibility line: authored tags followed by allowed host kinds.
+        // One compact compatibility line: authored tags followed by allowed host kinds other than Unit.
         // The tags retain EquipmentSystem's ANY-match semantics; this is presentation only.
         public static string AttachTargets(EquipmentGrant grant)
         {
@@ -28,7 +28,7 @@ namespace Game.UI
             if (grant?.hostTypeTags != null)
                 parts.AddRange(grant.hostTypeTags.Select(t => t.ToString()));
             if (grant?.hostKinds != null)
-                parts.AddRange(grant.hostKinds.Select(k => k.ToString()));
+                parts.AddRange(grant.hostKinds.Where(k => k != EquipmentHostKind.Unit).Select(k => k.ToString()));
             return string.Join(", ", parts.Distinct());
         }
 
