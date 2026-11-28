@@ -326,6 +326,29 @@ namespace Game.EditorTests
             Assert.That(intent.LastProgressTurn, Is.EqualTo(4));
         }
 
+        // Turn stand 2026-11-27: Phase A could not build, the builder reported "delivery ready"
+        // step after step, the stall never grew and the build was never dropped.
+        [Test]
+        public void B1_RepeatedDeliveryReadyWithoutTheBuild_IsAStall()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 3);
+            ExecutionResult Ready() => new ExecutionResult
+            {
+                StopReason = ExecutionStopReason.StepCompleted, EconomyDeliveryReady = true,
+                FinalHex = Site,
+            };
+
+            Assert.That(Settle(player, m, 4, execution: Ready()).MadeProgress, Is.True, "the first report");
+            Assert.That(Settle(player, m, 4, execution: Ready()).MadeProgress, Is.False, "the same turn again");
+            Assert.That(intent.StallTurns, Is.EqualTo(0), "the stall grows once per turn");
+            Assert.That(Settle(player, m, 5, execution: Ready()).MadeProgress, Is.False);
+            Assert.That(intent.StallTurns, Is.EqualTo(1));
+            Settle(player, m, 6, execution: Ready());
+            Assert.That(Has(player, intent), Is.False, "reaped at the ordinary stall limit");
+        }
+
         [Test]
         public void B1_MobileCollectorHoldingItsSite_KeepsItsIntent()
         {

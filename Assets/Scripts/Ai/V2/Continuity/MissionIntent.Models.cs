@@ -288,6 +288,8 @@ namespace Game.Ai.V2
         public int? CollectorSourceArmyId;
         public int ExpectedMarginalYield;
         public HexCoord? SafeReturnHex;
+        // A collector: the turn it arrived on its site. A build: the turn its builder first
+        // reported ready on the site (EconomyContinuity.ObserveBuilderReadyOnSite).
         public int ArrivalTurn = -1;
         // Grace-period clock only: passage of a round is not proof of a resource grant.
         public int LastIncomeOpportunityTurn = -1;

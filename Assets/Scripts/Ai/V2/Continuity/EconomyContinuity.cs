@@ -192,7 +192,7 @@ namespace Game.Ai.V2
                 ExpectedMarginalYield = t.ExpectedMarginalYield,
                 SafeReturnHex = t.SafeReturnHex,
                 ArrivalTurn = t.Kind == EconomyTaskKind.MobileCollection
-                    && o.FinalHex.Equals(t.TargetHex) ? turn : -1,
+                    && o.FinalHex.Equals(t.TargetHex) || o.EconomyFacts().DeliveryReady ? turn : -1,
                 BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
                 BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
                 IntrinsicValue = o.Proposal?.BaseValue,
@@ -360,6 +360,7 @@ namespace Game.Ai.V2
         {
             if (o.EconomyFacts().HasEconomyPayload && intent.Economy != null)
             {
+                ObserveBuilderReadyOnSite(intent.Economy, o, turn);
                 intent.Economy.TargetHex = o.EconomyFacts().EconomyTarget.TargetHex;
                 intent.Economy.BuilderArmyId = intent.PreferredMoverArmyId;
                 // The mission has already used the continuity-pinned builder's world score.
@@ -373,6 +374,22 @@ namespace Game.Ai.V2
                 if (o.EconomyFacts().EconomyBuildCompleted) intent.Funding = CommitmentTier.Hard;
             }
 
+        }
+
+        // A builder standing on its site reports "delivery ready" once: Phase A builds from there.
+        // ArrivalTurn of a build is the turn of that report; a second report in a row without the
+        // build is not progress, so the stall counts it. Leaving the site clears it.
+        private static void ObserveBuilderReadyOnSite(EconomyIntent ei, MissionStepResult o, int turn)
+        {
+            if (ei.Kind != EconomyTaskKind.BuildExtraction && ei.Kind != EconomyTaskKind.FoundBase)
+                return;
+            if (o.EconomyFacts().DeliveryReady && !o.EconomyFacts().EconomyBuildCompleted)
+            {
+                if (ei.ArrivalTurn >= 0) o.MadeProgress = false;
+                else ei.ArrivalTurn = turn;
+            }
+            else if (o.StepsMoved > 0)
+                ei.ArrivalTurn = -1;
         }
 
         internal static bool TryHandleEconomyCapabilityFailure(MissionIntentState state, AiAllocatorState allocState,
