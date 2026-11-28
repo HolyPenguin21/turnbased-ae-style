@@ -12,6 +12,9 @@ namespace Game.UI
     // model/sprite sheet exists — see TokenRowUI's own former comment on this).
     public class TokenSlotUI : MonoBehaviour
     {
+        // The faces shown while a die spins are visual only: never UnityEngine.Random, whose
+        // stream ChallengeResolver rolls the dice from.
+        private static readonly System.Random FaceRandom = new System.Random();
         [SerializeField] private Image image;
         // Idle placeholder before this slot has ever rolled — Tokens_Base.png, the neutral
         // unmarked die the two faces themselves were generated from (see the user's own
@@ -128,7 +131,7 @@ namespace Game.UI
             for (int i = 0; i < flipCount; i++)
             {
                 bool isLast = i == flipCount - 1;
-                bool faceThisFlip = isLast ? finalHit : Random.value < 0.5f;
+                bool faceThisFlip = isLast ? finalHit : FaceRandom.NextDouble() < 0.5;
                 yield return ScaleX(rt, 1f, 0f, halfDuration);
                 ApplySprite(faceThisFlip);
                 yield return ScaleX(rt, 0f, 1f, halfDuration);

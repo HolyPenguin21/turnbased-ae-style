@@ -223,6 +223,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Aviation.AviationCombatPresenter", MatchStateKind.Presentation),
             new MatchStateEntry("Game.Campaign.CampaignRegionGraphic", MatchStateKind.Presentation),
             new MatchStateEntry("Game.Combat.BattleAiPhraseBank", MatchStateKind.Presentation),
+            new MatchStateEntry("Game.Map.MapFlagAnimator", MatchStateKind.Presentation),
+            new MatchStateEntry("Game.UI.TokenSlotUI", MatchStateKind.Presentation),
             new MatchStateEntry("Game.Map.HexMapGenerator", MatchStateKind.Presentation),
             new MatchStateEntry("Game.Map.ResourceIconVisual", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.BattleSkillEffect", MatchStateKind.Presentation),

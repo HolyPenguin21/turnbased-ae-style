@@ -9,6 +9,8 @@ namespace Game.Audio
     public sealed class GameAudioManager : MonoBehaviour
     {
         public static GameAudioManager Instance { get; private set; }
+        // Track order is presentation: never UnityEngine.Random, whose stream the challenge dice use.
+        private static readonly System.Random TrackRandom = new System.Random();
         public GameAudioSettings Settings { get; } = new GameAudioSettings();
         [SerializeField] private AudioSource uiSource;
         [SerializeField] private AudioSource musicSource;
@@ -145,7 +147,7 @@ namespace Game.Audio
                     if (playlist.Count > 1)
                     {
                         // Map one draw onto all indices except the previously played one.
-                        next = Random.Range(0, playlist.Count - (lastTrack >= 0 ? 1 : 0));
+                        next = TrackRandom.Next(0, playlist.Count - (lastTrack >= 0 ? 1 : 0));
                         if (lastTrack >= 0 && next >= lastTrack) next++;
                     }
                     lastTrack = next; musicSource.clip = playlist[next]; musicSource.Play();

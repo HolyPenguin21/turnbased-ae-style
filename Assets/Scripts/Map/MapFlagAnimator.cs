@@ -22,6 +22,8 @@ namespace Game.Map
 
         private float elapsed;
         private Sprite[] activeLogoFrames;
+        // Visual-only randomness: never UnityEngine.Random, whose stream the challenge dice use.
+        private static readonly System.Random PhaseRandom = new System.Random();
 
         // Every building-marker spawn/capture path calls this with the owner's resolved faction
         // (Random is already resolved by then — see GameSetupController.ResolveRandomFactions).
@@ -50,7 +52,7 @@ namespace Game.Map
         {
             int frameCount = frames != null ? frames.Length : 0;
             elapsed = randomizePhase && frameCount > 0
-                ? Random.value * frameCount / Mathf.Max(0.1f, framesPerSecond)
+                ? (float)PhaseRandom.NextDouble() * frameCount / Mathf.Max(0.1f, framesPerSecond)
                 : 0f;
             ApplyFrame(frameCount);
         }
