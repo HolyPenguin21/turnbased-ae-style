@@ -2,6 +2,7 @@ using System;
 using Game.Map;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Cards;
 using Game.Core;
 using Game.Economy;
 using Game.Players;
@@ -67,22 +68,22 @@ namespace Game.Campaign
 
         [Header("Modal windows")]
         [SerializeField] private GameObject modalBackdrop;
-        [SerializeField] private GameObject confirmWindow, deckWindow, resultWindow, errorWindow;
-        [SerializeField] private TMP_Text confirmText, deckInfo, deckEmptyLabel, resultText, errorText;
-        [SerializeField] private TMP_Text confirmTargetText, confirmConditionsText;
+        [SerializeField] private GameObject confirmWindow, resultWindow, errorWindow;
+        [SerializeField] private TMP_Text confirmHeading, confirmText, confirmTargetText, confirmConditionsText;
+        [SerializeField] private TMP_Text confirmStartLabel, confirmDeckStatus, resultText, errorText;
         [SerializeField] private SupplyColumnRefs confirmSupplyAttacker, confirmSupplyDefender;
         [SerializeField] private ScrollRect confirmSupplyScroll;
-        [SerializeField] private Button confirmChooseDeck, confirmCancel, deckStart, deckCancel, deckAutoResolve, resultContinue, errorRetry, errorMenu;
-        [SerializeField] private RectTransform deckListContent;
-        [SerializeField] private CampaignDeckRowView deckRowPrefab;
+        [SerializeField] private TMP_Dropdown confirmDeckDropdown;
+        [SerializeField] private Button confirmStart, confirmCancel, confirmAutoResolve, resultContinue, errorRetry, errorMenu;
 
         private Material cloudMaterial, consoleMaterial, surfacePanelMaterial, regionPreviewMaterial;
         private readonly List<Material> attackPreviewMaterials = new List<Material>();
         private RectTransform modalContent;
         private int? selected, hovered;
         private int confirmFrom, confirmTarget;
+        private readonly List<(string Id, bool Valid)> battleDecks = new List<(string, bool)>();
         private string selectedDeckId;
-        private Action cancelModal, retryAction;
+        private Action cancelModal, retryAction, afterAttackAnimation;
         private bool rewardOpen, defenceDeferred, acting, continueAfterCapture;
         private bool started;
         private CollectionRewardUI rewardPresentation;
@@ -91,6 +92,8 @@ namespace Game.Campaign
         private readonly CampaignBattleResolver resolver = new CampaignBattleResolver();
         private CampaignController Controller => CampaignMatchBridge.Controller;
         private bool ModalOpen => modalContent != null;
+        private bool CanUseCampaignMap => isActiveAndEnabled && !ModalOpen && !rewardOpen && !acting
+            && !continueAfterCapture && !SceneLoadCurtain.IsLoading;
         private void Start()
         {
             BindStatic();
@@ -111,14 +114,24 @@ namespace Game.Campaign
         private void BindStatic()
         {
             hoverLabel.text = "";
-            menuButton.onClick.AddListener(() => SceneManager.LoadScene(SceneNames.MainMenu));
-            endTurnButton.onClick.AddListener(() => Attempt(() => { Controller.EndTurn(); selected = null; Recover(); }));
-            resumeButton.onClick.AddListener(() => { defenceDeferred = false; OpenDeckSelection(); });
-            confirmChooseDeck.onClick.AddListener(() => Attempt(() => { if (acting) return; Controller.BeginAttack(confirmFrom, confirmTarget, true); PresentConfirmedAttack(); }));
-            confirmCancel.onClick.AddListener(CancelAttackConfirmation);
-            deckStart.onClick.AddListener(StartBattle);
-            deckCancel.onClick.AddListener(CancelDeck);
-            deckAutoResolve.onClick.AddListener(() => Attempt(() => ResolveTest(selectedDeckId)));
+            menuButton.onClick.AddListener(() =>
+            {
+                if (CanUseCampaignMap) SceneManager.LoadScene(SceneNames.MainMenu);
+            });
+            endTurnButton.onClick.AddListener(() =>
+            {
+                if (CanUseCampaignMap) Attempt(() => { Controller.EndTurn(); selected = null; Recover(); });
+            });
+            resumeButton.onClick.AddListener(() =>
+            {
+                if (!CanUseCampaignMap) return;
+                defenceDeferred = false;
+                Attempt(OpenPendingBattle);
+            });
+            confirmDeckDropdown.onValueChanged.AddListener(SelectBattleDeck);
+            confirmStart.onClick.AddListener(() => ConfirmBattle(autoResolve: false));
+            confirmCancel.onClick.AddListener(CancelBattleConfirmation);
+            confirmAutoResolve.onClick.AddListener(() => ConfirmBattle(autoResolve: true));
             errorRetry.onClick.AddListener(() =>
             {
                 if (!isActiveAndEnabled || modalContent != errorWindow.transform) return;
@@ -174,13 +187,13 @@ namespace Game.Campaign
                 return;
             }
             if (state.Stage == MatchResultStage.CampaignResult) ShowResult();
-            else if (op?.Manual == true && !op.ResultRecorded && !defenceDeferred) OpenDeckSelection();
+            else if (op?.Manual == true && !op.ResultRecorded && !defenceDeferred) OpenPendingBattle();
             else if (op != null && !op.Manual && !op.ResultRecorded)
                 Attempt(() => { Controller.ResolvePendingAiBattle(ProgressionContext.Collection.Rules, resolver); Render(); ShowResult(); });
         }
         private void Update()
         {
-            UIFocusUtility.KeepFocusWithinModal();
+            UIFocusUtility.KeepFocusWithinModal(restoreMissingSelection: ModalOpen && UIFocusUtility.IsTop(this));
             if (continueAfterCapture)
             {
                 if (map.IsCapturePlaying) return;
@@ -190,29 +203,36 @@ namespace Game.Campaign
             {
                 if (map.AttackAnimationPlaying) return;
                 map.CancelAttackAnimation(); acting = false;
-                if (Controller == presentationOwner && Controller.View.PendingOperation?.OperationId == presentationOperationId) Attempt(Recover);
+                var complete = afterAttackAnimation;
+                afterAttackAnimation = null;
+                if (Controller != null && Controller == presentationOwner
+                    && Controller.View.PendingOperation?.OperationId == presentationOperationId)
+                    Attempt(complete ?? Recover);
                 return;
             }
             bool escape = UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame;
             if (escape && !UIFocusUtility.IsGameplayShortcutBlocked && !ModalOpen && !rewardOpen && selected.HasValue) { selected = null; hovered = null; Render(); return; }
             if (ModalOpen && UIFocusUtility.WasEscapePressed(this))
             {
-                cancelModal?.Invoke();
+                if (modalContent == confirmWindow.transform && confirmDeckDropdown.IsExpanded)
+                    confirmDeckDropdown.Hide();
+                else cancelModal?.Invoke();
                 // Results require explicit Continue; ESC never acknowledges an operation.
                 return;
             }
-            if (Controller == null || ModalOpen || rewardOpen || acting) return;
+            if (Controller == null || !CanUseCampaignMap) return;
             if (Controller.Phase != CampaignPhase.AwaitingFactionAction || !Controller.IsAiTurn) return;
             Attempt(() => { Controller.TakeAiTurn(ProgressionContext.Collection.Rules, resolver, resolveImmediately: false); selected = null; defenceDeferred = false; PresentConfirmedAttack(); });
         }
         // Uses the existing UI Update presentation gate; no timers or callbacks in strategic logic.
         // This is the only attack animation launch point, reached only after a new attack is confirmed.
         // Recover/load/resume/result rendering never launch an old operation again.
-        private void PresentConfirmedAttack()
+        private void PresentConfirmedAttack(Action onComplete = null)
         {
             if (acting || continueAfterCapture) return;
             if (Controller.View.PendingOperation == null) { Recover(); return; }
             acting = true;
+            afterAttackAnimation = onComplete;
             presentationOwner = Controller; presentationOperationId = Controller.View.PendingOperation.OperationId;
             CloseModal(); selected = null; hovered = null; hoverLabel.text = ""; Render();
             map.PlayAttack(Controller.View.PendingOperation);
@@ -227,7 +247,8 @@ namespace Game.Campaign
         private void OnDisable()
         {
             CloseRewardPresentation();
-            acting = continueAfterCapture = false; presentationOwner = null; presentationOperationId = null;
+            acting = continueAfterCapture = false; afterAttackAnimation = null;
+            presentationOwner = null; presentationOperationId = null;
             if (map != null) { map.CancelAttackAnimation(); map.CancelCapture(); }
             UIFocusUtility.SetOverlay(this, false);
         }
@@ -250,7 +271,7 @@ namespace Game.Campaign
         }
         private void ClickRegion(int id)
         {
-            if (ModalOpen || rewardOpen || acting || continueAfterCapture) return;
+            if (!CanUseCampaignMap) return;
             var state = Controller.View;
             if (selected.HasValue && state.CanAttack(state.HumanFaction, selected.Value, id)) { ConfirmAttack(selected.Value, id); return; }
             selected = id; Render();
@@ -374,7 +395,7 @@ namespace Game.Campaign
                 if (view.OwnerLogo != null) SetLogo(view.OwnerLogo, target.OwnerFaction);
                 if (view.RegionName != null) view.RegionName.text = target.Name;
                 if (view.OwnerName != null) view.OwnerName.text = FactionName(target.OwnerFaction);
-                view.AttackButton.onClick.AddListener(() => { if (!ModalOpen && !rewardOpen && !acting && !continueAfterCapture) ConfirmAttack(from, targetId); });
+                view.AttackButton.onClick.AddListener(() => { if (CanUseCampaignMap) ConfirmAttack(from, targetId); });
             }
             if (noAttacksLabel != null) { noAttacksLabel.gameObject.SetActive(attacks.Count == 0); noAttacksLabel.text = emptyText; }
         }
@@ -402,7 +423,7 @@ namespace Game.Campaign
             }
             bool humanTurn = s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction;
             endTurnButton.gameObject.SetActive(humanTurn);
-            resumeButton.gameObject.SetActive(!humanTurn && s.PendingOperation?.Manual == true && !s.PendingOperation.ResultRecorded);
+            resumeButton.gameObject.SetActive(!acting && s.PendingOperation?.Manual == true && !s.PendingOperation.ResultRecorded);
             summaryLabel.gameObject.SetActive(finished);
             if (!finished) return;
             var mine = s.BattleHistory.Where(b => b.Attacker == s.HumanFaction || b.Defender == s.HumanFaction).ToList();
@@ -411,39 +432,73 @@ namespace Game.Campaign
         }
         private void RefreshMap()
         {
+            bool available = CanUseCampaignMap;
+            SetMapControlsInteractable(available);
             if (Controller == null || map == null) return;
             var s = Controller.View;
-            bool enabled = !ModalOpen && !rewardOpen && !acting && !continueAfterCapture && (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction || s.Phase == CampaignPhase.CampaignFinished);
+            bool enabled = available && (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction
+                || s.Phase == CampaignPhase.CampaignFinished);
             map.Refresh(s, selected, hovered, enabled);
         }
-        private void OpenModal(GameObject window, Action onCancel = null)
+        private void SetMapControlsInteractable(bool available)
+        {
+            menuButton.interactable = available;
+            endTurnButton.interactable = available;
+            resumeButton.interactable = available;
+        }
+        private void OpenModal(GameObject window, Action onCancel = null, Selectable focus = null)
         {
             CloseModal();
             cancelModal = onCancel;
             modalBackdrop.SetActive(true); window.SetActive(true); modalContent = (RectTransform)window.transform;
-            UIFocusUtility.SetModal(this, window, ModalBlock.Full, window == confirmWindow ? confirmChooseDeck : null);
+            UIFocusUtility.SetModal(this, window, ModalBlock.Full, focus);
             RefreshMap();
         }
         private void CloseModal()
         {
-            foreach (var window in new[] { confirmWindow, deckWindow, resultWindow, errorWindow }) window.SetActive(false);
+            foreach (var window in new[] { confirmWindow, resultWindow, errorWindow }) window.SetActive(false);
             modalBackdrop.SetActive(false); modalContent = null; cancelModal = null; retryAction = null;
+            SetMapControlsInteractable(CanUseCampaignMap);
             UIFocusUtility.SetModal(this, null);
         }
-        private void CancelAttackConfirmation() { CloseModal(); RefreshMap(); }
         private void ConfirmAttack(int from, int target)
         {
-            var s = Controller.View; if (!s.CanAttack(s.HumanFaction, from, target)) return;
+            var s = Controller.View;
+            if (!s.CanAttack(s.HumanFaction, from, target)) return;
+            OpenBattleConfirmation(s, from, target);
+        }
+        private void OpenPendingBattle()
+        {
+            var s = Controller.View;
+            var op = s.PendingOperation;
+            if (op == null || !op.Manual || op.ResultRecorded) return;
+            OpenBattleConfirmation(s, op.SourceRegionId, op.TargetRegionId);
+        }
+        private void OpenBattleConfirmation(CampaignReadModel s, int from, int target)
+        {
+            var op = s.PendingOperation;
             var source = s.FindRegion(from);
             var battlefield = s.FindRegion(target);
-            var supply = CampaignAttackSupply.Calculate(s, battlefield, source.OwnerFaction);
-            confirmFrom = from; confirmTarget = target;
-            OpenModal(confirmWindow, CancelAttackConfirmation);
-            confirmText.text = source.Name + "\n" + FactionName(source.OwnerFaction);
-            confirmTargetText.text = battlefield.Name + "\n" + FactionName(battlefield.OwnerFaction);
-            confirmConditionsText.text = "Battle conditions" + BattleConditions(battlefield);
+            var attacker = op?.AttackerFaction ?? source.OwnerFaction;
+            var defender = op?.DefenderFaction ?? battlefield.OwnerFaction;
+            var supply = CampaignAttackSupply.Calculate(s, battlefield, attacker);
+            bool attack = attacker == s.HumanFaction;
+            bool interrupted = s.Phase == CampaignPhase.BattleInProgress;
+
+            confirmFrom = from;
+            confirmTarget = target;
+            confirmHeading.text = interrupted ? "RESUME CAMPAIGN BATTLE" : attack ? "CONFIRM ATTACK" : "DEFEND REGION";
+            confirmStartLabel.text = interrupted ? "Restart Battle" : attack ? "Start Battle" : "Defend Region";
+            confirmText.text = source.Name + "\n" + FactionName(attacker);
+            confirmTargetText.text = battlefield.Name + "\n" + FactionName(defender);
+            confirmConditionsText.text = "Battle conditions" + BattleConditions(battlefield, op?.Weather);
             ShowSupply(confirmSupplyAttacker, supply.Attacker, battlefield.RegionId);
             ShowSupply(confirmSupplyDefender, supply.Defender, battlefield.RegionId);
+
+            confirmAutoResolve.gameObject.SetActive(s.Phase != CampaignPhase.BattleInProgress
+                && (enableHumanTestAutoResolve || op?.TestAutoResolve == true));
+            PopulateBattleDecks(s.HumanFaction, op?.SelectedHumanDeckId);
+            OpenModal(confirmWindow, CancelBattleConfirmation, confirmStart.interactable ? confirmStart : confirmCancel);
             confirmSupplyScroll.StopMovement();
             confirmSupplyScroll.verticalNormalizedPosition = 1;
         }
@@ -456,56 +511,77 @@ namespace Game.Campaign
             column.regions.text = side.Sources.Count == 0 ? "No supplying regions" : string.Join("\n", side.Sources.Select(source =>
                 source.Region.Name + (source.Region.RegionId == battlefieldId ? " (Battlefield)" : "") + " · " + CampaignAttackSupply.Describe(source.Bonus)));
         }
-        private void OpenDeckSelection()
+        private void PopulateBattleDecks(Faction faction, string savedDeckId)
         {
-            var s = Controller.View; var op = s.PendingOperation;
-            if (op == null || !op.Manual || op.ResultRecorded) return;
-            OpenModal(deckWindow, CancelDeck);
-            bool attack = op.AttackerFaction == s.HumanFaction;
-            var battlefield = s.FindRegion(op.TargetRegionId);
-            var supply = CampaignAttackSupply.Calculate(s, battlefield, op.AttackerFaction);
-            string message = (attack ? "ATTACK" : "DEFENCE") + " · " + battlefield.Name
-                + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  Defender: " + FactionName(op.DefenderFaction);
-            message += BattleConditions(battlefield, op.Weather)
-                + "\nStarting supply · Attacker: " + CampaignAttackSupply.Describe(supply.Attacker.Total)
-                + "\nDefender: " + CampaignAttackSupply.Describe(supply.Defender.Total);
-            if (s.Phase == CampaignPhase.BattleInProgress) message += "\nInterrupted battle: restart with a fresh tactical map. Territory unchanged.";
-            deckInfo.text = message;
-            ClearChildren(deckListContent);
-            var decks = ProgressionContext.Collection.Decks(s.HumanFaction);
-            if (!decks.Any(d => d.deckId == selectedDeckId))
-                selectedDeckId = decks.Find(d => d.deckId == op.SelectedHumanDeckId)?.deckId
-                    ?? ProgressionContext.Collection.DefaultDeck(s.HumanFaction)?.deckId;
-            int i = 0; float rowPitch = ((RectTransform)deckRowPrefab.transform).rect.height; // rows touch: no gap between decks
-            foreach (var deck in decks)
+            var collection = ProgressionContext.Collection;
+            var labels = new List<string>();
+            battleDecks.Clear();
+            foreach (var deck in collection.Decks(faction))
             {
-                var validation = ProgressionContext.Collection.Rules.Validate(deck, ProgressionContext.Collection.Owned);
-                var row = Instantiate(deckRowPrefab, deckListContent, false);
-                ((RectTransform)row.transform).anchoredPosition = new Vector2(0, -i * rowPitch);
-                row.ButtonLabel.text = (selectedDeckId == deck.deckId ? "> " : "") + deck.name + "  ·  " + validation.Points + " / 100";
-                row.Button.interactable = validation.IsValid;
-                row.Button.onClick.AddListener(() => { selectedDeckId = deck.deckId; OpenDeckSelection(); });
-                i++;
+                var validation = collection.Rules.Validate(deck, collection.Owned);
+                battleDecks.Add((deck.deckId, validation.IsValid));
+                labels.Add($"{deck.name}  ·  {validation.Points} / {DeckRules.MaximumPoints}" + (validation.IsValid ? "" : "  ·  Invalid"));
             }
-            // Content must not exceed the viewport when the rows fit, otherwise the scrollbar never hides.
-            float viewportHeight = ((RectTransform)deckListContent.parent).rect.height;
-            deckListContent.sizeDelta = new Vector2(deckListContent.sizeDelta.x, Math.Max(viewportHeight, i * rowPitch));
-            deckEmptyLabel.gameObject.SetActive(decks.Count == 0);
-            var selectedDeck = decks.Find(d => d.deckId == selectedDeckId);
-            deckStart.GetComponentInChildren<TMP_Text>().text = attack ? "Start Battle" : "Defend Region";
-            deckStart.interactable = !op.TestAutoResolve && selectedDeck != null && ProgressionContext.Collection.Rules.Validate(selectedDeck, ProgressionContext.Collection.Owned).IsValid;
-            deckAutoResolve.gameObject.SetActive(enableHumanTestAutoResolve || op.TestAutoResolve);
+
+            int index = battleDecks.FindIndex(d => d.Id == (selectedDeckId ?? savedDeckId) && d.Valid);
+            if (index < 0 && savedDeckId != null)
+                index = battleDecks.FindIndex(d => d.Id == savedDeckId && d.Valid);
+            if (index < 0)
+            {
+                var defaultDeckId = collection.DefaultDeck(faction)?.deckId;
+                index = battleDecks.FindIndex(d => d.Id == defaultDeckId && d.Valid);
+            }
+            if (index < 0) index = battleDecks.FindIndex(d => d.Valid);
+            if (labels.Count == 0) labels.Add("No saved decks");
+
+            confirmDeckDropdown.ClearOptions();
+            confirmDeckDropdown.AddOptions(labels);
+            confirmDeckDropdown.interactable = battleDecks.Count > 0;
+            confirmDeckDropdown.SetValueWithoutNotify(Mathf.Max(0, index));
+            SelectBattleDeck(confirmDeckDropdown.value);
+        }
+        private void SelectBattleDeck(int index)
+        {
+            bool valid = index >= 0 && index < battleDecks.Count && battleDecks[index].Valid;
+            selectedDeckId = valid ? battleDecks[index].Id : null;
+            confirmStart.interactable = valid && Controller.View.PendingOperation?.TestAutoResolve != true;
+            confirmAutoResolve.interactable = valid;
+            confirmDeckStatus.text = battleDecks.Count == 0 ? "Create a deck for this faction in Collection & Decks."
+                : !valid ? "This deck needs changes. Open Collection & Decks."
+                : Controller.Phase == CampaignPhase.BattleInProgress ? "Restarting this battle generates a fresh tactical map." : "";
+            confirmDeckStatus.gameObject.SetActive(confirmDeckStatus.text.Length > 0);
+        }
+        private void ConfirmBattle(bool autoResolve)
+        {
+            var button = autoResolve ? confirmAutoResolve : confirmStart;
+            if (acting || SceneLoadCurtain.IsLoading || modalContent != confirmWindow.transform || !UIFocusUtility.IsTop(this)
+                || !button.isActiveAndEnabled || !button.IsInteractable() || selectedDeckId == null) return;
+
+            string deckId = selectedDeckId;
+            Action launch = autoResolve ? () => ResolveTest(deckId) : () => StartBattle(deckId);
+            Attempt(() =>
+            {
+                if (Controller.View.PendingOperation != null)
+                {
+                    launch();
+                    return;
+                }
+                Controller.BeginAttack(confirmFrom, confirmTarget, manual: true, humanDeckId: deckId);
+                PresentConfirmedAttack(launch);
+            });
         }
         private static string BiomeName(Biome biome) => biome == Biome.Arid ? "Arid badlands" : "Desert";
         // The player-facing battle conditions: the target region's properties and its weather (a
         // pending operation passes its own weather snapshot). No generator internals here.
         private static string BattleConditions(CampaignRegionView target, MatchWeatherProfile? weather = null) =>
             $"\n{BiomeName(target.Biome)} · {target.Specialization} · {target.Richness}\n{MatchWeatherConditions.Describe(weather ?? target.Weather)}";
-        private void StartBattle()
+        private void StartBattle(string deckId)
         {
             if (SceneLoadCurtain.IsLoading) return;
-            if (!CampaignMatchBridge.PrepareMatch(gameConfig, selectedDeckId, out string error)) { Failure(error, OpenDeckSelection); return; }
-            Game.UI.SceneLoadCurtain.LoadScene(SceneNames.Game, gameConfig.PickLoadingScreenImage());
+            if (!CampaignMatchBridge.PrepareMatch(gameConfig, deckId, out string error)) { Failure(error, OpenPendingBattle); return; }
+            SceneLoadCurtain.LoadScene(SceneNames.Game, gameConfig.PickLoadingScreenImage());
+            CloseModal();
+            RefreshMap();
         }
         private void ResolveTest(string deckId)
         {
@@ -520,22 +596,23 @@ namespace Game.Campaign
             else Controller.ResolveHumanTest(op.AttackerFaction == s.HumanFaction ? human : enemy, op.AttackerFaction == s.HumanFaction ? enemy : human, resolver);
             CloseModal(); Recover();
         }
-        private void CancelDeck()
+        private void CancelBattleConfirmation()
         {
-            var op = Controller?.View.PendingOperation;
+            var s = Controller.View;
+            var op = s.PendingOperation;
             if (op == null) { CloseModal(); RefreshMap(); return; }
             if (op.ResultRecorded) return;
-            // Never cancel a started match receipt; defending and interrupted battles stay pending.
-            if (Controller.View.Phase == CampaignPhase.PreparingBattle && op.AttackerFaction == Controller.View.HumanFaction)
+            // Defence and tactical matches already registered with the campaign stay pending.
+            if (s.Phase == CampaignPhase.PreparingBattle && op.AttackerFaction == s.HumanFaction)
+            {
+                try { Controller.CancelHumanAttack(); }
+                catch (Exception ex)
                 {
-                    try { Controller.CancelHumanAttack(); }
-                    catch (Exception ex)
-                    {
-                        Debug.LogWarning(ex);
-                        Failure("Could not cancel this attack. Try again.", Recover);
-                        return;
-                    }
+                    Debug.LogWarning(ex);
+                    Failure("Could not cancel this attack. Try again.", Recover);
+                    return;
                 }
+            }
             else defenceDeferred = true;
             CloseModal(); Render();
         }
@@ -581,7 +658,8 @@ namespace Game.Campaign
         }
         private void Failure(string error, Action retry)
         {
-            acting = continueAfterCapture = false; map?.CancelAttackAnimation(); map?.CancelCapture();
+            acting = continueAfterCapture = false; afterAttackAnimation = null;
+            map?.CancelAttackAnimation(); map?.CancelCapture();
             OpenModal(errorWindow); errorText.text = error; retryAction = retry;
         }
         public static string FactionName(Faction f) => f == Faction.IronConcord ? "Iron Concord" : f == Faction.Ashen ? "The Ashen" : "The Vessels";

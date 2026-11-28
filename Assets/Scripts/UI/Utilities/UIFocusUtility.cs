@@ -235,10 +235,12 @@ namespace Game.UI
             if (events.currentSelectedGameObject != target) events.SetSelectedGameObject(target);
         }
 
-        internal static void KeepFocusWithinModal()
+        internal static void KeepFocusWithinModal(bool restoreMissingSelection = false)
         {
             Prune();
-            if (Top != null && Selection != null && !Contains(Top.Root, Selection)) Focus(null, Top);
+            var selection = Selection;
+            if (Top != null && (selection != null || restoreMissingSelection) && !Contains(Top.Root, selection))
+                Focus(null, Top);
         }
 
         internal static bool IsTop(MonoBehaviour owner)
