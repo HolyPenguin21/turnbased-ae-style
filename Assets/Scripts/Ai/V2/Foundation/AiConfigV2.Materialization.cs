@@ -182,7 +182,8 @@
         // remainder (ResourceAllocator, DeferReason.LowValuePerAp). 1 TaskScore point = 1 AP
         // (taskScorePerApEquivalent), so 3 = "must return at least three times its AP". Guard raids in the
         // 2026-10-02 log were worth 14-27 for 1-5 AP, so this only catches genuinely thin raids;
-        // with spare AP they still run the same turn through the remainder pass.
+        // with spare AP they still run the same turn through the remainder pass, taking their actor
+        // from cheaper fresh work it was funded for.
         public const float raidParkValuePerAp = 3.0f;
         public const float stagingReturnMinFistShare = 0.30f;
         // A Collector demand draws on other builds' deferred holds only when its resource's

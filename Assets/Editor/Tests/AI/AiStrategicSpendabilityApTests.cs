@@ -295,6 +295,45 @@ namespace Game.EditorTests
                 "with AP to spare the parked raid runs through the remainder pass");
         }
 
+        // Turn stand Raid2 (Rusty, Nyx): a one-move raider's Raid (value 7 for 3 AP) is parked, and the
+        // same army's Return (value ~2) took the actor in the strict pass. The parked Raid now takes
+        // its actor from cheaper fresh work in the remainder pass, never from work worth as much.
+        [Test]
+        public void ParkedRaid_DisplacesCheaperMissionOfTheSameActor_NotADearerOne()
+        {
+            var player = new PlayerSetupData();
+            WorldSnapshot snap = new WorldSnapshot { TurnNumber = 5, Self = new SelfSnapshot { ActionPoints = 6 } };
+            MissionProposal Rival(float value)
+            {
+                MissionProposal rival = AirScout(0f);
+                rival.EffectiveValue = rival.BaseValue = value;
+                rival.PreferredMoverArmyId = 5;
+                rival.Requirements.ApMinimum = rival.Requirements.ApDesired = rival.Requirements.ApMaximum = 3f;
+                return rival;
+            }
+            MissionProposal Raid()
+            {
+                MissionProposal raid = FreshRaid(1, value: 7f, ap: 3f);   // 7 < 3 x 3 AP: parked
+                raid.EffectiveValue = 12.6f;
+                raid.PreferredMoverArmyId = 5;
+                return raid;
+            }
+
+            MissionProposal cheapRival = Rival(3.5f), raid = Raid();
+            TentativeAllocation cheap = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { raid, cheapRival }, new List<Commitment>(), player).Pack();
+            Assert.That(cheap.Funded.Select(f => f.Mission), Has.Member(raid), "the parked raid takes its actor");
+            Assert.That(cheap.Funded.Select(f => f.Mission), Has.No.Member(cheapRival));
+            Assert.That(cheap.Deferred.Any(d => d.Mission == cheapRival && d.Reason == DeferReason.MissionConflict), Is.True);
+            Assert.That(cheap.Unused.Ap + cheap.Funded.Sum(f => f.Tentative.Ap), Is.EqualTo(6f).Within(0.001f));
+
+            MissionProposal dearRival = Rival(20f), raid2 = Raid();
+            TentativeAllocation dear = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { raid2, dearRival }, new List<Commitment>(), player).Pack();
+            Assert.That(dear.Funded.Select(f => f.Mission), Has.Member(dearRival));
+            Assert.That(dear.Funded.Select(f => f.Mission), Has.No.Member(raid2));
+        }
+
         private static MissionProposal AirScout(float energy)
         {
             var scout = new MissionProposal

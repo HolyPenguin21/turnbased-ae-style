@@ -324,7 +324,8 @@ namespace Game.Ai.V2
         MissionConflict,
         // A fresh opportunistic Raid worth less than AiConfigV2.raidParkValuePerAp per AP it asks:
         // parked, and funded only from the common remainder after every other fresh mission (the
-        // same pass that funds InsufficientBudget spillover), i.e. on turns with AP to spare.
+        // same pass that funds InsufficientBudget spillover), i.e. on turns with AP to spare. There it
+        // takes its actor from conflicting fresh missions worth less than itself.
         LowValuePerAp,
         // 2026-11-02 — a fresh (non-durable) proposal whose intrinsic TaskScore is below zero: its
         // cost outweighs its benefit, so no AP is spent on it, not even from the remainder
@@ -649,6 +650,11 @@ namespace Game.Ai.V2
                 laneUsed.TryGetValue(lane, out int u);
                 laneUsed[lane] = u + 1;
             }
+            void ReleaseSlot(ExecutionLane lane)
+            {
+                if (lane != ExecutionLane.None && laneUsed.TryGetValue(lane, out int u) && u > 0)
+                    laneUsed[lane] = u - 1;
+            }
             // ResourceAllocator remains portfolio owner only: it does not assign actors. It asks
             // MissionAdmissionPolicy whether the already actor-priced proposals can coexist.
             bool ConflictsCurrentPortfolio(MissionProposal candidate)
@@ -662,6 +668,23 @@ namespace Game.Ai.V2
                         && MissionAdmissionPolicy.Conflicts(fe.Mission, candidate))
                     || _lockedClaims.Values.Any(lc => lc.Mission != null
                         && MissionAdmissionPolicy.Conflicts(lc.Mission, candidate));
+            }
+            // A Raid parked for low value per AP takes its actor from the fresh funded missions it
+            // conflicts with when each is worth less (RankValue) than the Raid: parking only moves the
+            // Raid after them in funding order, it must not hand its actor to cheaper work. Null when
+            // the conflict stands (a commitment, a locked claim, a shared trade, a mission worth as much).
+            List<FundedEntry> DisplaceableBy(MissionProposal candidate, DeferReason reason)
+            {
+                if (reason != DeferReason.LowValuePerAp) return null;
+                if (_lockedClaims.Values.Any(lc => lc.Mission != null
+                        && MissionAdmissionPolicy.Conflicts(lc.Mission, candidate))
+                    || NeedsTrade(candidate)) return null;
+                List<FundedEntry> rivals = alloc.Funded
+                    .Where(fe => fe?.Mission != null && MissionAdmissionPolicy.Conflicts(fe.Mission, candidate))
+                    .ToList();
+                return rivals.Count > 0 && rivals.All(fe => !fe.IsCommitment
+                        && RankValue(fe.Mission) < RankValue(candidate))
+                    ? rivals : null;
             }
 
             float committedApSoFar = 0f;
@@ -869,11 +892,39 @@ namespace Game.Ai.V2
                 if (remainder <= eps) break;
                 MissionProposal m = deferred.Mission;
                 float min = ApMinimum(m);
-                if (min <= eps || Mathf.Min(remainder, ApAvailableFor(m)) + eps < min) continue;
+                if (min <= eps) continue;
                 ExecutionLane lane = MissionAdmissionPolicy.LaneFor(m);
-                if (ConflictsCurrentPortfolio(m) || AtCapacity(lane)) continue;
                 ResourceVector physMin = PhysicalMinimum(m);
-                if (physMin.AnyPhysical && !PhysicalAvailableFor(m, physicalRemaining, alloc.Funded).CoversPhysical(physMin, eps)) continue;
+                List<FundedEntry> displaced = ConflictsCurrentPortfolio(m)
+                    ? DisplaceableBy(m, deferred.Reason) : new List<FundedEntry>();
+                if (displaced == null) continue;
+                var displacedAt = displaced.Select(fe => alloc.Funded.IndexOf(fe)).ToList();
+                foreach (FundedEntry fe in displaced) alloc.Funded.Remove(fe);
+                float freedAp = displaced.Sum(fe => fe.Tentative.Ap);
+                ResourceVector freedPhys = displaced.Aggregate(ResourceVector.Zero, (s, fe) => s + fe.PhysicalDraw);
+                bool laneFree = !AtCapacity(lane) || displaced.Any(fe => MissionAdmissionPolicy.LaneFor(fe.Mission) == lane);
+                if (Mathf.Min(remainder + freedAp, ApAvailableFor(m)) + eps < min || !laneFree
+                    || physMin.AnyPhysical && !PhysicalAvailableFor(m, physicalRemaining + freedPhys, alloc.Funded)
+                        .CoversPhysical(physMin, eps))
+                {
+                    for (int i = 0; i < displaced.Count; i++)
+                        alloc.Funded.Insert(displacedAt[i], displaced[i]);
+                    continue;
+                }
+                foreach (FundedEntry fe in displaced)
+                {
+                    remainder += fe.Tentative.Ap;
+                    alloc.RemainderGenerated += new ResourceVector(fe.StrictAp);
+                    alloc.StrictFunded -= new ResourceVector(fe.StrictAp);
+                    alloc.RemainderSpent -= fe.RemainderTopUp;
+                    physicalRemaining += fe.PhysicalDraw;
+                    alloc.PhysicalFunded -= fe.PhysicalDraw;
+                    ReleaseSlot(MissionAdmissionPolicy.LaneFor(fe.Mission));
+                    alloc.Deferred.Add(new DeferredEntry { Mission = fe.Mission, Reason = DeferReason.MissionConflict });
+                    AiDebugLog.Write($"[AI][V2] allocator spillover - DISPLACE {StableMissionKey.For(fe.Mission)} "
+                        + $"value={LogNum(RankValue(fe.Mission))} by parked {StableMissionKey.For(m)} "
+                        + $"value={LogNum(RankValue(m))}; freed ap={LogNum(fe.Tentative.Ap)}");
+                }
 
                 var v = new ResourceVector(min);
                 var funded = new FundedEntry
