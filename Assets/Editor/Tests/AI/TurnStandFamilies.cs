@@ -263,18 +263,29 @@ namespace Game.EditorTests
                             Seen(Army(Foe, new HexCoord(4, -1), false, Outnumber(k.FoeStrong, Foe, 2f, k.Hero, k.Weak)));
                             break;
                         default:
-                            // A Base two hexes from the Citadel, the threat five hexes beyond it and seven
-                            // from the Citadel: the detachment arrives first, the Citadel stays a safe donor.
-                            // Relief is the only answer: the hand holds no card to deploy there, and the
-                            // Citadel garrison has bodies above its own floor.
+                            // A Base two hexes from the Citadel, the threat about two of its own turns
+                            // beyond it (five hexes, two for a one-move body) and farther from the
+                            // Citadel: it reaches the Base first, the Citadel stays a safe donor. Relief is the
+                            // only answer: neither the hand nor the deck holds a body to deploy, and the Citadel
+                            // garrison has bodies above its own floor.
                             Army(Me, citadel, true, k.Hero, k.Weak, k.Strong, k.Strong, k.Strong, k.Strong,
                                 k.Strong, k.Strong);
+                            // Empty shells for the relief: other work (a garrison scout leaving, a gather)
+                            // may take one or two of them first.
+                            Army(Me, citadel, false);
                             Army(Me, citadel, false);
                             Army(Me, citadel, false);
                             Hand.Hand.Clear();
+                            // The turn's refills draw no body either.
+                            ((List<CardDefinition>)typeof(PlayerHandData).GetField("remainingDeck",
+                                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                                .GetValue(Hand))
+                                .RemoveAll(c => c != null && (c.cardType == CardType.Unit || c.cardType == CardType.Hero));
                             Base(k.Catalog, Me, new HexCoord(-2, 0), citadel: false);
                             Army(Me, new HexCoord(-2, 0), true, k.Weak);
-                            Seen(Army(Foe, new HexCoord(-7, 4), false, Outnumber(k.FoeStrong, Foe, 3f, k.Strong, k.Strong)));
+                            int reach = UnitData.FromDefinition(k.FoeStrong, Foe).MoveMax >= 2 ? 5 : 2;
+                            Seen(Army(Foe, new HexCoord(-2 - reach, (int)Math.Round(0.8 * reach)), false,
+                                Outnumber(k.FoeStrong, Foe, 3f, k.Strong, k.Strong)));
                             break;
                     }
                     return true;
@@ -386,7 +397,10 @@ namespace Game.EditorTests
                 case TurnFamily.ScoutAir:
                     if (Family.Variant == 2 && StepOnTurn("Scout", 1) && StepOf("Scout", 1, "AirSweep"))
                         yield return "an air sortie with 0 Energy on turn 1";
-                    if (Family.Variant != 2 && !StepOf("Scout", last, "AirSweep"))
+                    // With an enemy in sight the wing may fly air support for the defence instead:
+                    // that is aviation work too.
+                    if (Family.Variant != 2 && !StepOf("Scout", last, "AirSweep")
+                        && !(Family.Variant == 4 && StepOf("ActiveDefence", last, "AirSupport")))
                         yield return "no air Recon sortie";
                     break;
                 case TurnFamily.Raid:
@@ -406,7 +420,12 @@ namespace Game.EditorTests
                     if (Family.Variant == 3 && assault)
                         yield return "an assault on a Base too strong to take";
                     bool asksForCarrier = Lines.Any(l => l.Contains("[Demand][Recon]") && l.Contains("profile=disruption"));
-                    if (Family.Variant != 3 && !StepOf("Attack", last) && !StepOf("Scout", last, "Disrupt") && !asksForCarrier)
+                    // A preparation waits for the mobilization gate (deployed share of the force):
+                    // a closed gate is the rule's answer, not a missing operation.
+                    bool mobilizationClosed = Family.Variant == 2 && Lines.Any(l =>
+                        l.Contains("[Attack][Mobilization]") && l.Contains("reason=trigger_closed"));
+                    if (Family.Variant != 3 && !StepOf("Attack", last) && !StepOf("Scout", last, "Disrupt")
+                        && !asksForCarrier && !mobilizationClosed)
                         yield return "neither an Attack step nor its Disruption (step or demand)";
                     break;
                 case TurnFamily.Economy:
