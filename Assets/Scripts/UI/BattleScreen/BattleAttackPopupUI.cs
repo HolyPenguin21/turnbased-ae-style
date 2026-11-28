@@ -416,6 +416,15 @@ namespace Game.UI
             // pause; a battle with nobody human in it at all resolves instantly instead.
             if (!RunsAutomatically && aiResultCloseDelay > 0f)
                 yield return new WaitForSeconds(aiResultCloseDelay);
+            // OnOkClicked refuses while TacticInputBlocked, which includes
+            // UIFocusUtility.ClosedThisFrame. A chained result (Splash/Scorcher side-hit,
+            // Counterattack, next Capture Kill or explosion target) opens synchronously inside
+            // the previous result's Ok, whose Hide() just closed this window, so an immediate
+            // call would be dropped and the chain would wait for a click nobody makes. Wait
+            // until the block clears (next frame, or an open overlay closes) instead.
+            while (_phase == Phase.Resolved && !_okAlreadyHandled
+                   && _tacticInfoPopup is not null && TacticInputBlocked)
+                yield return null;
             if (_phase == Phase.Resolved && !_okAlreadyHandled)
                 OnOkClicked();
         }
