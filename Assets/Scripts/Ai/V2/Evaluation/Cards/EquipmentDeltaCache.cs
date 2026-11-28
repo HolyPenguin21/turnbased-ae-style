@@ -35,7 +35,7 @@ namespace Game.Ai.V2
             internal readonly Dictionary<object, string> Stamps = new Dictionary<object, string>();
         }
 
-        private sealed class Entry
+        internal sealed class Entry
         {
             internal string CoreRef;      // CORE entry: interned core key instance
             internal string Stamp;        // CORE entry: recipient stamp
@@ -44,11 +44,38 @@ namespace Game.Ai.V2
             internal EquipmentUpgradeValuation.EquipmentDelta Delta;
         }
 
-        private sealed class PlayerCache
+        // The CORE-valid part of an entry's computation (CorePartSlot), kept even when the entry
+        // itself is FULL.
+        internal sealed class Part
+        {
+            internal string CoreRef;
+            internal string Stamp;
+            internal object Value;
+        }
+
+        // 2026-11-28 (match Tessek/Halden perf: Equip.EffDelta 25 s of 31 s) — a FULL entry
+        // dies on every verdict-key change although usually only its registry tail read
+        // non-core state: the efficiency utility before it reads the same facts a CORE entry
+        // reads. The computation in progress offers that part through this slot: reused when
+        // the core key and the recipient stamp match and nothing marked FULL before it, and
+        // stored only when nothing marked FULL up to its end. Passed explicitly down the one
+        // scorer chain, never found through ambient state.
+        internal sealed class CorePartSlot
+        {
+            internal PlayerCache Cache;
+            internal (CardDefinition, object, bool) Key;
+            internal string CoreRef;
+            internal string Stamp;
+            internal int Frame;
+        }
+
+        internal sealed class PlayerCache
         {
             internal int Turn;
             internal readonly Dictionary<(CardDefinition, object, bool), Entry> Entries =
                 new Dictionary<(CardDefinition, object, bool), Entry>();
+            internal readonly Dictionary<(CardDefinition, object, bool), Part> Parts =
+                new Dictionary<(CardDefinition, object, bool), Part>();
             internal readonly List<string> RecentCores = new List<string>();
         }
 
@@ -98,15 +125,16 @@ namespace Game.Ai.V2
 
         internal static EquipmentUpgradeValuation.EquipmentDelta GetOrCompute(ScopeKeys scope,
             WorldSnapshot snap, object inventory, CardDefinition equipment, object recipient, bool forecastHero,
-            System.Func<string> stamp, System.Func<EquipmentUpgradeValuation.EquipmentDelta> compute)
+            System.Func<string> stamp,
+            System.Func<CorePartSlot, EquipmentUpgradeValuation.EquipmentDelta> compute)
         {
             if (scope == null || scope.Player == null || scope.CoreKey == null || snap == null
                 || !ReferenceEquals(scope.Snap, snap) || equipment == null || recipient == null)
-                return compute();
+                return compute(null);
             if (!scope.Stamps.TryGetValue(recipient, out string currentStamp))
                 scope.Stamps[recipient] = currentStamp = stamp();
             if (currentStamp == null)
-                return compute();
+                return compute(null);
 
             PlayerCache cache = For(scope.Player, snap.TurnNumber);
             var key = (equipment, recipient, forecastHero);
@@ -124,7 +152,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            EquipmentUpgradeValuation.EquipmentDelta delta = Compute(compute, out bool full, out bool inv);
+            var slot = new CorePartSlot { Cache = cache, Key = key, CoreRef = scope.CoreKey, Stamp = currentStamp };
+            EquipmentUpgradeValuation.EquipmentDelta delta = Compute(compute, slot, out bool full, out bool inv);
             cache.Entries[key] = full
                 ? new Entry { FullRef = scope.FullKey, Inventory = inv ? inventory : null, Delta = delta }
                 : new Entry { CoreRef = scope.CoreKey, Stamp = currentStamp, Delta = delta };
@@ -132,13 +161,15 @@ namespace Game.Ai.V2
         }
 
         private static EquipmentUpgradeValuation.EquipmentDelta Compute(
-            System.Func<EquipmentUpgradeValuation.EquipmentDelta> compute, out bool full, out bool inventory)
+            System.Func<CorePartSlot, EquipmentUpgradeValuation.EquipmentDelta> compute, CorePartSlot slot,
+            out bool full, out bool inventory)
         {
             s_frames ??= new List<Frame>();
             s_frames.Add(default);
             int at = s_frames.Count - 1;
+            slot.Frame = at;
             EquipmentUpgradeValuation.EquipmentDelta delta;
-            try { delta = compute(); }
+            try { delta = compute(slot); }
             finally
             {
                 Frame frame = s_frames[at];
@@ -148,7 +179,31 @@ namespace Game.Ai.V2
             }
             // What this computation read, every enclosing computation read too.
             if (full) MarkFull(inventory);
+            slot.Frame = -1;
             return delta;
+        }
+
+        // The slot's computation has read nothing outside the core key and the stamp so far.
+        private static bool CoreSoFar(CorePartSlot slot) =>
+            slot?.Cache != null && s_frames != null && slot.Frame >= 0 && slot.Frame < s_frames.Count
+            && !s_frames[slot.Frame].Full;
+
+        internal static bool TryGetCorePart<T>(CorePartSlot slot, out T value)
+        {
+            value = default;
+            if (!CoreSoFar(slot) || !slot.Cache.Parts.TryGetValue(slot.Key, out Part part)
+                || !ReferenceEquals(part.CoreRef, slot.CoreRef)
+                || !string.Equals(part.Stamp, slot.Stamp, System.StringComparison.Ordinal)
+                || !(part.Value is T typed))
+                return false;
+            value = typed;
+            return true;
+        }
+
+        internal static void StoreCorePart(CorePartSlot slot, object value)
+        {
+            if (CoreSoFar(slot))
+                slot.Cache.Parts[slot.Key] = new Part { CoreRef = slot.CoreRef, Stamp = slot.Stamp, Value = value };
         }
     }
 }
