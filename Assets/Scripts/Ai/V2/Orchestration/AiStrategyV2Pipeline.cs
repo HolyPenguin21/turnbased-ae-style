@@ -191,6 +191,13 @@ namespace Game.Ai.V2
             //     follow-up AP promised to capabilities it delivers. Radar scales objective value
             //     only. Every other owner's hold is TurnResourceBook's, applied at each chain guard.
             PhaseAApBudget apBudget = PhaseAApBudget.Create(root);
+            // A fresh ground-combat departure the turn's AP funds holds its activation from the
+            // opening card play on, as it does in every admission of the turn.
+            if (!AviationObligations.Pending(player, ctx))
+                ProvisioningManager.HoldDeparturesBeforePhaseA(frame.Snapshot, turnSession, radar,
+                    MissionPortfolio.GroundCombatBeforePhaseA(frame.Snapshot, assessment.Breakdown,
+                        frame.Intents, frame.Aggression, radar, ctx, frame.IntentState),
+                    frame.Intents, frame.Commitments);
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: Phase A budget - {apBudget.DebugLine()}");
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.

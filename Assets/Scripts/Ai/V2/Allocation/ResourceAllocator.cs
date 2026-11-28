@@ -448,8 +448,10 @@ namespace Game.Ai.V2
         }
 
         internal static bool IsGroundCombat(MissionProposal m) =>
-            m != null && (m.Kind == MissionKind.Raid || m.Kind == MissionKind.ActiveDefence
-                || m.Kind == MissionKind.Attack);
+            m != null && IsGroundCombatKind(m.Kind);
+
+        internal static bool IsGroundCombatKind(MissionKind kind) =>
+            kind == MissionKind.Raid || kind == MissionKind.ActiveDefence || kind == MissionKind.Attack;
 
         // Ledger owner of a ground-combat mission's departure hold (GroundCombatDeparture).
         internal static string GroundCombatDepartureOwner(MissionProposal m) =>

@@ -183,6 +183,26 @@ namespace Game.Ai.V2
             }
         }
 
+        // Before the turn's opening card play (Phase A): the departure holds the first admission
+        // would set. The settled frame's valued ground-combat proposals are packed by the
+        // allocator from the whole turn AP and assigned like an admission's ground-combat batch;
+        // the first admission re-packs and releases every hold it no longer funds
+        // (AdmissionIteration.ReleaseUnfundedHolds).
+        internal static void HoldDeparturesBeforePhaseA(WorldSnapshot snap, AiTurnSession turn,
+            Radar radar, List<MissionProposal> aggression, IReadOnlyList<MissionIntent> intents,
+            ActorCommitments commitments)
+        {
+            if (snap?.Observer == null || aggression == null || aggression.Count == 0)
+                return;
+            List<Commitment> bound = MissionContinuityLayer.BindFunding(
+                intents?.Where(i => i != null && ResourceAllocator.IsGroundCombatKind(i.Kind)).ToList(),
+                aggression, snap);
+            TentativeAllocation allocation = ResourceAllocator.BeginTurn(snap, radar, aggression,
+                bound, snap.Observer).Pack();
+            using var session = new ProvisioningSession(snap, turn);
+            PrepareGroundCombatAssignments(session, allocation, commitments);
+        }
+
         private static int GroundCombatActorActivation(WorldSnapshot snap, int id)
         {
             ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);

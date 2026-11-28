@@ -281,20 +281,26 @@ namespace Game.EditorTests
                 System.IO.SearchOption.AllDirectories).Single();
             string code = string.Join(Environment.NewLine, System.IO.File.ReadLines(file)
                 .Select(l => l.Split(new[] { "//" }, 2, StringSplitOptions.None)[0]));
-            string[] steps =
+            // Build's own steps (the valuation is one call), then the valuation's two steps.
+            void InOrder(string body, params string[] steps)
             {
+                int last = -1;
+                foreach (string step in steps)
+                {
+                    int at = body.IndexOf(step, StringComparison.Ordinal);
+                    Assert.That(at, Is.GreaterThan(last), step);
+                    last = at;
+                }
+            }
+            int build = code.IndexOf("MissionPortfolioResult Build(", StringComparison.Ordinal);
+            int value = code.IndexOf("static void Value(", StringComparison.Ordinal);
+            Assert.That(build, Is.GreaterThanOrEqualTo(0));
+            Assert.That(value, Is.GreaterThan(build));
+            InOrder(code.Substring(build),
                 "RefreshReconLanePressures(", "ReconMissionPlanner.Propose(", "AggressionMissionLayer.Propose(",
                 "EconomyMissionPlanner.Propose(", "DevelopmentMissionPlanner.Propose(", "NextMissionAttemptId()",
-                "RadarValueScale.For(", "AttackPreparationPolicy.ApplyPriority(", "AiFrameLog.TaskScores(",
-                "CorrelateDemandsToMissions(",
-            };
-            int last = -1;
-            foreach (string step in steps)
-            {
-                int at = code.IndexOf(step, StringComparison.Ordinal);
-                Assert.That(at, Is.GreaterThan(last), step);
-                last = at;
-            }
+                "Value(missions, radar);", "AiFrameLog.TaskScores(", "CorrelateDemandsToMissions(");
+            InOrder(code.Substring(value), "RadarValueScale.For(", "AttackPreparationPolicy.ApplyPriority(");
             Assert.That(code, Does.Not.Contain("RefreshAggressionOperationalFacts"),
                 "the decision frame owns the Aggression facts refresh");
         }

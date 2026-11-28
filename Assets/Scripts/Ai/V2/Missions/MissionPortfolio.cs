@@ -61,14 +61,34 @@ namespace Game.Ai.V2
             foreach (MissionProposal m in missions)
                 if (m != null && string.IsNullOrEmpty(m.AttemptId))
                     m.AttemptId = trace?.NextMissionAttemptId() ?? "?";
-            foreach (MissionProposal m in missions)
-                if (m != null)
-                    m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
-            AttackPreparationPolicy.ApplyPriority(missions);
+            Value(missions, radar);
             AiFrameLog.TaskScores(snapshot?.Observer, snapshot?.TurnNumber ?? 0, missions);
 
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);
             return new MissionPortfolioResult(missions, deferredThisPass, witnessRevisions);
+        }
+
+        // The settled frame's ground-combat proposals, valued, before the turn's opening card play
+        // (ProvisioningManager.HoldDeparturesBeforePhaseA holds their departures).
+        internal static List<MissionProposal> GroundCombatBeforePhaseA(WorldSnapshot snapshot,
+            DesireBreakdown breakdown, IReadOnlyList<MissionIntent> activeIntents,
+            IReadOnlyList<RaidObjective> aggressionObjectives, Radar radar, AiTurnContext ctx,
+            IMissionIntentView intentState)
+        {
+            List<MissionProposal> missions = AggressionMissionLayer.Propose(snapshot, breakdown,
+                activeIntents, aggressionObjectives, intentState, ctx);
+            Value(missions, radar);
+            return missions;
+        }
+
+        // The allocator's ranking value of proposals: BaseValue x RadarValueScale, then the
+        // Attack preparation priority.
+        internal static void Value(List<MissionProposal> missions, Radar radar)
+        {
+            foreach (MissionProposal m in missions)
+                if (m != null)
+                    m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
+            AttackPreparationPolicy.ApplyPriority(missions);
         }
     }
 }
