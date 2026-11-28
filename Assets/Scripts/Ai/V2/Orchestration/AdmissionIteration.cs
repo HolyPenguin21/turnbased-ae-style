@@ -102,19 +102,12 @@ namespace Game.Ai.V2
         }
 
 
-        // The turn's holds follow this admission's funding: a delivered card's follow-up promise
+        // The turn's holds follow this admission's final pack: a delivered card's follow-up promise
         // (Phase A budget) and a fresh ground-combat departure hold end when nothing funded uses them.
         private void ReleaseUnfundedHolds(IReadOnlyList<MissionProposal> funded)
         {
             _runner.ApBudget?.ReleaseUnfundedDeliveryFollowups(FundedArmyIds(_frame.Snapshot, funded));
             ResourceAllocator.ReleaseUnfundedDepartureHolds(_player, _ctx.TurnNumber, funded);
-        }
-
-        private static List<MissionProposal> FundedMissions(IReadOnlyList<MissionProposal> missions,
-            IEnumerable<StableMissionKey> fundedKeys)
-        {
-            var keys = new HashSet<StableMissionKey>(fundedKeys);
-            return missions.Where(m => m != null && keys.Contains(StableMissionKey.For(m))).ToList();
         }
 
         // The armies the funded missions may move: the named mover, the ground-combat eligible set,
@@ -238,7 +231,7 @@ namespace Game.Ai.V2
             _telemetry.Allocation = allocation;
             foreach (StableMissionKey fundedKey in pick.FundedKeysAcrossPacks)
                 _telemetry.FundedKeys.Add(fundedKey);
-            ReleaseUnfundedHolds(FundedMissions(missions, pick.FundedKeysAcrossPacks));
+            ReleaseUnfundedHolds(allocation.Funded.Select(fe => fe?.Mission).Where(m => m != null).ToList());
             // The attempts reach the mission ledger and the turn telemetry in the order they
             // happened, before the step executes (nothing in between reads the ledger).
             foreach (ProvisionEvent attempt in pick.Events)
