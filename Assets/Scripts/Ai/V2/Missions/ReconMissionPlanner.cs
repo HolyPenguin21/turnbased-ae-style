@@ -122,8 +122,12 @@ namespace Game.Ai.V2
                 .ToList();
             picked.AddRange(ordinaryIncumbents);
 
+            // The beam bounds the jobs that compete for the same ground scouts. The AirSweep (one
+            // objective, flown only by aviation) competes with them for AP alone, which is the
+            // allocator's choice, so it is offered outside the beam.
             IEnumerable<ScoutCandidate> ordinary = fresh
                 .Where(f => !ReconScoutKinds.IsLocalStrike(f.Target.Kind)
+                    && !ReconScoutKinds.IsAirSweep(f.Target.Kind)
                     && !incumbentKeys.Contains(CandidateKey(f)))
                 .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
                 .ThenByDescending(x => ReconScoutKinds.IsExplore(x.Target.Kind) ? x.FreshNeighbors : 0)
@@ -136,6 +140,8 @@ namespace Game.Ai.V2
                 picked.Add(c);
                 ordinaryCount++;
             }
+            picked.AddRange(fresh.Where(f => ReconScoutKinds.IsAirSweep(f.Target.Kind)
+                && !incumbentKeys.Contains(CandidateKey(f)) && f.LocalAdmissionScore > 0f));
 
             // Planning publishes the actor against which the pre-funding envelope was priced.
             // This is still only a preference/compatibility witness: ReconAssignmentPlanner owns
