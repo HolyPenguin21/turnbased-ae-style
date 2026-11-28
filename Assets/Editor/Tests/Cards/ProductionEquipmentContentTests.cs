@@ -60,6 +60,10 @@ namespace Game.EditorTests
             }
             Assert.That(Gear("AT VH Launcher").authoredKey,
                 Is.EqualTo("neutral.equipment.armored.at-vh-launcher"));
+
+            var mobilityHarness = Gear("Mobility Harness");
+            Assert.That(EquipmentCardText.CardFace(mobilityHarness, null), Is.EqualTo("Infantry, Hero"));
+            Assert.That(EquipmentCardText.Description(mobilityHarness, null), Does.Contain("\nInfantry, Hero\n"));
         }
 
         [Test]
@@ -362,7 +366,10 @@ namespace Game.EditorTests
                     if (c.authoredKey == "neutral.tactic.tactical-missile")
                     { Assert.That(catalog.ResolveResult(c).cardType, Is.EqualTo(CardType.Unit)); continue; }
                     var preview = EquipmentCardText.Description(c, null);
-                    Assert.That(preview, Does.Contain("Unit").And.Not.Contain("required"));
+                    var lines = preview.Split('\n');
+                    Assert.That(lines.Length, Is.GreaterThan(1), c.displayName);
+                    Assert.That(lines[1].Split(new[] { ", " }, StringSplitOptions.None), Has.No.Member("Unit"), c.displayName);
+                    Assert.That(preview, Does.Not.Contain("required"), c.displayName);
                 }
             }
         }
